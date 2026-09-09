@@ -8,6 +8,13 @@ review. It has no tool for raw motor values or direct flight commands.
 
 ## Offline first
 
+Preflight analyzer `litewing-safety-2` counts elapsed wall-clock time since
+capture against the 500 ms default freshness budget. Effective link age is
+the recorded link age plus that elapsed time. Old replay fixtures therefore
+produce blocked readiness reports when evaluated today, while remaining useful
+for inspection. An unchanged snapshot can expire before a proposal does;
+approval rechecks freshness. Capture timestamps must come from trusted metadata.
+
 The deterministic path requires only Python and the standard library. The
 current workstation has Python 3.9.6, while the package metadata requires
 Python 3.11+ for the maintained runtime; the source is intentionally kept

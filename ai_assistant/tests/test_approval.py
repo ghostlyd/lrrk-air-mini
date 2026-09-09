@@ -29,6 +29,13 @@ def snapshot(snapshot_id="approval-1", complete=True):
 
 
 class ApprovalTests(unittest.TestCase):
+    def test_unchanged_snapshot_becomes_stale_before_proposal_expires(self):
+        machine = ApprovalStateMachine("operator-1")
+        proposal = machine.create_proposal(snapshot(), "review_orientation", "verify frame", "show checklist", now=NOW)
+        with self.assertRaises(ApprovalError):
+            machine.approve(proposal.proposal_id, "human-confirmation", snapshot(), now=NOW + timedelta(seconds=1))
+        self.assertEqual(machine.state, ABORTED)
+
     def test_human_approval_is_bound_to_current_snapshot(self):
         machine = ApprovalStateMachine("operator-1")
         proposal = machine.create_proposal(snapshot(), "review_orientation", "verify frame", "show checklist", now=NOW)

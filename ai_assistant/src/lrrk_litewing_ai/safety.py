@@ -84,10 +84,11 @@ def _now(now: Optional[datetime]) -> datetime:
     return value
 
 
-def _link_finding(snapshot: TelemetrySnapshot, policy: SafetyPolicy) -> Finding:
+def _link_finding(snapshot: TelemetrySnapshot, policy: SafetyPolicy, elapsed_ms: float) -> Finding:
     age = snapshot.link_age_ms
     if age is None:
         return _finding("link.freshness", "UNKNOWN", "HIGH", "link age is unknown", "Establish a fresh telemetry link before flight.")
+    age += elapsed_ms
     if age > policy.max_link_age_ms:
         return _finding("link.freshness", "BLOCK", "CRITICAL", "link age %.1f ms exceeds %.1f ms" % (age, policy.max_link_age_ms), "Reconnect telemetry and keep the aircraft disarmed.")
     return _finding("link.freshness", "PASS", "INFO", "link age %.1f ms" % age, "No action required.")
@@ -171,12 +172,15 @@ def run_preflight(
     current = _now(now)
     findings = []
     future_ms = (snapshot.captured_at - current).total_seconds() * 1000.0
+    elapsed_ms = max(0.0, -future_ms)
     if future_ms > policy.max_future_skew_ms:
         findings.append(_finding("time.freshness", "BLOCK", "HIGH", "snapshot is %.1f ms in the future" % future_ms, "Fix clock synchronization and reject the snapshot."))
+    elif elapsed_ms > policy.max_link_age_ms:
+        findings.append(_finding("time.freshness", "BLOCK", "HIGH", "snapshot is %.1f ms old" % elapsed_ms, "Collect a current snapshot; replay does not establish current readiness."))
     else:
         findings.append(_finding("time.freshness", "PASS", "INFO", "snapshot timestamp is usable", "No action required."))
 
-    findings.append(_link_finding(snapshot, policy))
+    findings.append(_link_finding(snapshot, policy, elapsed_ms))
     if snapshot.armed is True:
         findings.append(_finding("flight.armed", "BLOCK", "CRITICAL", "aircraft is reported armed", "Disarm through the normal flight-controller path before preflight work."))
     elif snapshot.armed is False:
@@ -202,7 +206,7 @@ def run_preflight(
     return PreflightReport(
         snapshot_hash=snapshot.snapshot_hash(),
         generated_at=current,
-        analyzer_version="litewing-safety-1",
+        analyzer_version="litewing-safety-2",
         overall=overall,
         findings=tuple(findings),
     )
