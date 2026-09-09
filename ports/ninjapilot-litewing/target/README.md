@@ -54,5 +54,17 @@ motor-cut deadline remains a separate validation/design gate, not a passing
 claim from these host tests.
 
 The ESP-IDF 5.3.2 wrapper build passed compile, link, image generation, and
-partition sizing on 2026-09-09. The adapter has not been flashed or run on a
-board; runtime and physical verification remain open.
+partition sizing on 2026-09-09. After explicit owner authorization and a
+verified full-flash recovery backup, the candidate was flashed and observed
+reporting disarmed status, zero motor-command values and changing IMU/attitude
+data on the physical board. See [USB-only bring-up evidence](../../../docs/verification/usb-bringup-2026-09-09.md).
+This is not physical zero-output measurement, fault-timing validation or flight
+clearance; critical Receiver/Actuator alarms and remaining bench gates are
+documented there.
+
+For the pinned defaults, application UART telemetry is **57600 baud**. Board
+initialization and the tested bootloader connection use 115200, but the
+Telemetry module subsequently applies `HwSettings.TelemetrySpeed`. A saved
+setting may change runtime baud. The complementary-filter path publishes
+`GyroState`/`AccelState`; raw sensor/temperature objects are not populated
+without the optional `PIOS_INCLUDE_RAW_SENSORS` definition.

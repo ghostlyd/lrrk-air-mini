@@ -3,8 +3,10 @@
 Status: ESP32-S3 wrapper build verified on 2026-09-09. This document records what is evidenced in
 this repository and on the connected development host. The approved
 NinjaPilot/OpenPilot LiteWing target is pinned, and the ESP32-S3
-image builds successfully; all hardware gates remain incomplete. It does not claim that a
-flight has been performed.
+image builds successfully. A separately authorized [USB-only session](verification/usb-bringup-2026-09-09.md)
+verified an 8 MB recovery backup, flashed the candidate, and observed disarmed
+telemetry plus changing IMU/attitude values at 57600 baud. The full bench and
+flight gates remain incomplete; no flight has been performed.
 
 ## Scope and target boundary
 

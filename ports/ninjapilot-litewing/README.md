@@ -160,5 +160,7 @@ The `target/sources.cmake` fragment is consumed by the ESP-IDF wrapper and is
 linked with the pinned reference ESP32 PiOS support while excluding the
 reference servo-pulse and ICM-20602 sources. The local no-flash gate has been
 verified through compilation, linking, image generation, and partition-size
-checking for ESP32-S3. Hardware behavior remains unverified; no firmware is
-flashed by these sources.
+checking for ESP32-S3. A separately authorized [USB-only bench session](../../docs/verification/usb-bringup-2026-09-09.md)
+now records verified backup/flashing and disarmed telemetry from the physical
+board. Electrical output timing, calibrated orientation and flight remain
+unverified. No firmware is flashed by the build scripts themselves.
