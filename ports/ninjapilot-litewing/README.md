@@ -8,6 +8,10 @@ The [settings-recovery report](../../docs/verification/settings-recovery-2026-09
 records the real persistence linker gate and non-destructive NVS recovery
 contract. Successful compilation or linkage is not physical flight clearance.
 
+The [thrust-control correction](../../docs/verification/thrust-control-width-2026-09-09.md)
+records the checked byte-to-enum read and complete control-task regressions.
+Invalid, unreadable, or `None` thrust modes select fault handling on this target.
+
 The selected upstream `litewing` branch currently includes a POSIX/Gazebo
 LiteWing twin, not a flashable ESP32-S3 target. The repository-owned target
 work therefore proceeds in gates:
