@@ -56,3 +56,8 @@ jobs:
             --manifest ports/ninjapilot-litewing/SOURCE_MANIFEST.json \
             --flight "$RUNNER_TEMP/litewing-external/NinjaPilot" \
             --reference "$RUNNER_TEMP/litewing-external/OpenPilotESP32-WROOM-32E"
+      - name: Check repository patches against pinned source
+        run: |
+          git -C "$RUNNER_TEMP/litewing-external/NinjaPilot" apply --check \
+            "$GITHUB_WORKSPACE/ports/ninjapilot-litewing/patches/litewing-target.patch" \
+            "$GITHUB_WORKSPACE/ports/ninjapilot-litewing/patches/simlitewing-loopback.patch"

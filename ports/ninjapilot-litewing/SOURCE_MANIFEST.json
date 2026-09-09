@@ -53,6 +53,14 @@
       "role": "repository-owned LiteWing contract",
       "path": "ports/ninjapilot-litewing/patches/litewing-target.patch",
       "sha256": "5664547e4aaf2ed1a57e1a2d112364964ad1082a6b794f95ec64170913d78126"
+    },
+    {
+      "name": "simlitewing-loopback.patch",
+      "source": "repository",
+      "apply": true,
+      "role": "native simlitewing UDP loopback isolation; no ESP32 hardware change",
+      "path": "ports/ninjapilot-litewing/patches/simlitewing-loopback.patch",
+      "sha256": "11aebea3a9d2d2582435653e603cc910cd545a47aae9115b563e16a84034d8a3"
     }
   ],
   "hardware_contract": {
