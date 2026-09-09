@@ -33,11 +33,11 @@ TOOL_SCHEMAS = (
     },
     {
         "name": "compare_snapshots",
-        "description": "Compare two normalized telemetry snapshots without changing flight state.",
+        "description": "Compare the previous and latest observed runtime snapshots without changing flight state.",
         "parameters": {
             "type": "object",
-            "properties": {"before": {"type": "object"}, "after": {"type": "object"}},
-            "required": ["before", "after"],
+            "properties": {},
+            "required": [],
             "additionalProperties": False,
         },
     },
