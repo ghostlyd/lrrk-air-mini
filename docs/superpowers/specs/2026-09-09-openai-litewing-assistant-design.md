@@ -63,10 +63,13 @@ read-only, and schema-validated:
 - `get_latest_telemetry()`;
 - `run_preflight()`;
 - `explain_finding(finding_id)`;
-- `compare_snapshots(before, after)`; and
+- `compare_snapshots()` using the runtime's previous and latest observed data; and
 - `propose_action(action_kind, rationale, expected_effect, expiry_seconds)`.
 
 `propose_action` returns a proposal object; it does not call a flight command.
+The SDK comparison wrapper accepts no model-authored snapshot dictionaries.
+It reports unavailable until two observed snapshots exist; the underlying
+Python comparison function remains available for deterministic offline callers.
 The agent runs in offline/dry-run mode when the SDK or API key is unavailable.
 The API key is read only from the host process environment or an approved local
 secret store and is never sent to the aircraft or committed to Git.

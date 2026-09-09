@@ -40,9 +40,11 @@ def create_openai_agent(runtime: AssistantRuntime) -> Any:
         return explain_finding(runtime, finding_id)
 
     @function_tool
-    def compare_tool(before: dict, after: dict) -> dict:
-        from .models import TelemetrySnapshot
-        return compare_snapshots(TelemetrySnapshot.from_dict(before), TelemetrySnapshot.from_dict(after))
+    def compare_tool() -> dict:
+        """Compare the runtime's previous and latest observed snapshots; never supply telemetry."""
+        if runtime.previous is None or runtime.latest is None:
+            return {"available": False, "reason": "two observed telemetry snapshots are required"}
+        return compare_snapshots(runtime.previous, runtime.latest)
 
     @function_tool
     def proposal_tool(action_kind: str, rationale: str, expected_effect: str, expiry_seconds: int = 60) -> dict:

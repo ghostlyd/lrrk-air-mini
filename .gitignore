@@ -14,6 +14,7 @@ ports/ninjapilot-litewing/.cache/
 ports/ninjapilot-litewing/.venv/
 
 # Python caches and test artifacts.
+.venv-sdk/
 __pycache__/
 *.py[cod]
 .pytest_cache/
