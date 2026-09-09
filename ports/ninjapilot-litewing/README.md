@@ -27,6 +27,11 @@ adds real-code host reproductions of counter warm-up, initial actuator failsafe
 and alarm grace behavior. Boot-success failure propagation remains incomplete;
 this investigation does not clear alarms or change installed firmware.
 
+The [board startup failure gate](../../docs/verification/board-startup-failure-gate-2026-09-09.md)
+now stops module initialization after reported synchronous board errors and
+prevents same-boot reinitialization. It is tested and built, not installed;
+complete BootFault success and asynchronous startup validation remain open.
+
 The selected upstream `litewing` branch currently includes a POSIX/Gazebo
 LiteWing twin, not a flashable ESP32-S3 target. The repository-owned target
 work therefore proceeds in gates:

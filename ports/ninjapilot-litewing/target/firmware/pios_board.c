@@ -43,6 +43,9 @@ uintptr_t pios_uavo_settings_fs_id;
 uintptr_t pios_user_fs_id;
 static bool board_alarms_ready;
 static bool board_boot_fault;
+static bool board_leds_ready;
+static bool board_init_started;
+static bool board_services_initialized;
 
 const struct pios_board_info pios_board_info_blob = {
     .magic      = PIOS_BOARD_INFO_BLOB_MAGIC,
@@ -95,13 +98,24 @@ static int board_com_init(uint32_t *com_id,
         return -1;
     }
     rx_buffer = (uint8_t *)pios_malloc(PIOS_COM_TELEM_RF_RX_BUF_LEN);
-    tx_buffer = (uint8_t *)pios_malloc(PIOS_COM_TELEM_RF_TX_BUF_LEN);
-    if (!rx_buffer || !tx_buffer) {
+    if (!rx_buffer) {
         return -2;
     }
-    return PIOS_COM_Init(com_id, &pios_esp32_usart_com_driver, usart_id,
-                         rx_buffer, PIOS_COM_TELEM_RF_RX_BUF_LEN,
-                         tx_buffer, PIOS_COM_TELEM_RF_TX_BUF_LEN);
+    tx_buffer = (uint8_t *)pios_malloc(PIOS_COM_TELEM_RF_TX_BUF_LEN);
+    if (!tx_buffer) {
+        pios_free(rx_buffer);
+        return -2;
+    }
+    int32_t result = PIOS_COM_Init(com_id, &pios_esp32_usart_com_driver, usart_id,
+                                  rx_buffer, PIOS_COM_TELEM_RF_RX_BUF_LEN,
+                                  tx_buffer, PIOS_COM_TELEM_RF_TX_BUF_LEN);
+    if (result != 0) {
+        /* At the pinned COM implementation its only reported error precedes
+         * binding either buffer. Ownership transfers only on success. */
+        pios_free(rx_buffer);
+        pios_free(tx_buffer);
+    }
+    return result;
 }
 
 static UAVObjHandle board_setting_handle(unsigned index)
@@ -225,17 +239,25 @@ static int board_apply_safe_defaults(void)
 static void board_set_boot_fault(void)
 {
     board_boot_fault = true;
+    /* Before PWM initialization this is a no-op: early returns and the entry
+     * gate must prevent later hardware/module initialization. After PWM init,
+     * Shutdown uses the existing output latch. Neither path enables outputs. */
+    PIOS_LiteWing_BrushedPWM_Shutdown();
     if (board_alarms_ready) {
         AlarmsSet(SYSTEMALARMS_ALARM_BOOTFAULT, SYSTEMALARMS_ALARM_CRITICAL);
     }
-    PIOS_LED_On(PIOS_LED_ALARM);
+    if (board_leds_ready) {
+        PIOS_LED_On(PIOS_LED_ALARM);
+    }
 }
 
-static void board_set_firmware_identity(void)
+static int32_t board_set_firmware_identity(void)
 {
     FirmwareIAPObjData iap;
 
-    FirmwareIAPObjGet(&iap);
+    if (FirmwareIAPObjGet(&iap) != 0) {
+        return -1;
+    }
     iap.BoardType = pios_board_info_blob.board_type;
     iap.BoardRevision = pios_board_info_blob.board_rev;
     memset(iap.Description, 0, sizeof(iap.Description));
@@ -251,7 +273,14 @@ static void board_set_firmware_identity(void)
     strncpy((char *)&iap.Description[14], FW_VERSION_FWTAG, 25);
     memcpy(&iap.Description[60], fw_version_uavo_sha1,
            sizeof(fw_version_uavo_sha1));
-    FirmwareIAPObjSet(&iap);
+    return FirmwareIAPObjSet(&iap);
+}
+
+bool PIOS_LiteWing_BoardServicesInitialized(void)
+{
+    /* This synchronous status is not proof of complete module/task startup.
+     * In particular, it must never be used to publish BootFault OK. */
+    return board_services_initialized && !board_boot_fault;
 }
 
 void PIOS_Board_Init(void)
@@ -259,17 +288,35 @@ void PIOS_Board_Init(void)
     uint32_t gcs_id;
     uint32_t gcs_rcvr_id;
 
-    PIOS_DELAY_Init();
-    if (PIOS_LED_Init(&pios_led_cfg) != 0) {
+    /* Called only from app_main, not a concurrent reset/retry interface. A
+     * failed or partial initialization cannot be retried in this boot. */
+    if (board_init_started) {
         return;
     }
+    board_init_started = true;
+    if (PIOS_DELAY_Init() != 0) {
+        board_set_boot_fault();
+        return;
+    }
+    if (PIOS_LED_Init(&pios_led_cfg) != 0) {
+        board_set_boot_fault();
+        return;
+    }
+    board_leds_ready = true;
     PIOS_LED_On(PIOS_LED_HEARTBEAT);
 
     if (PIOS_TASK_MONITOR_Initialize(TASKINFO_RUNNING_NUMELEM) != 0) {
         board_set_boot_fault();
+        return;
     }
-    (void)PIOS_CALLBACKSCHEDULER_Initialize();
-    EventDispatcherInitialize();
+    if (PIOS_CALLBACKSCHEDULER_Initialize() != 0) {
+        board_set_boot_fault();
+        return;
+    }
+    if (EventDispatcherInitialize() != 0) {
+        board_set_boot_fault();
+        return;
+    }
 
     /* Settings storage must exist before registration because the real
      * persistence implementation loads settings during object registration. */
@@ -277,34 +324,51 @@ void PIOS_Board_Init(void)
         pios_uavo_settings_fs_id = 0;
         board_set_boot_fault();
         printf("[LiteWing] settings storage unavailable; outputs blocked\n");
+        return;
     }
     pios_user_fs_id = 0;
 
-    UAVObjInitialize();
+    if (UAVObjInitialize() != 0) {
+        board_set_boot_fault();
+        return;
+    }
     UAVObjectsInitializeAll();
-    board_set_firmware_identity();
+    if (board_set_firmware_identity() != 0) {
+        board_set_boot_fault();
+        return;
+    }
     if (board_apply_safe_defaults() != 0) {
         board_set_boot_fault();
+        return;
     }
     PIOS_DEBUGLOG_Initialize();
-    AlarmsInitialize();
-    board_alarms_ready = true;
-    if (board_boot_fault) {
-        AlarmsSet(SYSTEMALARMS_ALARM_BOOTFAULT, SYSTEMALARMS_ALARM_CRITICAL);
+    if (!SystemAlarmsHandle() || AlarmsInitialize() != 0) {
+        board_set_boot_fault();
+        return;
     }
+    board_alarms_ready = true;
+    /* Return value is previous-reset watchdog flags, not an init status.
+     * Internal task/subscription success remains a separate startup gate. */
     (void)PIOS_WDG_Init();
 
     if (board_com_init(&pios_com_telem_rf_id, &pios_usart_telem_cfg) != 0) {
         board_set_boot_fault();
+        return;
     }
 
     /* GCS receiver data arrives through UAVTalk; it is never an implicit arm
      * source. Map it only so a disconnected or props-off bench can exercise
      * the same control path without a physical RC protocol. */
-    GCSReceiverInitialize();
+    /* Already registered by UAVObjectsInitializeAll. Reinitializing an
+     * existing generated object returns -2, not a fresh success indication. */
+    if (!GCSReceiverHandle()) {
+        board_set_boot_fault();
+        return;
+    }
     if (PIOS_GCSRCVR_Init(&gcs_id) != 0 ||
         PIOS_RCVR_Init(&gcs_rcvr_id, &pios_gcsrcvr_rcvr_driver, gcs_id) != 0) {
         board_set_boot_fault();
+        return;
     } else {
         pios_rcvr_group_map[MANUALCONTROLSETTINGS_CHANNELGROUPS_GCS] =
             gcs_rcvr_id;
@@ -313,10 +377,7 @@ void PIOS_Board_Init(void)
     if (PIOS_LiteWing_Board_Init() != 0) {
         /* The target adapter has already forced zero duty before returning. */
         board_set_boot_fault();
+        return;
     }
-    if (board_boot_fault) {
-        /* Settings failure must not leave a usable motor backend, even when
-         * sensor initialization succeeds. Shutdown latches until reboot. */
-        PIOS_LiteWing_BrushedPWM_Shutdown();
-    }
+    board_services_initialized = true;
 }
