@@ -60,6 +60,10 @@ artifacts, not ESP32-S3 flash images.
 See [the recorded simulator check](../../docs/verification/simulator-build-2026-09-09.md)
 for observed startup and remaining physics requirements.
 
+Gazebo Harmonic, the native `simposix` target, and the isolated Python bridge
+environment are covered in [dependency setup and verification](../../docs/verification/gazebo-dependencies-2026-09-09.md).
+These checks do not establish a working LiteWing physics/control loop.
+
 ## Hardware contract
 
 The first image targets the ESP32-S3-WROOM-1, MPU6050 on I2C0 (SDA 11, SCL
