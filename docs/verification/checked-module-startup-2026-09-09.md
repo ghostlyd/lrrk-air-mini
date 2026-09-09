@@ -28,8 +28,9 @@ actuator outputs remained electrically zero during partial startup.
 
 All selected upstream module functions originally returned success even when
 some internal operations failed. Checking their return values alone would not
-repair that. This change also checks the real ManualControl initializer's six
-required objects and scheduler callback registration. Existing object handles
+repair that. This change also checks the real ManualControl initializer's eight
+required objects, two initialization-time callback connections and scheduler
+callback registration. Existing object handles
 are preserved without duplicate initialization (which normally returns -2).
 A missing object must initialize successfully and return a usable handle.
 Objects already registered globally are not deleted after a later failure.
@@ -37,8 +38,19 @@ The real scheduler retains its existing ownership/cleanup behavior when new
 worker, callback-info or semaphore allocation fails.
 
 ManualControl's runtime handlers, start-time connections and dispatch behavior
-are unchanged. Advanced-feature configurations are not validated here; the
-selected target defines PIOS_EXCLUDE_ADVANCED_FEATURES. No BootFault OK is added.
+are unchanged. Successfully registered initialization callbacks remain connected
+after a later failure; their static code and global object state are retained.
+No BootFault OK is added.
+
+Independent review caught a fixture/configuration mismatch in the first revision:
+the host fixture defined PIOS_EXCLUDE_ADVANCED_FEATURES, but preprocessing with
+the real firmware compile command proved that production does not. The corrected
+fixture compiles the enabled path, including VtolSelfTuningStats,
+VtolPathFollowerSettings and two SettingsUpdatedCb connections. Six additional
+failure cases and the existing-object nominal case failed before the correction.
+An SDK-backed preprocessing test now checks that the fixture's feature selection
+matches the firmware. Compiling these handlers does not establish navigation or
+advanced flight-mode readiness; they are not executed by the initializer tests.
 
 ## Evidence and limits
 
@@ -47,15 +59,17 @@ selected target defines PIOS_EXCLUDE_ADVANCED_FEATURES. No BootFault OK is added
   task execution, plus nominal startup and forbidden ordering/repeats.
 - Complete ManualControl, actual table/entry, and the real scheduler are linked
   together. Its initial 15 resource-failure cases failed before the fix; the
-  permanent original-source control now rejects 16 cases including a shared
-  scheduler worker. Existing-object and fresh-object nominal paths pass.
+  corrected permanent original-source control now rejects 22 cases, including
+  shared-worker allocation and both initialization connections. Existing-object
+  and fresh-object nominal paths pass; failure stops before later connections.
 - Six deliberate mutations catch discarded table errors, ignored errors in
   either consumer, repeated initialization/start and start before initialization.
   Existing System/scheduler negative controls remain. Compiler failures alone
   cannot satisfy the controls.
-- The focused scheduler/System suite passes 28 tests with no skips, including
-  the real firmware graph. The full local host run passes 83 assistant + 211
-  port = 294 tests with no skips. AI tests are offline. Final revision checks
+- The corrected focused scheduler/System suite passes 29 tests with no skips,
+  including the real firmware graph and configuration check. The full corrected
+  host run passes 83 assistant + 212 port = 295 tests, no skips. AI tests are
+  offline. Final revision checks
   and independent review are recorded in the PR, not inferred from this report.
 - Objects, other module entry points, RTOS and hardware are controlled host
   boundaries. ManualControl handlers are expected not to execute in these
@@ -73,22 +87,24 @@ CI without an SDK graph skips that graph check and is not a target build.
 
 ## Retained private build — NOT INSTALLED
 
-Production/test commit: `56fb64f509c89c51d53b597c53d4c83c3c6effea`.
-ESP-IDF 5.3.2 ESP32-S3 incremental build reports version `56fb64f` and passes
+Corrected production/test commit: `7eb4fad12d1f5335e6d8a4ab62e39cf943a01cd8`.
+ESP-IDF 5.3.2 ESP32-S3 incremental build reports version `7eb4fad` and passes
 persistence linkage and sizing within the existing 1 MiB application partition.
 This is not a clean-from-scratch build. Existing upstream warnings and the
 CMake deprecation warning remain; no production warning suppression was added.
 
 | Artifact | Bytes | SHA-256 |
 | --- | ---: | --- |
-| Application | 357280 | `460e775a9756d6dea533707d44572f300d0a236a8ae06d433ffdebac543a74e7` |
-| ELF | 6659196 | `d75b32ec2f67064c456b63c448f6d5ef27a1e6087f4bc1f79688688702b603d9` |
+| Application | 357344 | `cdf4cbf2ecb5fe6ed847a6d0f4b48072edf420255b529dde0747dedd7f32319b` |
+| ELF | 6659508 | `847fa2ee8ba863fe569526e82f2842180d1482467a5ed6609dd95a10ce8a4931` |
 
 Generated ManualControl SHA-256:
-`e6e0ab2d597ee23659aa718e928f61fc84742567eaf3806c9869be0d21f478b1`.
+`8502cde33b511e6158cc77c1e08bc1c96bb95227b1c0dd12c255f522a8029c45`.
 Generated System SHA-256:
 `d59bd5ec7b2b0d7f53d100db4fb0938274919a282204a1db41a5b83a0f019c62`.
 Later documentation changes do not alter these retained bytes.
+The earlier 56fb64f artifacts remain private historical evidence, not the final
+candidate for this correction. Neither revision has been installed.
 
 ## Remaining work
 
