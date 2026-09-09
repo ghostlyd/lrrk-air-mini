@@ -142,17 +142,19 @@ def _battery_findings(snapshot: TelemetrySnapshot, policy: SafetyPolicy) -> Iter
 
 
 def _actuator_finding(snapshot: TelemetrySnapshot) -> Finding:
-    if not snapshot.actuators:
-        return _finding("actuators.availability", "UNKNOWN", "HIGH", "no actuator observations are present", "Keep outputs disabled until the flight controller reports all channels.")
     for index, value in enumerate(snapshot.actuators):
         if not math.isfinite(value) or value < 0 or value > 1000:
             return _finding("actuators.range", "BLOCK", "CRITICAL", "actuator %d has unsafe value %s" % (index, value), "Stop and keep all brushed outputs at zero.")
+    if len(snapshot.actuators) != 4:
+        return _finding("actuators.availability", "UNKNOWN", "HIGH", "expected four motor observations; received %d" % len(snapshot.actuators), "Verify all four LiteWing channels; partial or ambiguous mappings are not complete evidence.")
     return _finding("actuators.range", "PASS", "INFO", "%d actuator values are within 0..1000" % len(snapshot.actuators), "No action required.")
 
 
 def _mode_finding(snapshot: TelemetrySnapshot) -> Finding:
     mode = (snapshot.flight_mode or "").strip().lower()
-    if not mode or mode in {"rate", "attitude", "stabilized", "manual"}:
+    if not mode:
+        return _finding("capabilities.mode", "UNKNOWN", "HIGH", "flight mode is unknown", "Read the current mode and its configured stabilization behavior before flight.")
+    if mode in {"rate", "attitude", "stabilized", "manual"}:
         return _finding("capabilities.mode", "PASS", "INFO", "first-image attitude/rate mode does not require positioning hardware", "No action required.")
     if mode not in {"position_hold", "altitude_hold", "auto", "gps", "navigation"}:
         return _finding("capabilities.mode", "UNKNOWN", "MEDIUM", "flight mode %s is not in the target policy" % mode, "Keep the assistant advisory and verify the mode manually.")
@@ -192,7 +194,11 @@ def run_preflight(
     findings.extend(_battery_findings(snapshot, policy))
     findings.append(_actuator_finding(snapshot))
     findings.append(_mode_finding(snapshot))
-    if snapshot.alarms:
+    if snapshot.alarms is None:
+        findings.append(_finding("flight.alarms", "UNKNOWN", "HIGH", "alarm state is unknown", "Obtain a complete current alarm report; missing telemetry does not mean clear alarms."))
+    elif snapshot.alarms and all(alarm.endswith(":Uninitialised") for alarm in snapshot.alarms):
+        findings.append(_finding("flight.alarms", "UNKNOWN", "HIGH", "uninitialised alarm states: %s" % ", ".join(sorted(snapshot.alarms)), "Verify which subsystems are initialized and required; these states are not an all-clear report."))
+    elif snapshot.alarms:
         findings.append(_finding("flight.alarms", "BLOCK", "HIGH", "reported alarms: %s" % ", ".join(sorted(snapshot.alarms)), "Resolve every reported alarm before any powered test."))
     else:
         findings.append(_finding("flight.alarms", "PASS", "INFO", "no alarms reported", "No action required."))
@@ -206,7 +212,7 @@ def run_preflight(
     return PreflightReport(
         snapshot_hash=snapshot.snapshot_hash(),
         generated_at=current,
-        analyzer_version="litewing-safety-2",
+        analyzer_version="litewing-safety-3",
         overall=overall,
         findings=tuple(findings),
     )

@@ -25,6 +25,7 @@ def snapshot(**changes):
         "battery": BatteryState(voltage_v=3.9, percent=80),
         "sensors": SensorHealth(imu_present=True, imu_identity="MPU6050", imu_healthy=True),
         "actuators": (0, 0, 0, 0),
+        "alarms": (),
     }
     values.update(changes)
     return TelemetrySnapshot(**values)
@@ -35,6 +36,36 @@ class SafetyTests(unittest.TestCase):
         report = run_preflight(snapshot(), now=NOW)
         self.assertEqual(report.overall, "PASS")
         self.assertFalse(any(item.status == "BLOCK" for item in report.findings))
+
+    def test_unknown_alarm_state_is_not_a_clear_report(self):
+        state = TelemetrySnapshot.from_dict(dict(snapshot().to_dict(), alarms=None))
+        report = run_preflight(state, now=NOW)
+        self.assertEqual(report.overall, "INCOMPLETE")
+        self.assertEqual(next(f.status for f in report.findings if f.finding_id == "flight.alarms"), "UNKNOWN")
+
+    def test_missing_mode_is_unknown(self):
+        for mode in (None, "", "   "):
+            with self.subTest(mode=mode):
+                report = run_preflight(snapshot(flight_mode=mode), now=NOW)
+                self.assertEqual(report.overall, "INCOMPLETE")
+                self.assertEqual(next(f.status for f in report.findings if f.finding_id == "capabilities.mode"), "UNKNOWN")
+
+    def test_motor_evidence_requires_exactly_four_channels(self):
+        for count in (0, 1, 2, 3, 5, 12):
+            with self.subTest(count=count):
+                report = run_preflight(snapshot(actuators=(0,) * count), now=NOW)
+                self.assertEqual(report.overall, "INCOMPLETE")
+                self.assertEqual(next(f.status for f in report.findings if f.finding_id == "actuators.availability"), "UNKNOWN")
+
+    def test_reported_bad_motor_value_is_not_hidden_by_incomplete_vector(self):
+        report = run_preflight(snapshot(actuators=(1200,)), now=NOW)
+        self.assertEqual(report.overall, "BLOCKED")
+
+    def test_missing_alarm_json_cannot_become_no_alarms(self):
+        record = snapshot().to_dict()
+        del record["alarms"]
+        result = TelemetrySnapshot.from_dict(record)
+        self.assertEqual(run_preflight(result, now=NOW).overall, "INCOMPLETE")
 
     def test_stale_link_blocks(self):
         report = run_preflight(snapshot(link_age_ms=1000), now=NOW)

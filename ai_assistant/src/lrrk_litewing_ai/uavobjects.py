@@ -20,9 +20,20 @@ from .uavtalk import UAVTalkError, UAVTalkFrame
 ATTITUDE_STATE = 0xD7E0D964
 FLIGHT_STATUS = 0xEF69B6BC
 BATTERY_STATE = 0x26962352
+SYSTEM_ALARMS = 0x6B7639EC
+ACTUATOR_COMMAND = 0xB8229FE4
 _LAYOUTS = {ATTITUDE_STATE: struct.Struct("<7f"),
             FLIGHT_STATUS: struct.Struct("<8B"),
-            BATTERY_STATE: struct.Struct("<7f2B")}
+            BATTERY_STATE: struct.Struct("<7f2B"),
+            SYSTEM_ALARMS: struct.Struct("<25B"),
+            ACTUATOR_COMMAND: struct.Struct("<12hHHB")}
+_ALARM_NAMES = ("SystemConfiguration", "BootFault", "OutOfMemory", "StackOverflow",
+                "CPUOverload", "EventSystem", "Telemetry", "Receiver", "ManualControl",
+                "Actuator", "Attitude", "Sensors", "Magnetometer", "Airspeed",
+                "Stabilization", "Guidance", "PathPlan", "Battery", "FlightTime", "I2C", "GPS")
+_ALARM_STATES = ("Uninitialised", "OK", "Warning", "Critical", "Error")
+_EXTENDED_STATES = ("None", "RebootRequired", "FlightMode", "UnsupportedConfig_OneShot",
+                    "BadThrottleOrCollectiveInputRange")
 _MODES = ("manual", "stabilized1", "stabilized2", "stabilized3",
           "stabilized4", "stabilized5", "stabilized6", "autotune",
           "position_hold", "course_lock", "position_roam", "home_leash",
@@ -55,13 +66,38 @@ def snapshot_from_frame(frame: UAVTalkFrame, captured_at: datetime) -> Optional[
         if values[8] not in (0, 1):
             raise UAVTalkError("invalid battery autodetection enum")
         fields["battery"] = BatteryState(voltage_v=values[0], current_a=values[1])
-    else:
+    elif frame.object_id == FLIGHT_STATUS:
         bounds = (3, len(_MODES), 3, 3, 3, 2, 2, 2)
         if any(value >= limit for value, limit in zip(values, bounds)):
             raise UAVTalkError("invalid FlightStatus enum")
         # ARMING must never be represented as confirmed disarmed.
         fields["armed"] = values[0] != 0
         fields["flight_mode"] = _MODES[values[1]]
+    elif frame.object_id == SYSTEM_ALARMS:
+        if any(v >= len(_ALARM_STATES) for v in values[:21]) or any(
+                v >= len(_EXTENDED_STATES) for v in values[21:23]):
+            raise UAVTalkError("invalid SystemAlarms enum")
+        alarms = ["%s:%s" % (name, _ALARM_STATES[v])
+                  for name, v in zip(_ALARM_NAMES, values[:21]) if v != 1]
+        for index, name in enumerate(_ALARM_NAMES[:2]):
+            if values[21 + index]:
+                alarms.append("%s:%s" % (name, _EXTENDED_STATES[values[21 + index]]))
+            if values[23 + index]:
+                alarms.append("%s:SubStatus=%d" % (name, values[23 + index]))
+        fields["alarms"] = tuple(alarms)
+    elif frame.object_id == ACTUATOR_COMMAND:
+        # The pinned LiteWing adapter owns channels 1..4, in brushed-duty units
+        # despite the inherited XML's servo-pulse unit label. Do not clamp faults
+        # or silently discard evidence of a different output mapping.
+        fields["actuators"] = tuple(values[:4])
+        alarms = ["ActuatorCommand:UnmappedChannel%d=%d" % (index + 1, value)
+                  for index, value in enumerate(values[:12]) if index >= 4 and value != 0]
+        if values[14]:
+            alarms.append("ActuatorCommand:FailedUpdates=%d" % values[14])
+        if alarms:
+            fields["alarms"] = tuple(alarms)
+        # A zero failure counter is not a complete SystemAlarms observation:
+        # leave alarms unknown in the ordinary zero-failure case.
     digest = hashlib.sha256(frame.payload).hexdigest()[:16]
     return TelemetrySnapshot(
         snapshot_id="uavtalk-%08x-%s" % (frame.object_id, digest),

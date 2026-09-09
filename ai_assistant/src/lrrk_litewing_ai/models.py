@@ -16,7 +16,7 @@ from datetime import datetime, timezone
 from typing import Any, Dict, Optional, Tuple
 
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 
 def _finite(value: Optional[float], field_name: str) -> Optional[float]:
@@ -145,7 +145,8 @@ class TelemetrySnapshot:
     attitude: Attitude = Attitude()
     battery: BatteryState = BatteryState()
     sensors: SensorHealth = SensorHealth()
-    alarms: Tuple[str, ...] = ()
+    # None is unobserved; only an explicit empty tuple is reported clear.
+    alarms: Optional[Tuple[str, ...]] = None
     actuators: Tuple[float, ...] = ()
     capabilities: Tuple[str, ...] = ()
 
@@ -164,11 +165,15 @@ class TelemetrySnapshot:
         if not isinstance(self.sensors, SensorHealth):
             raise ValueError("sensors must use SensorHealth")
         for name, values in (("alarms", self.alarms), ("capabilities", self.capabilities)):
-            if not isinstance(values, tuple) or not all(isinstance(item, str) and item for item in values):
+            if name == "alarms" and values is None:
+                continue
+            if not isinstance(values, tuple) or not all(isinstance(item, str) and item.strip() for item in values):
                 raise ValueError("%s must be a tuple of non-empty strings" % name)
         if not isinstance(self.actuators, tuple):
             raise ValueError("actuators must be a tuple")
         for index, value in enumerate(self.actuators):
+            if value is None:
+                raise ValueError("actuator observations must be numeric, not null")
             _finite(value, "actuators[%d]" % index)
 
     def to_dict(self) -> Dict[str, Any]:
@@ -182,7 +187,7 @@ class TelemetrySnapshot:
             "attitude": self.attitude.to_dict(),
             "battery": self.battery.to_dict(),
             "sensors": self.sensors.to_dict(),
-            "alarms": list(self.alarms),
+            "alarms": None if self.alarms is None else list(self.alarms),
             "actuators": list(self.actuators),
             "capabilities": list(self.capabilities),
             "source": self.source.to_dict(),
@@ -201,7 +206,8 @@ class TelemetrySnapshot:
     def from_dict(cls, value: Dict[str, Any]) -> "TelemetrySnapshot":
         if not isinstance(value, dict):
             raise ValueError("telemetry snapshot must be an object")
-        if value.get("schema_version", SCHEMA_VERSION) != SCHEMA_VERSION:
+        version = value.get("schema_version", SCHEMA_VERSION)
+        if type(version) is not int or version not in (1, SCHEMA_VERSION):
             raise ValueError("unsupported telemetry schema_version")
         required = ("snapshot_id", "captured_at", "source")
         missing = [key for key in required if key not in value]
@@ -211,11 +217,19 @@ class TelemetrySnapshot:
         source_value = value["source"]
         if not isinstance(source_value, dict):
             raise ValueError("source must be an object")
-        attitude_value = value.get("attitude") or {}
-        battery_value = value.get("battery") or {}
-        sensors_value = value.get("sensors") or {}
-        if not all(isinstance(item, dict) for item in (attitude_value, battery_value, sensors_value)):
-            raise ValueError("attitude, battery, and sensors must be objects")
+        attitude_value = value.get("attitude")
+        battery_value = value.get("battery")
+        sensors_value = value.get("sensors")
+        if any(item is not None and not isinstance(item, dict)
+               for item in (attitude_value, battery_value, sensors_value)):
+            raise ValueError("attitude, battery, and sensors must be objects or null")
+        alarm_value = value.get("alarms")
+        actuator_value = value.get("actuators")
+        capability_value = value.get("capabilities")
+        for name, item in (("alarms", alarm_value), ("actuators", actuator_value),
+                           ("capabilities", capability_value)):
+            if item is not None and not isinstance(item, list):
+                raise ValueError("%s must be an array or null" % name)
         return cls(
             snapshot_id=value["snapshot_id"],
             captured_at=captured_at,
@@ -228,12 +242,12 @@ class TelemetrySnapshot:
             link_age_ms=value.get("link_age_ms"),
             armed=value.get("armed"),
             flight_mode=value.get("flight_mode"),
-            attitude=Attitude(**attitude_value),
-            battery=BatteryState(**battery_value),
-            sensors=SensorHealth(**sensors_value),
-            alarms=tuple(value.get("alarms") or ()),
-            actuators=tuple(value.get("actuators") or ()),
-            capabilities=tuple(value.get("capabilities") or ()),
+            attitude=Attitude(**({} if attitude_value is None else attitude_value)),
+            battery=BatteryState(**({} if battery_value is None else battery_value)),
+            sensors=SensorHealth(**({} if sensors_value is None else sensors_value)),
+            alarms=None if alarm_value is None else tuple(alarm_value),
+            actuators=() if actuator_value is None else tuple(actuator_value),
+            capabilities=() if capability_value is None else tuple(capability_value),
         )
 
     @classmethod

@@ -189,4 +189,9 @@ class ApprovalStateMachine:
             self.state = ABORTED
             self._approval_digest = None
             return False
+        # The snapshot can expire without its bytes/hash changing.
+        if run_preflight(current_snapshot, now=current).overall != "PASS":
+            self.state = ABORTED
+            self._approval_digest = None
+            return False
         return True

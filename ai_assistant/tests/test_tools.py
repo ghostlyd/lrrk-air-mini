@@ -31,6 +31,7 @@ def make_snapshot(snapshot_id="tools-1"):
         battery=BatteryState(voltage_v=3.9, percent=80),
         sensors=SensorHealth(imu_present=True, imu_identity="MPU6050", imu_healthy=True),
         actuators=(0, 0, 0, 0),
+        alarms=(),
     )
 
 

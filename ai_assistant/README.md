@@ -47,3 +47,15 @@ provider billing, or live flight telemetry.
 UAVTalk is an adapter boundary, not a command channel. The first implemented
 adapter is deterministic JSONL replay so safety behavior can be tested without
 the board or a radio link.
+
+Version 0.2 emits snapshot schema 2. Missing/null alarm telemetry remains
+unknown; only an explicit empty alarm array reports clear. Schema 1 input is
+still accepted with these corrected unknown-state semantics. Preflight needs
+a known mode and exactly four numeric motor observations, and approved
+proposals cannot outlive their telemetry freshness budget. See
+[the protocol and migration details](../docs/AI_ASSISTANT.md).
+
+Saved UAVTalk captures can report named SystemAlarms and four-channel
+ActuatorCommand observations through the same advisory tools. These remain
+partial snapshots: no missing battery, sensor health, timestamp freshness or
+physical output measurement is inferred from a successfully decoded frame.
