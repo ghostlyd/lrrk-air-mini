@@ -111,7 +111,9 @@ The local ESP-IDF 5.3.2 installation now builds the wrapper through compile,
 link, image generation, and partition sizing. Homebrew CMake, Ninja, and Qt 5
 provide host tools; `qmake` is under `/opt/homebrew/opt/qt@5/bin` and ESP-IDF
 activation is documented in the port README. This build does not establish
-POSIX simulator or physical hardware behavior.
+physical hardware behavior. The native simulator also compiles and packages
+with Homebrew binutils 2.47 installed; its startup probe and remaining physics
+dependencies are recorded in [simulator verification](verification/simulator-build-2026-09-09.md).
 
 ## OpenAI assistance dependency boundary
 
@@ -183,6 +185,9 @@ The selected wrapper needs these dependencies before its build gate can pass:
 - Git, with clean checkouts at the exact commits in `SOURCE_MANIFEST.json`.
 - NinjaPilot's generated flight UAVObjects (`make uavobjects_flight`), which
   in turn requires the upstream Qt/qmake generator toolchain.
+- GNU `objcopy` (Homebrew `binutils`) for native simulator packaging on macOS.
+- Gazebo and its matching Python transport/message bindings for external
+  physics simulation; these are not flight-controller firmware dependencies.
 - No OpenAI package or API key on the flight controller. The optional OpenAI
   Agents SDK is host-only and remains behind the advisory/approval boundary.
 

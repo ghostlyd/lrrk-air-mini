@@ -39,6 +39,27 @@ contract patch, then writes a marker outside the checkout. A matching marker
 makes a repeat invocation a no-op. A source mismatch, dirty checkout, patch
 mismatch, or ambiguous marker fails closed.
 
+## Simulator build and runtime
+
+`simulate.sh` verifies the source and builds/packages the native `fw_simlitewing`
+target. It reports `SIMULATION_BUILD=PASS` separately from
+`SIMULATION_RUNTIME=NOT_RUN`; compilation does not establish flight behavior.
+On Apple Silicon the pinned build uses Qt 5 and GNU `objcopy`:
+
+```sh
+brew install qt@5 binutils
+export PATH="/opt/homebrew/opt/qt@5/bin:/opt/homebrew/opt/binutils/bin:/opt/homebrew/bin:$PATH"
+ports/ninjapilot-litewing/simulate.sh /path/to/NinjaPilot
+```
+
+The pinned upstream Makefile also discovers Homebrew's keg-only `objcopy`
+directly. `fw_simlitewing_elf` builds just the native executable; the default
+target additionally packages `.bin` and `.opfw` files. These are simulator
+artifacts, not ESP32-S3 flash images.
+
+See [the recorded simulator check](../../docs/verification/simulator-build-2026-09-09.md)
+for observed startup and remaining physics requirements.
+
 ## Hardware contract
 
 The first image targets the ESP32-S3-WROOM-1, MPU6050 on I2C0 (SDA 11, SCL
