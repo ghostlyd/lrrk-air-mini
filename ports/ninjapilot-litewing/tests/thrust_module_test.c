@@ -28,6 +28,9 @@ static jmp_buf stop_task;
 static unsigned iterations, iteration_limit = 1;
 static unsigned ticks;
 static const char *scenario;
+static bool deny_publication, shutdown_latched;
+static uint16_t first_recovery_output;
+static bool powered_recovery;
 static SystemAlarmsAlarmOptions alarms[SYSTEMALARMS_ALARM_NUMELEM];
 static uint16_t hardware_output[ACTUATORCOMMAND_CHANNEL_NUMELEM];
 uint32_t pios_rcvr_group_map[8] = { 1, 1, 1, 1, 1, 1, 1, 1 };
@@ -47,7 +50,9 @@ int32_t UAVObjGetData(UAVObjHandle h, void *out) {
     struct object *obj = h; memcpy(out, obj->data, obj->size); return 0;
 }
 int32_t UAVObjSetData(UAVObjHandle h, const void *in) {
-    assert(h); struct object *obj = h; memcpy(obj->data, in, obj->size); return 0;
+    assert(h); struct object *obj = h;
+    if (deny_publication && obj->id == MANUALCONTROLCOMMAND_OBJID) return -1;
+    memcpy(obj->data, in, obj->size); return 0;
 }
 int32_t UAVObjGetDataField(UAVObjHandle h, void *out, uint32_t offset, uint32_t size) {
     if (!h) return -1;
@@ -71,7 +76,7 @@ uint16_t UAVObjCreateInstance(UAVObjHandle h, UAVObjInitializeCallback cb) { ret
 int32_t UAVObjSetMetadata(UAVObjHandle h, const UAVObjMetadata *m) { ((struct object *)h)->metadata = *m; return 0; }
 int32_t UAVObjGetMetadata(UAVObjHandle h, UAVObjMetadata *m) { *m = ((struct object *)h)->metadata; return 0; }
 void UAVObjSetAccess(UAVObjMetadata *m, UAVObjAccessType a) { m->flags = (m->flags & ~1) | a; }
-int8_t UAVObjReadOnly(UAVObjHandle h) { return 0; }
+int8_t UAVObjReadOnly(UAVObjHandle h) { return deny_publication && ((struct object *)h)->id == MANUALCONTROLCOMMAND_OBJID; }
 int32_t UAVObjConnectCallback(UAVObjHandle h, UAVObjEventCallback cb, uint8_t mask) { return 0; }
 int32_t UAVObjConnectQueue(UAVObjHandle h, xQueueHandle q, uint8_t mask) { return 0; }
 FrameType_t GetCurrentFrameType(void) { return FRAME_TYPE_MULTIROTOR; }
@@ -84,6 +89,17 @@ portTickType xTaskGetTickCount(void) { return ticks; }
 static void next_iteration(void) {
     if (++iterations > iteration_limit) longjmp(stop_task, 1);
     ticks += 20;
+    if (iterations == 1 && strcmp(scenario, "failed-publication") == 0) {
+        deny_publication = true; fail_thrust_read = 1;
+    }
+    if (iterations == 10 && powered_recovery) {
+        assert(hardware_output[0] > 0);
+        fail_thrust_read = 1;
+    }
+    if (iterations == 15 && powered_recovery) {
+        assert(hardware_output[0] == 0);
+        fail_thrust_read = 0;
+    }
     if (iterations == 5) {
         if (strcmp(scenario, "late-failure") == 0) fail_thrust_read = 1;
         if (strcmp(scenario, "late-invalid") == 0) {
@@ -101,7 +117,15 @@ int32_t PIOS_RCVR_Read(uint32_t id, uint8_t channel) {
     return 1500;
 }
 void PIOS_Servo_Update(void) {}
-void PIOS_Servo_Set(uint8_t channel, uint16_t value) { assert(channel < ACTUATORCOMMAND_CHANNEL_NUMELEM); hardware_output[channel] = value; }
+void PIOS_Servo_Set(uint8_t channel, uint16_t value) {
+    assert(channel < ACTUATORCOMMAND_CHANNEL_NUMELEM);
+    hardware_output[channel] = shutdown_latched ? 0 : value;
+    if (channel == 0 && iterations == 15) first_recovery_output = hardware_output[0];
+}
+void PIOS_LiteWing_BrushedPWM_Shutdown(void) {
+    shutdown_latched = true;
+    memset(hardware_output, 0, sizeof(hardware_output));
+}
 void PIOS_Servo_SetBankMode(uint8_t bank, int mode) {}
 void PIOS_Servo_SetHz(const uint16_t *hz, const uint32_t *clock, uint8_t count) {}
 uint8_t PIOS_Servo_GetPinBank(uint8_t pin) { return 0; }
@@ -109,6 +133,8 @@ uint8_t PIOS_Servo_GetPinBank(uint8_t pin) { return 0; }
 int main(int argc, char **argv) {
     assert(argc == 2);
     scenario = argv[1];
+    powered_recovery = strcmp(scenario, "powered-recovery") == 0 ||
+        strcmp(scenario, "filtered-recovery") == 0 || strcmp(scenario, "feedforward-recovery") == 0;
     assert(sizeof(SystemSettingsThrustControlOptions) == 4);
     assert(offsetof(SystemSettingsData, ThrustControl) == 45);
     SystemSettingsInitialize(); ManualControlSettingsInitialize(); ManualControlCommandInitialize();
@@ -140,6 +166,13 @@ int main(int argc, char **argv) {
 #ifdef TEST_RECEIVER
     if (!setjmp(stop_task)) receiverTask(NULL);
     ManualControlCommandGet(&command);
+    if (strcmp(scenario, "failed-publication") == 0) {
+        assert(command.Thrust == .75f); /* Denied writes must not bypass access control. */
+        assert(shutdown_latched);
+        PIOS_Servo_Set(0, 800);
+        assert(hardware_output[0] == 0);
+        return 0;
+    }
     float expected = invalid ? -1.0f : mode == 0 ? .2f : .4f;
     fprintf(stderr, "receiver mode=%s thrust=%f expected=%f connected=%u alarm=%u\n",
             argv[1], command.Thrust, expected, command.Connected, alarms[SYSTEMALARMS_ALARM_RECEIVER]);
@@ -161,6 +194,8 @@ int main(int argc, char **argv) {
     ActuatorSettingsSet(&as);
     MixerSettingsData ms = { 0 };
     ms.MaxAccel = 100; ms.AccelTime = ms.DecelTime = 1;
+    if (strcmp(scenario, "filtered-recovery") == 0) ms.MaxAccel = .1f;
+    if (strcmp(scenario, "feedforward-recovery") == 0) ms.FeedForward = .5f;
     for (int i = 0; i < MIXERSETTINGS_THROTTLECURVE1_NUMELEM; ++i) ms.ThrottleCurve1[i] = i * .25f;
     ms.Mixer1Type = ms.Mixer2Type = MIXERSETTINGS_MIXER1TYPE_MOTOR;
     ms.Mixer1Vector.ThrottleCurve1 = ms.Mixer2Vector.ThrottleCurve1 = 64;
@@ -168,6 +203,13 @@ int main(int argc, char **argv) {
     SettingsUpdatedCb(NULL); MixerSettingsUpdatedCb(NULL); ActuatorSettingsUpdatedCb(NULL);
     iteration_limit = 20; /* Allow existing throttle slew limiter to settle. */
     if (!setjmp(stop_task)) actuatorTask(NULL);
+    if (powered_recovery) {
+        int limit = strcmp(scenario, "filtered-recovery") == 0 ? 2 :
+            strcmp(scenario, "feedforward-recovery") == 0 ? 60 : 30;
+        fprintf(stderr, "first recovery output=%u expected<=%d\n", first_recovery_output, limit);
+        assert(first_recovery_output > 0 && first_recovery_output <= limit);
+        return 0;
+    }
     /* Half-scale mixer: thrust .4 -> 200; separate throttle .8 -> 400. */
     int expected = invalid ? 0 : mode == 0 ? 200 : 400;
     fprintf(stderr, "actuator mode=%s output=%u expected=%d alarm=%u\n", argv[1], hardware_output[0], expected, alarms[SYSTEMALARMS_ALARM_ACTUATOR]);

@@ -27,7 +27,7 @@ def prepare(source, output):
             raise ValueError("unreviewed control input: " + name)
         inputs[name] = data.decode("utf-8")
     receiver = replace_exact(inputs["Receiver/receiver.c"], "#include <systemsettings.h>",
-        '#include <systemsettings.h>\n#include "litewing_thrust_control.h"')
+        '#include <systemsettings.h>\n#include "litewing_thrust_control.h"\n#include "pios_litewing_brushed_pwm.h"')
     receiver = replace_exact(receiver, "        SystemSettingsThrustControlGet(&thrustType);", """        if (!LiteWingThrustControlRead(&thrustType)) {
             /* Do not retain stale thrust or connection history on bad settings. */
             AlarmsSet(SYSTEMALARMS_ALARM_RECEIVER, SYSTEMALARMS_ALARM_CRITICAL);
@@ -35,7 +35,11 @@ def prepare(source, output):
             cmd.Throttle = cmd.Thrust = -1.0f;
             cmd.Roll = cmd.Pitch = cmd.Yaw = cmd.Collective = 0.0f;
             connected_count = disconnected_count = 0;
-            ManualControlCommandSet(&cmd);
+            if (ManualControlCommandSet(&cmd) != 0) {
+                /* Do not bypass read-only metadata to overwrite a stale command.
+                 * Failed fault publication requires output shutdown until reboot. */
+                PIOS_LiteWing_BrushedPWM_Shutdown();
+            }
             continue;
         }""")
     actuator = replace_exact(inputs["Actuator/actuator.c"], "#include <systemsettings.h>",
@@ -43,6 +47,20 @@ def prepare(source, output):
     actuator = replace_exact(actuator,
         "static SystemSettingsThrustControlOptions thrustType = SYSTEMSETTINGS_THRUSTCONTROL_THROTTLE;\n", "")
     actuator = replace_exact(actuator, "    SystemSettingsThrustControlGet(&thrustType);\n", "")
+    actuator = replace_exact(actuator,
+        "static float lastResult[MAX_MIX_ACTUATORS] = { 0 };",
+        """static float lastResult[MAX_MIX_ACTUATORS] = { 0 };
+static float lastFilteredResult[MAX_MIX_ACTUATORS];
+static float lastThrottleDesired;""")
+    actuator = replace_exact(actuator, "            static float lastThrottleDesired = 0.0f;\n", "")
+    actuator = replace_exact(actuator, "    static float lastFilteredResult[MAX_MIX_ACTUATORS];\n", "")
+    actuator = replace_exact(actuator, "static void setFailsafe()\n{", """static void setFailsafe()
+{
+    /* Fault recovery must start from zero, never a pre-fault powered history. */
+    lastThrottleDesired = 0.0f;
+    memset(lastResult, 0, sizeof(lastResult));
+    memset(filterAccumulator, 0, sizeof(filterAccumulator));
+    memset(lastFilteredResult, 0, sizeof(lastFilteredResult));""")
     actuator = replace_exact(actuator, "        // read in throttle and collective -demultiplex thrust", """        /* Read a local, checked mode each cycle; no asynchronous cached enum. */
         SystemSettingsThrustControlOptions thrustType;
         if (!LiteWingThrustControlRead(&thrustType)) {

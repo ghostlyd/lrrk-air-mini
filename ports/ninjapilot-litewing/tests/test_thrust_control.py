@@ -27,6 +27,21 @@ class ThrustControlTests(unittest.TestCase):
             subprocess.run([sys.executable, str(ROOT / "prepare_control.py"),
                 "--source", str(source), "--output", str(cls.output)], check=True)
             source = cls.output
+        # Optional mutation experiment in disposable generated code, never upstream.
+        mutant = os.environ.get("LRRK_TEST_THRUST_MUTANT")
+        if mutant:
+            if source != cls.output:
+                raise AssertionError("mutants require adapted temporary sources")
+            resets = {
+                name: "    memset(" + name + ", 0, sizeof(" + name + "));"
+                for name in ("lastResult", "filterAccumulator", "lastFilteredResult")
+            }
+            resets["lastThrottleDesired"] = "    lastThrottleDesired = 0.0f;"
+            old = resets[mutant]
+            file = source / "actuator.c"
+            code = file.read_text()
+            assert code.count(old) == 1
+            file.write_text(code.replace(old, "    /* mutation: omitted reset */"))
         cls.binaries = {}
         for name in ("Receiver", "Actuator"):
             module = source / name / (name.lower() + ".c") if source != cls.output else source / (name.lower() + ".c")
@@ -73,3 +88,15 @@ class ThrustControlTests(unittest.TestCase):
     def test_successful_reads_recover_after_fault(self):
         for module in ("Receiver", "Actuator"):
             with self.subTest(module=module): self.run_case(module, "recovery")
+
+    def test_receiver_failed_fault_publication_latches_shutdown(self):
+        self.run_case("Receiver", "failed-publication")
+
+    def test_actuator_powered_fault_recovery_restarts_slew_from_zero(self):
+        self.run_case("Actuator", "powered-recovery")
+
+    def test_actuator_fault_recovery_clears_mixer_acceleration_history(self):
+        self.run_case("Actuator", "filtered-recovery")
+
+    def test_actuator_fault_recovery_clears_feedforward_history(self):
+        self.run_case("Actuator", "feedforward-recovery")
