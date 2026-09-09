@@ -5,6 +5,10 @@ the aircraft. Keep the battery disconnected and propellers removed until the
 operator explicitly opens the relevant electrical test. The existing
 ESP-Drone firmware remains the recovery image.
 
+This is the acceptance checklist, not a record that every item has passed.
+See [the USB-only session report](usb-bringup-2026-09-09.md) for the verified
+backup/flash, telemetry observations and remaining limitations.
+
 ## Source and build
 
 - [ ] `SOURCE_MANIFEST.json` validates and every source/patch hash matches.
@@ -21,8 +25,9 @@ ESP-Drone firmware remains the recovery image.
 
 - [ ] USB identity is recorded as the expected CH340K/WCH bridge, currently
   observed on macOS as `/dev/cu.wchusbserial410` when connected.
-- [ ] The board revision is physically identified as LiteWing V2.6.C or the
-  manifest is updated before testing.
+- [ ] Physical board markings and fitted components are matched to the
+  candidate design. Owner photos show V1.2 silkscreen, also present in the
+  V2.6.C directory's PCB source; matching labels/layout are not net-by-net proof.
 - [ ] MPU6050 I2C0 wiring is verified: SDA GPIO11, SCL GPIO10, interrupt GPIO12.
 - [ ] `WHO_AM_I` is read and matches the expected MPU6050 identity.
 - [ ] Watchdog and boot fault behavior are observed without enabling outputs.

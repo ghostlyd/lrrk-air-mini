@@ -20,9 +20,12 @@ it may inspect telemetry and propose bounded actions, but it cannot directly
 write motor outputs and flight actions require an explicit human approval gate.
 
 The port boundary and dependency inventory are documented in
-[`docs/PORT_AND_DEPENDENCIES.md`](docs/PORT_AND_DEPENDENCIES.md). Hardware and
-firmware changes remain unflashed until the board revision, battery state, and
-bench safety checks are verified.
+[`docs/PORT_AND_DEPENDENCIES.md`](docs/PORT_AND_DEPENDENCIES.md). The first
+authorized [USB-only flash and telemetry check](docs/verification/usb-bringup-2026-09-09.md)
+has completed with propellers removed and no battery. The original full flash
+is backed up locally. The candidate remains configured `Always Disarmed`;
+powered motor tests, calibration, physical safety validation and flight remain
+pending.
 
 ## Firmware build
 
