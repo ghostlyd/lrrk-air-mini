@@ -64,6 +64,10 @@ profile, ran the finite test, and exited. No GUI was exercised.
 
 ## Remaining gates
 
+The subsequent [LiteWing world sensor check and fidelity review](litewing-world-fidelity-2026-09-09.md)
+verifies actual IMU delivery and identifies configuration differences from the
+hardware wrapper; it does not yet close the firmware/control-loop gate.
+
 - Review a LiteWing-specific world and bridge configuration before sustained use.
 - Verify sensor ingestion, motor mixing, telemetry, and failsafes in that loop.
 - Restrict the native simulator's all-interface UDP bindings before sustained use.
