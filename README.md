@@ -32,6 +32,9 @@ verification](docs/verification/settings-recovery-2026-09-09.md) are also comple
 for the documented bench candidate. This is not flight clearance; receiver-loss
 supervision and physical output validation remain outstanding.
 
+The [GCS receiver freshness work](docs/verification/gcs-receiver-freshness-2026-09-09.md)
+records source, protocol-integration and remaining physical receiver-loss gates.
+
 ## Firmware build
 
 The firmware is an ESP-IDF project. Install a compatible ESP-IDF toolchain,

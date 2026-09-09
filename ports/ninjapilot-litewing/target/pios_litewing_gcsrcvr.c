@@ -1,0 +1,111 @@
+/* SPDX-License-Identifier: GPL-3.0-or-later
+ * Copyright (C) 2026 LRRK contributors
+ *
+ * LiteWing's single GCS receiver uses the ESP32 monotonic clock, not RTC
+ * callbacks. Only a successful received UAVObject packet supplies input.
+ * Local setters, delayed event callbacks and telemetry/logging events cannot
+ * renew it. Expiry is enforced on every consumer read; no timer task is needed.
+ * This is input-age enforcement, not a bound on physical motor-cut latency.
+ */
+#include "pios.h"
+#include <string.h>
+#include <esp_timer.h>
+#include <freertos/FreeRTOS.h>
+#include "uavobjectmanager.h"
+#include "pios_gcsrcvr_priv.h"
+#include "pios_litewing_gcsrcvr.h"
+
+#define LITEWING_GCS_ID UINT32_C(0x4c474353)
+#define LITEWING_GCS_TIMEOUT_US INT64_C(100000)
+
+_Static_assert(GCSRECEIVER_CHANNEL_NUMELEM == 8, "review changed receiver layout");
+_Static_assert(sizeof(GCSReceiverData) == 16, "review changed receiver layout");
+
+static portMUX_TYPE receiver_lock = portMUX_INITIALIZER_UNLOCKED;
+static GCSReceiverData receiver_data;
+static int64_t received_us;
+static bool initialized;
+static bool have_timestamp;
+static bool valid;
+
+/* The target-adapted parser supplies its immutable completion timestamp,
+ * before receiveObject can wait on connection or object-manager locks. */
+int32_t PIOS_LiteWing_GCSReceiver_Unpack(UAVObjHandle obj, uint16_t instance,
+                                       const uint8_t *data, int64_t received_time)
+{
+    const bool receiver_packet = obj != NULL && obj == GCSReceiverHandle() &&
+                                 instance == 0 && data != NULL;
+    if (!receiver_packet) {
+        return UAVObjUnpack(obj, instance, data);
+    }
+
+    /* Retain the timestamp from packet completion. Copy this packet, not
+     * whatever a delayed event callback happens to find in shared storage.
+     * UAVTalk validates the complete object length/CRC before this API call. */
+    const int64_t arrival_us = received_time;
+    GCSReceiverData packet;
+    memcpy(&packet, data, sizeof(packet));
+    const int32_t result = UAVObjUnpack(obj, instance, data);
+    if (result != 0) {
+        return result;
+    }
+
+    portENTER_CRITICAL(&receiver_lock);
+    if (initialized && arrival_us >= 0 &&
+        (!have_timestamp || arrival_us > received_us)) {
+        /* Older (or equal-time) completions cannot replace a newer packet. */
+        receiver_data = packet;
+        received_us = arrival_us;
+        have_timestamp = true;
+        valid = true;
+    }
+    portEXIT_CRITICAL(&receiver_lock);
+    return result;
+}
+
+int32_t PIOS_GCSRCVR_Init(uint32_t *receiver_id)
+{
+    if (receiver_id == NULL) {
+        return -1;
+    }
+    *receiver_id = 0;
+    if (GCSReceiverHandle() == NULL) {
+        return -1;
+    }
+    portENTER_CRITICAL(&receiver_lock);
+    if (initialized) {
+        portEXIT_CRITICAL(&receiver_lock);
+        return -1;
+    }
+    initialized = true;
+    have_timestamp = false;
+    valid = false;
+    *receiver_id = LITEWING_GCS_ID;
+    portEXIT_CRITICAL(&receiver_lock);
+    return 0;
+}
+
+static int32_t receiver_read(uint32_t receiver_id, uint8_t channel)
+{
+    portENTER_CRITICAL(&receiver_lock);
+    int32_t result = PIOS_RCVR_NODRIVER;
+    if (initialized && receiver_id == LITEWING_GCS_ID) {
+        if (channel >= GCSRECEIVER_CHANNEL_NUMELEM) {
+            result = PIOS_RCVR_INVALID;
+        } else {
+            const int64_t now_us = esp_timer_get_time();
+            if (valid && (now_us < received_us ||
+                          now_us - received_us >= LITEWING_GCS_TIMEOUT_US)) {
+                /* Do not resurrect expired input when a clock recovers. */
+                valid = false;
+            }
+            result = valid ? receiver_data.Channel[channel] : PIOS_RCVR_TIMEOUT;
+        }
+    }
+    portEXIT_CRITICAL(&receiver_lock);
+    return result;
+}
+
+const struct pios_rcvr_driver pios_gcsrcvr_rcvr_driver = {
+    .read = receiver_read,
+};
