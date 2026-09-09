@@ -41,11 +41,15 @@ class ThrustControlTests(unittest.TestCase):
                 "    // Go to the neutral (failsafe) values until an ActuatorDesired update is received\n"
                 "    setFailsafe();"
             )
+            resets["startup-spike"] = "        AlarmsClear(SYSTEMALARMS_ALARM_ACTUATOR);"
             old = resets[mutant]
             file = source / "actuator.c"
             code = file.read_text()
             assert code.count(old) == 1
-            file.write_text(code.replace(old, "    /* mutation: omitted reset */"))
+            replacement = "    /* mutation: omitted reset */"
+            if mutant == "startup-spike":
+                replacement = old + "\n        if (thisSysTime == 200) PIOS_Servo_Set(0, 1);"
+            file.write_text(code.replace(old, replacement))
         cls.binaries = {}
         for name in ("Receiver", "Actuator", "ActuatorStartup"):
             module_name = "Actuator" if name == "ActuatorStartup" else name

@@ -31,9 +31,24 @@ static const char *scenario;
 static bool deny_publication, shutdown_latched;
 static uint16_t first_recovery_output;
 static bool powered_recovery;
+#ifdef TEST_STARTUP
+static bool startup_observing;
+static unsigned startup_output_write_mask;
+#endif
 static SystemAlarmsAlarmOptions alarms[SYSTEMALARMS_ALARM_NUMELEM];
 static uint16_t hardware_output[ACTUATORCOMMAND_CHANNEL_NUMELEM];
 uint32_t pios_rcvr_group_map[8] = { 1, 1, 1, 1, 1, 1, 1, 1 };
+
+static void observe_publication(struct object *obj) {
+#ifdef TEST_STARTUP
+    if (startup_observing && obj->id == ACTUATORCOMMAND_OBJID) {
+        ActuatorCommandData actual; memcpy(&actual, obj->data, sizeof(actual));
+        for (int i = 0; i < 4; ++i) assert(actual.Channel[i] == 0);
+    }
+#else
+    (void)obj;
+#endif
+}
 
 UAVObjHandle UAVObjGetByID(uint32_t id) {
     for (unsigned i = 0; i < object_count; ++i) if (objects[i].id == id) return &objects[i];
@@ -52,7 +67,7 @@ int32_t UAVObjGetData(UAVObjHandle h, void *out) {
 int32_t UAVObjSetData(UAVObjHandle h, const void *in) {
     assert(h); struct object *obj = h;
     if (deny_publication && obj->id == MANUALCONTROLCOMMAND_OBJID) return -1;
-    memcpy(obj->data, in, obj->size); return 0;
+    memcpy(obj->data, in, obj->size); observe_publication(obj); return 0;
 }
 int32_t UAVObjGetDataField(UAVObjHandle h, void *out, uint32_t offset, uint32_t size) {
     if (!h) return -1;
@@ -68,7 +83,7 @@ int32_t UAVObjGetDataField(UAVObjHandle h, void *out, uint32_t offset, uint32_t 
 }
 int32_t UAVObjSetDataField(UAVObjHandle h, const void *in, uint32_t offset, uint32_t size) {
     assert(h); struct object *obj = h; assert(offset + size <= obj->size);
-    memcpy(obj->data + offset, in, size); return 0;
+    memcpy(obj->data + offset, in, size); observe_publication(obj); return 0;
 }
 int32_t UAVObjGetInstanceData(UAVObjHandle h, uint16_t instance, void *out) { return UAVObjGetData(h, out); }
 int32_t UAVObjSetInstanceData(UAVObjHandle h, uint16_t instance, const void *in) { return UAVObjSetData(h, in); }
@@ -105,6 +120,7 @@ static void next_iteration(void) {
     /* Observe real task side effects BEFORE supplying the next queue result.
      * The script clock is deterministic; it is not an RTOS timing simulation. */
     if (iterations == 1) {
+        assert(startup_output_write_mask == 15);
         assert(AlarmsGet(SYSTEMALARMS_ALARM_ACTUATOR) == SYSTEMALARMS_ALARM_CRITICAL);
         ActuatorCommandData actual; ActuatorCommandGet(&actual);
         for (int i = 0; i < 4; ++i) assert(actual.Channel[i] == 0 && hardware_output[i] == 0);
@@ -149,6 +165,12 @@ int32_t PIOS_RCVR_Read(uint32_t id, uint8_t channel) {
 void PIOS_Servo_Update(void) {}
 void PIOS_Servo_Set(uint8_t channel, uint16_t value) {
     assert(channel < ACTUATORCOMMAND_CHANNEL_NUMELEM);
+#ifdef TEST_STARTUP
+    if (startup_observing && channel < 4) {
+        assert(value == 0);
+        startup_output_write_mask |= 1u << channel;
+    }
+#endif
     hardware_output[channel] = shutdown_latched ? 0 : value;
     if (channel == 0 && iterations == 15) first_recovery_output = hardware_output[0];
 }
@@ -254,6 +276,15 @@ int main(int argc, char **argv) {
     iteration_limit = 20; /* Allow existing throttle slew limiter to settle. */
 #ifdef TEST_STARTUP
     iteration_limit = 70;
+    /* Seed nonzero sentinel state before the task, proving explicit clearing
+     * rather than merely observing a zero-initialized fixture. */
+    ActuatorCommandData initial; ActuatorCommandGet(&initial);
+    for (int i = 0; i < 4; ++i) {
+        initial.Channel[i] = 777;
+        hardware_output[i] = 777;
+    }
+    ActuatorCommandSet(&initial);
+    startup_observing = true;
 #endif
     if (!setjmp(stop_task)) actuatorTask(NULL);
 #ifdef TEST_STARTUP

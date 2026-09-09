@@ -57,6 +57,10 @@ no physical control API is reachable.
 - After five missing events followed by valid updates, the real alarm grace
   expires and Actuator becomes OK while outputs remain zero.
 - Losing updates again reasserts Critical, still with zero outputs.
+- Each first-four output write and ActuatorCommand publication is checked
+  during these scenarios, not only the initial/final checkpoints. Nonzero
+  sentinels are seeded before task entry and all four explicit clearing writes
+  must occur before the first queue receive.
 - A separate alarm-library boundary case sets Critical at tick 2000: a clear
   at tick 3000 is refused, a clear at 3001 succeeds, and a same-tick new Critical
   is accepted immediately. These are scripted host ticks, not electrical or
@@ -67,6 +71,11 @@ from a disposable adapted source fails the startup assertions; compiling the
 alarm library with zero grace fails the 1000-ms boundary assertion. A runtime
 mutation that discards the later delta also fails. Upstream checkouts and all
 production firmware files remain unchanged.
+
+Review identified that the original checkpoint-only fixture missed an
+intermediate one-unit output spike followed by a zero write. That disposable
+source mutation passed the original fixture and fails the strengthened
+per-write observer. This correction changes tests only, not motor behavior.
 
 ### Additional offline observations from the physical captures
 
