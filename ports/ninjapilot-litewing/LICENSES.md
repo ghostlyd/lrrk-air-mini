@@ -12,6 +12,22 @@ assembled upstream checkout, review the exact license notices carried by the
 NinjaPilot tree, the OpenPilotESP32 tree, and any vendored library included by
 their patches.
 
+`target/pios_litewing_flashfs_nvs.c` is a GPL-3.0-or-later adaptation of the
+NinjaPilot-authored `pios/esp32/pios_flashfs_nvs.c` from the pinned
+OpenPilotESP32-WROOM-32E revision `7233c97f844c0377930bcdf22998e289638b64c6`.
+It retains the original attribution and license notice. LiteWing changes
+preserve incompatible storage rather than erasing it during initialization
+or object loading. This file is not relicensed under a different project license.
+
+The new `target/litewing_settings_recovery.c`,
+`target/include/litewing_settings_recovery.h`,
+`target/include/pios_litewing_flashfs.h`, and
+`target/litewing_uavobject_delete.c` are explicitly GPL-3.0-or-later, as their
+SPDX notices state. This does not change the upstream hardware license or
+relicense other existing files. Assembled firmware distribution still requires
+an inventory of the complete linked code and its source/notice obligations;
+this local bench build is not a public binary release.
+
 The KiCad and BOM evidence under `hardware/LieWingV2.6.C/` remains upstream
 hardware attribution. This directory records the evidence used for the target
 contract; it does not certify a physical board revision or fitted motor SKU.

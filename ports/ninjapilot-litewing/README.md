@@ -4,6 +4,10 @@ This directory owns the reproducible adapter boundary between the LiteWing
 V2.6.C hardware and the selected NinjaPilot/OpenPilot flight tree. The source
 inputs are pinned in [`SOURCE_MANIFEST.json`](SOURCE_MANIFEST.json).
 
+The [settings-recovery report](../../docs/verification/settings-recovery-2026-09-09.md)
+records the real persistence linker gate and non-destructive NVS recovery
+contract. Successful compilation or linkage is not physical flight clearance.
+
 The selected upstream `litewing` branch currently includes a POSIX/Gazebo
 LiteWing twin, not a flashable ESP32-S3 target. The repository-owned target
 work therefore proceeds in gates:

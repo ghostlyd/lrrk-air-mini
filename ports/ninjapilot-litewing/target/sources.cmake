@@ -11,6 +11,9 @@ set(LITEWING_TARGET_SRCS
     ${CMAKE_CURRENT_LIST_DIR}/pios_litewing_mpu6050.c
     ${CMAKE_CURRENT_LIST_DIR}/pios_litewing_brushed_pwm.c
     ${CMAKE_CURRENT_LIST_DIR}/pios_litewing_board.c
+    ${CMAKE_CURRENT_LIST_DIR}/pios_litewing_flashfs_nvs.c
+    ${CMAKE_CURRENT_LIST_DIR}/litewing_settings_recovery.c
+    ${CMAKE_CURRENT_LIST_DIR}/litewing_uavobject_delete.c
 )
 
 set(LITEWING_TARGET_INCLUDE_DIRS

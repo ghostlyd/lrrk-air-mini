@@ -27,6 +27,11 @@ is backed up locally. The candidate remains configured `Always Disarmed`;
 powered motor tests, calibration, physical safety validation and flight remain
 pending.
 
+The NinjaPilot target's [settings-persistence correction and USB reset
+verification](docs/verification/settings-recovery-2026-09-09.md) are also complete
+for the documented bench candidate. This is not flight clearance; receiver-loss
+supervision and physical output validation remain outstanding.
+
 ## Firmware build
 
 The firmware is an ESP-IDF project. Install a compatible ESP-IDF toolchain,

@@ -87,7 +87,7 @@
   },
   "target_adapter": {
     "source": "repository-owned",
-    "status": "wrapper-implemented-but-not-ESP-IDF-built-on-this-host",
+    "status": "esp-idf-built-usb-bringup-in-progress",
     "source_fragment": "ports/ninjapilot-litewing/target/sources.cmake",
     "required_files": [
       "ports/ninjapilot-litewing/target/sources.cmake",
@@ -100,6 +100,12 @@
       "ports/ninjapilot-litewing/target/pios_litewing_mpu6050.c",
       "ports/ninjapilot-litewing/target/pios_litewing_brushed_pwm.c",
       "ports/ninjapilot-litewing/target/litewing_mpu6050_protocol.c",
+      "ports/ninjapilot-litewing/target/litewing_settings_recovery.c",
+      "ports/ninjapilot-litewing/target/litewing_uavobject_delete.c",
+      "ports/ninjapilot-litewing/target/include/litewing_settings_recovery.h",
+      "ports/ninjapilot-litewing/target/pios_litewing_flashfs_nvs.c",
+      "ports/ninjapilot-litewing/target/include/pios_litewing_flashfs.h",
+      "ports/ninjapilot-litewing/verify_persistence_link.py",
       "ports/ninjapilot-litewing/target/firmware/inc/openpilot.h",
       "ports/ninjapilot-litewing/target/firmware/inc/pios_config.h",
       "ports/ninjapilot-litewing/target/firmware/pios_board.h",
@@ -124,10 +130,10 @@
       "pios/esp32/pios_debug.c",
       "pios/esp32/pios_wdg.c",
       "pios/esp32/pios_usart.c",
-      "pios/esp32/pios_flashfs_nvs.c",
       "pios/esp32/pios_task_runtime.c"
     ],
     "excluded_reference_files": [
+      "pios/esp32/pios_flashfs_nvs.c",
       "pios/esp32/pios_servo.c",
       "pios/esp32/pios_icm20602.c"
     ]
