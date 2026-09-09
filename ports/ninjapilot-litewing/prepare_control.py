@@ -3,8 +3,10 @@
 import argparse
 import hashlib
 from pathlib import Path
+from prepare_input_startup import prepare_input
 
 PINS = {
+    "Attitude/attitude.c": "73386b3c3e73e1f3296937fd1bed6dbf0e91bf778dc86b67e0455ac0e166bd1f",
     "Receiver/receiver.c": "0a9395a6335524700ec7ded9993fb256e1058471b62ef71246a50b98dcee82f9",
     "Actuator/actuator.c": "4c5d155937f4f61e482cad7e7121d417574aba8d3f360994d763f061e497b9e7",
 }
@@ -94,9 +96,11 @@ static float lastThrottleDesired;""")
         }
 
         // read in throttle and collective -demultiplex thrust""")
+    receiver = prepare_input(receiver, "Receiver")
+    attitude = prepare_input(inputs["Attitude/attitude.c"], "Attitude")
     # All inputs/anchors validated before writes. Preserve original GPL notices.
     output.mkdir(parents=True, exist_ok=True)
-    for name, code in (("receiver.c", receiver), ("actuator.c", actuator)):
+    for name, code in (("receiver.c", receiver), ("actuator.c", actuator), ("attitude.c", attitude)):
         destination = output / name
         if not destination.exists() or destination.read_text() != code:
             destination.write_text(code)

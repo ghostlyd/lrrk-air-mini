@@ -11,7 +11,7 @@ typedef void *xTaskHandle;
 typedef void *xQueueHandle;
 typedef void *xSemaphoreHandle;
 typedef uint32_t portTickType;
-#ifndef TEST_ACTUATOR_LIFECYCLE
+#if !defined(TEST_ACTUATOR_LIFECYCLE) && !defined(TEST_INPUT_LIFECYCLE)
 #define PIOS_EXCLUDE_ADVANCED_FEATURES
 #else
 #define PIOS_INCLUDE_WDG
@@ -31,8 +31,10 @@ typedef uint32_t portTickType;
 enum { PIOS_RCVR_TIMEOUT = -1, PIOS_RCVR_INVALID = -2, PIOS_RCVR_NODRIVER = -3 };
 int xTaskCreate(void (*)(void *), const char *, unsigned, void *, unsigned, xTaskHandle *);
 int32_t PIOS_TASK_MONITOR_RegisterTask(uint16_t, xTaskHandle);
+int32_t PIOS_TASK_MONITOR_UnregisterTask(uint16_t);
 xTaskHandle xTaskGetCurrentTaskHandle(void);
 void vTaskDelete(xTaskHandle);
+void vTaskDelay(portTickType);
 void vQueueDelete(xQueueHandle);
 bool PIOS_WDG_RegisterFlag(uint16_t);
 bool PIOS_WDG_UpdateFlag(uint16_t);

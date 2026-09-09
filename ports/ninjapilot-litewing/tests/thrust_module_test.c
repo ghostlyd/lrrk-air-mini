@@ -88,6 +88,9 @@ int32_t UAVObjSetDataField(UAVObjHandle h, const void *in, uint32_t offset, uint
 int32_t UAVObjGetInstanceData(UAVObjHandle h, uint16_t instance, void *out) { return UAVObjGetData(h, out); }
 int32_t UAVObjSetInstanceData(UAVObjHandle h, uint16_t instance, const void *in) { return UAVObjSetData(h, in); }
 uint16_t UAVObjCreateInstance(UAVObjHandle h, UAVObjInitializeCallback cb) { return 1; }
+/* This runtime fixture enters the worker directly. Initializer/resource and
+ * failed-worker retirement paths are exercised by input_startup_test.c. */
+uint16_t UAVObjGetNumInstances(UAVObjHandle h) { assert(!"unexpected initializer instance query"); return 0; }
 int32_t UAVObjSetMetadata(UAVObjHandle h, const UAVObjMetadata *m) { ((struct object *)h)->metadata = *m; return 0; }
 int32_t UAVObjGetMetadata(UAVObjHandle h, UAVObjMetadata *m) { *m = ((struct object *)h)->metadata; return 0; }
 void UAVObjSetAccess(UAVObjMetadata *m, UAVObjAccessType a) { m->flags = (m->flags & ~1) | a; }
@@ -112,8 +115,10 @@ void xSemaphoreGiveRecursive(xSemaphoreHandle mutex) {
 #endif
 int xTaskCreate(void (*f)(void *), const char *name, unsigned size, void *p, unsigned priority, xTaskHandle *h) { return pdPASS; }
 int32_t PIOS_TASK_MONITOR_RegisterTask(uint16_t id, xTaskHandle h) { return 0; }
+int32_t PIOS_TASK_MONITOR_UnregisterTask(uint16_t id) { assert(!"unexpected task unregistration"); return -1; }
 xTaskHandle xTaskGetCurrentTaskHandle(void) { return (void *)1; }
 void vTaskDelete(xTaskHandle h) { assert(!"unexpected task deletion"); }
+void vTaskDelay(portTickType delay) { assert(!"unexpected task parking"); }
 void vQueueDelete(xQueueHandle h) { assert(!"unexpected queue deletion"); }
 portTickType xTaskGetTickCount(void) { return ticks; }
 static void next_iteration(void) {
