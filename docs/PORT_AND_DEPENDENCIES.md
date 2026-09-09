@@ -1,23 +1,33 @@
 # LiteWing port and dependency inventory
 
-Status: discovery baseline. This document records what is evidenced in this
-repository and on the connected development host. It does not claim that an
-OpenDrone flight stack has been ported or that a flight has been performed.
+Status: implementation baseline. This document records what is evidenced in
+this repository and on the connected development host. The approved
+NinjaPilot/OpenPilot LiteWing target is pinned, but the flashable ESP32-S3
+target and all hardware gates remain incomplete. It does not claim that a
+flight has been performed.
 
 ## Scope and target boundary
 
 The checked-in baseline is the [upstream LiteWing](https://github.com/jobitjoseph/LiteWing) ESP-Drone/Crazyflie-compatible
-ESP-IDF firmware and its host-side Python examples. The requested OpenDrone
-port is still target-selectable:
+ESP-IDF firmware and its host-side Python examples. The selected port target
+is NinjaPilot/OpenPilot's LiteWing-compatible path:
 
 | Candidate | Fit with the existing LiteWing board | Current decision |
 | --- | --- | --- |
-| [NinjaPilot/OpenPilot LiteWing target](https://github.com/MAVProxyUser/OpenPilotESP32-WROOM-32E) | ESP32-S3 and the existing MPU6050/brushed-MOSFET architecture are plausible, but it is a different flight-tree/build boundary. | Recommended candidate; not yet pinned or ported. |
+| [NinjaPilot/OpenPilot LiteWing target](https://github.com/MAVProxyUser/OpenPilotESP32-WROOM-32E) | ESP32-S3 and the existing MPU6050/brushed-MOSFET architecture are plausible, but it is a different flight-tree/build boundary. | **Selected and pinned:** NinjaPilot `litewing` at `ac77304a58de6c8bd552f94668b46903adb71cb2`; reference ESP32 HAL at `7233c97f844c0377930bcdf22998e289638b64c6`. |
 | [OpenDrone-hw/OpenFC-Lite](https://github.com/OpenDrone-hw/OpenFC-Lite) | Targets a different RP2354B flight controller, external ESC architecture, and higher-voltage battery system. | Not a firmware-only LiteWing port. |
 | OpenDroneID/Remote ID | A telemetry/broadcast feature rather than a replacement flight stack. | Optional later feature. |
 
-Until the target is selected, changes must remain flight-stack-neutral and the
-existing ESP-Drone image remains the recovery baseline.
+The target adapter and source manifest are now being built in
+`ports/ninjapilot-litewing/`. Changes must remain additive and reversible, and
+the existing ESP-Drone image remains the recovery baseline until the new path
+passes source, build, simulation, bench, and human-orientation gates.
+
+The OpenPilotESP32 WROOM patch set is pinned for provenance but is not applied
+to the selected NinjaPilot `litewing` commit: the shared patch fails closed on
+that newer branch, and the separate sensor patch targets ICM20602 rather than
+LiteWing's MPU6050. The repository-owned bootstrap applies only the reviewed
+LiteWing contract patch.
 
 ## LiteWing hardware baseline
 
@@ -90,6 +100,10 @@ The observed bridge identity is USB vendor/product `1A86:7522`. The device is
 available for later bench diagnostics; no firmware flash is implied by its
 presence.
 
+The current workstation does not expose `idf.py` or `qmake`, so the ESP32-S3
+and POSIX simulator build gates are recorded as unavailable rather than passed.
+The source, C contract, and offline AI tests run locally.
+
 ## OpenAI assistance dependency boundary
 
 The AI layer belongs on the host, never in the flight-controller motor loop and
@@ -131,10 +145,15 @@ The port is not complete until each gate has independent evidence:
 No gate is inferred from a successful USB connection, a local source checkout,
 or a passing host-only test.
 
-## Next implementation decision
+## Selected target implementation
 
-Select and pin the exact OpenDrone/OpenPilot repository and branch. The
-recommended path is the LiteWing-compatible NinjaPilot/OpenPilot target while
-retaining the current ESP-Drone firmware as a recovery image. Once confirmed,
-the next change should add the selected target's source/provenance record and a
-reproducible build harness before adding any AI or flight-control behavior.
+The source/provenance record and reproducible bootstrap are maintained in
+[`ports/ninjapilot-litewing/`](../ports/ninjapilot-litewing/). The upstream
+`litewing` branch currently contains a POSIX/Gazebo twin rather than a
+flashable LiteWing ESP32-S3 board target. The repository-owned work therefore
+starts with source integrity, the LiteWing board contract, and host-side
+regression gates before adding the MPU6050 I2C and brushed-duty HAL pieces.
+
+The implemented host AI layer is documented in
+[`docs/AI_ASSISTANT.md`](AI_ASSISTANT.md). It is advisory, offline-capable,
+and cannot write flight-control outputs.

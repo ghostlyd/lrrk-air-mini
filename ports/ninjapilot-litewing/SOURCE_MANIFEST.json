@@ -1,0 +1,83 @@
+{
+  "schema_version": 1,
+  "target": {
+    "name": "ninjapilot-litewing",
+    "status": "selected-under-construction",
+    "board": "LiteWing V2.6.C",
+    "board_type": "0x13",
+    "board_rev": "0x02",
+    "hardware_validated": false,
+    "flash_allowed_by_this_manifest": false
+  },
+  "sources": {
+    "flight_tree": {
+      "repository": "https://github.com/MAVProxyUser/NinjaPilot-15.02.ninja.git",
+      "branch": "litewing",
+      "commit": "ac77304a58de6c8bd552f94668b46903adb71cb2",
+      "required_paths": [
+        "flight/pios/pios.h",
+        "flight/targets/boards/simlitewing/firmware/simlitewing.cpp"
+      ]
+    },
+    "esp32_reference": {
+      "repository": "https://github.com/MAVProxyUser/OpenPilotESP32-WROOM-32E.git",
+      "commit": "7233c97f844c0377930bcdf22998e289638b64c6"
+    }
+  },
+  "patches": [
+    {
+      "name": "ninjapilot-shared-changes.patch",
+      "source": "reference",
+      "apply": false,
+      "role": "reference-only; incompatible with the selected litewing branch without a reviewed refresh",
+      "url": "https://raw.githubusercontent.com/MAVProxyUser/OpenPilotESP32-WROOM-32E/7233c97f844c0377930bcdf22998e289638b64c6/patches/ninjapilot-shared-changes.patch",
+      "sha256": "b8906073e08247e8eb6f6175333144014eecd0345ff23c0deb99ae885f66154f"
+    },
+    {
+      "name": "mpu6000-i2c-and-icm20602.patch",
+      "source": "reference",
+      "apply": false,
+      "role": "reference-only; the selected LiteWing path needs MPU6050 I2C, not this ICM20602 patch",
+      "url": "https://raw.githubusercontent.com/MAVProxyUser/OpenPilotESP32-WROOM-32E/7233c97f844c0377930bcdf22998e289638b64c6/patches/mpu6000-i2c-and-icm20602.patch",
+      "sha256": "379967751b8e16f5c4ec945b9b8dd117a358edfb573cf84fec45b5466aa47177"
+    },
+    {
+      "name": "litewing-target.patch",
+      "source": "repository",
+      "apply": true,
+      "role": "repository-owned LiteWing contract",
+      "path": "ports/ninjapilot-litewing/patches/litewing-target.patch",
+      "sha256": "5664547e4aaf2ed1a57e1a2d112364964ad1082a6b794f95ec64170913d78126"
+    }
+  ],
+  "hardware_contract": {
+    "mcu": "ESP32-S3-WROOM-1",
+    "imu": {
+      "part": "MPU6050",
+      "bus": "I2C0",
+      "sda_gpio": 11,
+      "scl_gpio": 10,
+      "int_gpio": 12
+    },
+    "motors": {
+      "technology": "brushed-mosfet",
+      "gpio": [5, 6, 3, 4],
+      "actuator_min": 0,
+      "actuator_max": 1000,
+      "pwm_hz": 20000,
+      "motors_spin_while_armed": false,
+      "corner_order_verified": false
+    },
+    "battery_adc_gpio": 2,
+    "usb_bridge": "CH340K",
+    "optional_modules": ["VL53L1X", "PMW3901"]
+  },
+  "verification": {
+    "source_gate": "required",
+    "host_simulation_gate": "required",
+    "esp_idf_build_gate": "required",
+    "bench_gate": "required",
+    "human_orientation_gate": "required",
+    "flight_gate": "required"
+  }
+}
