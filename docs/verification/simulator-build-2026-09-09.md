@@ -28,8 +28,9 @@ The port README documents Qt/binutils setup and `simulate.sh`. The script is
 build-only and now explicitly reports runtime as not run.
 
 The upstream `Gazebo.md` describes Gazebo Harmonic-era `gz sim`, DART physics,
-Python `gz.transport13` / `gz.msgs10`, NumPy, and Matplotlib. Gazebo is not
-installed on the inspected host. Its general walkthrough targets `simposix`,
+Python `gz.transport13` / `gz.msgs10`, NumPy, and Matplotlib. Gazebo was subsequently
+installed; see [dependency verification](gazebo-dependencies-2026-09-09.md).
+Its general walkthrough targets `simposix`,
 so it cannot be used unchanged as proof for `simlitewing`. A reviewed LiteWing
 world/bridge configuration and sensor, mixer, failsafe, and telemetry scenarios
 are still required. The native target binds UDP ports on all interfaces;
