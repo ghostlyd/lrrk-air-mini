@@ -87,6 +87,8 @@ class Evidence:
                 self.require(self.neutral_command(data), 'non-neutral receiver command')
                 if now > self.phase_started and self.matches_phase(data):
                     self.phase_matches += 1
+                else:
+                    self.phase_matches = 0
         self.latest[name] = (now, copy.deepcopy(data))
 
     def validate_settings(self, name, data):
@@ -157,7 +159,9 @@ class Evidence:
         if self.phase.startswith('input') and self.last_send is not None:
             self.require(now-self.last_send < .08-1e-9, 'missed neutral input cadence')
         if now-self.phase_started >= 1.2-1e-9:
-            self.require(self.phase_matches >= 3, 'missing phase transition: ' + self.phase)
+            self.require(self.phase_matches >= 3 and
+                         self.matches_phase(self.latest['ManualControlCommand'][1]),
+                         'missing phase transition: ' + self.phase)
             self.phases.append({'phase':self.phase,'matches':self.phase_matches,
                 'start_s':self.phase_started-self.started,'end_s':now-self.started})
             index = PHASES.index(self.phase)+1

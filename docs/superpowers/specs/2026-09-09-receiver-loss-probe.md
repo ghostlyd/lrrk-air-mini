@@ -14,6 +14,8 @@ before physical use. Existing firmware and the receive-only AI API are unchanged
 - Verify the pinned upstream Python codec/XML tree before import. Use the
   repository's strict receive-only frame decoder; bound initial frame sync,
   reject corruption after synchronization. CRC is not authentication.
+  Execute/parse the verified bytes themselves, never cached bytecode or a
+  second filesystem read. Unresolved framing at completion prevents PASS.
 - Exact eight-channel packet: `[1000,1500,1500,1500,1000,1500,1500,1500]`.
   Throttle minimum, neutral axes and first mode position; never arbitrary CLI
   channel values. Verify actual settings map the first five channels to GCS
@@ -23,14 +25,14 @@ before physical use. Existing firmware and the receive-only AI API are unchanged
   minima/neutral0/max1000, MotorsSpinWhileArmed FALSE, QuadX/Throttle SystemSettings,
   and disconnected timeout receiver evidence. Read SystemSettings explicitly.
 - Freshness limits: fast status/actuator/manual/alarms <=0.75s; settings <=2.5s.
-  Full settings payloads must not change once captured. Critical/Error alarms
+  Full raw settings payload bytes must not change once captured. Critical/Error alarms
   reject input. BootFault Uninitialised and unused sensors are explicitly only
   tolerated for this unarmed USB/no-battery test, not treated as flight ready.
 - Input1 (1.2s), silence1 (1.2s), input2 (1.2s), silence2 (1.2s), preceded by
   at most15s of read-only preflight. Input cadence40ms; do not catch up bursts
   after a missed deadline. Missed input interval >=80ms aborts transmission.
-- Require >=3 connected neutral-command observations during each input phase
-  and >=3 disconnected timeout/failsafe observations during each silence phase.
+- Require >=3 consecutive connected neutral-command observations ending each input phase
+  and >=3 consecutive disconnected timeout/failsafe observations ending each silence phase.
   Phase evidence must be received after phase entry; preflight cannot count.
 - Every failure latches, ends input, and prevents PASS. Continue no control
   writes in cleanup; close only the owned serial handle. No automatic retry.
@@ -40,7 +42,12 @@ before physical use. Existing firmware and the receive-only AI API are unchanged
   firmware (PR31 installation evidence). Local firmware digest verification
   alone is not a device identity or installed-firmware attestation.
 - Private new capture/report paths, exclusive creation, mode0600, maximum1MiB
-  capture and finite total runtime. Report phases, observation counts and
+  capture and21s trial deadline checked around I/O and after port close. This
+  is not an OS-call preemption guarantee. Batch age starts before serial read;
+  disk/decoder delays cannot refresh observations. Final disk publication is
+  outside the trial timer and requires successful capture/report flush/fsync/close.
+  Publish report.json without overwrite; report.pending is never a final result.
+  Report phases, observation counts and
   host-relative timings; do not claim firmware/electrical 100ms stop latency.
 
 ## Acceptance

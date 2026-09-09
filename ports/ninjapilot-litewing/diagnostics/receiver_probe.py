@@ -1,13 +1,15 @@
 """Restricted serial receiver-loss diagnostic, never an arming interface."""
 import hashlib
 import argparse
-import importlib.util
+import io
 import json
+import math
 import os
 from pathlib import Path
 import subprocess
 import sys
 import time
+import types
 
 from receiver_contract import Evidence, FAST, NEUTRAL, READ_NAMES, SETTINGS, ProbeFailure
 
@@ -30,6 +32,7 @@ def load_protocol(root):
     codec_path = 'ground/pyuavtalk/uavtalk.py'
     xml_path = 'shared/uavobjectdefinition'
     expected = set()
+    verified = {}
     for entry in git('ls-tree','-r','-z',PIN,'--',codec_path,xml_path).split(b'\x00'):
         if not entry:
             continue
@@ -45,13 +48,22 @@ def load_protocol(root):
         if actual != digest:
             raise ProbeFailure('protocol source content differs from pin')
         expected.add(relative)
+        verified[relative] = data
     actual = {str(p.relative_to(root)) for p in (root/xml_path).glob('*.xml')}
     if actual | {codec_path} != expected:
         raise ProbeFailure('unexpected or missing XML definitions')
-    spec = importlib.util.spec_from_file_location('litewing_pinned_uavtalk',root/codec_path)
-    codec = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(codec)
-    return codec, codec.UAVObjectDB(str(root/xml_path))
+    # Never consult cached bytecode or reread a source after verifying it.
+    codec = types.ModuleType('litewing_pinned_uavtalk')
+    codec.__file__ = str(root/codec_path)
+    exec(compile(verified[codec_path],codec.__file__,'exec'),codec.__dict__)
+    db = codec.UAVObjectDB.__new__(codec.UAVObjectDB)
+    db.by_name, db.by_id = {}, {}
+    for relative in sorted(expected-{codec_path}):
+        obj = codec._parse_object_xml(io.BytesIO(verified[relative]))
+        if obj is not None:
+            db.by_name[obj.name] = obj
+            db.by_id[obj.obj_id] = obj
+    return codec, db
 
 
 class Wire:
@@ -69,6 +81,7 @@ class Wire:
         self.initial = bytearray()
         self.synchronized = False
         self.discarded = 0
+        self.settings_payloads = {}
 
     def validate_send(self, packet, allow_neutral=False):
         if not isinstance(packet, bytes) or not (packet in self.read_only or packet in self.acks or
@@ -122,6 +135,9 @@ class Wire:
                 if obj.name in READ_NAMES:
                     raise ProbeFailure('nonzero safety-object instance')
                 continue
+            if obj.name in SETTINGS:
+                if self.settings_payloads.setdefault(obj.name,frame.payload) != frame.payload:
+                    raise ProbeFailure('settings payload bytes changed: '+obj.name)
             decoded.append((frame.message_type,obj,obj.describe(obj.unpack(frame.payload))))
         return decoded
 
@@ -156,60 +172,96 @@ class SerialLink:
 
 def run_trial(wire, link, capture, clock=time.monotonic, sleep=time.sleep):
     """Run once with real or externally substituted I/O; always close owned port."""
-    started = clock()
-    evidence = Evidence(started)
+    try:
+        started = clock()
+        evidence = Evidence(started)
+    except BaseException:
+        link.port.close()
+        raise
     next_fast = next_settings = next_handshake = started
     gcs_status = 1
     total = 0
     digest = hashlib.sha256()
     counts = {}
+    last_clock = started
+    def bounded_now():
+        nonlocal last_clock
+        now = clock()
+        if not math.isfinite(now) or now < last_clock:
+            raise ProbeFailure('host monotonic clock regressed or invalid')
+        last_clock = now
+        if now-started >= 21.:
+            raise ProbeFailure('total trial deadline exceeded')
+        return now
+    def checked_send(packet, allow_neutral=False):
+        now = bounded_now()
+        if evidence.phase != 'preflight':
+            evidence.check(now)
+        link.send(packet, allow_neutral=allow_neutral)
+        now = bounded_now()
+        if evidence.phase != 'preflight':
+            evidence.check(now)
     try:
         while not evidence.done:
-            now = clock()
-            if now-started >= 21.:
-                raise ProbeFailure('total trial deadline exceeded')
+            # Conservatively age the batch from before the nonblocking read.
+            # Disk/decoder/ACK delays must never refresh old observations.
+            received_at = bounded_now()
             data = link.read()
+            bounded_now()
             if total+len(data) > 1024*1024:
                 raise ProbeFailure('capture size bound exceeded')
             if capture.write(data) != len(data):
                 raise ProbeFailure('incomplete private capture write')
             total += len(data)
             digest.update(data)
+            frames = wire.feed(data)
+            if bounded_now()-received_at > .75:
+                raise ProbeFailure('stale inbound batch after I/O or decoding')
             # Observe all available frames before considering another input.
-            for kind, obj, values in wire.feed(data):
-                now = clock()
+            acknowledgements = []
+            for kind, obj, values in frames:
                 if obj.name in READ_NAMES:
-                    evidence.observe(obj.name,values,now)
+                    evidence.observe(obj.name,values,received_at)
                     counts[obj.name] = counts.get(obj.name,0)+1
                 if kind in (0x22,0xa2):
-                    link.send(wire.codec.build_packet(0x23,obj.obj_id,0))
+                    acknowledgements.append(wire.codec.build_packet(0x23,obj.obj_id,0))
                 if obj.name == 'FlightTelemetryStats' and values.get('Status') == 'HandshakeAck':
                     gcs_status = 3
-            now = clock()
+            for packet in acknowledgements:
+                checked_send(packet)
+            now = bounded_now()
             if evidence.next_input(now):
-                link.send(wire.neutral, allow_neutral=True)
+                checked_send(wire.neutral, allow_neutral=True)
+            if evidence.done:
+                break
             if now >= next_handshake:
-                link.send(wire.status[gcs_status])
+                checked_send(wire.status[gcs_status])
                 next_handshake = now+1.
             if now >= next_fast:
                 for name in FAST:
-                    link.send(wire.requests[name])
+                    checked_send(wire.requests[name])
                 next_fast = now+.2
             if now >= next_settings:
                 for name in SETTINGS:
-                    link.send(wire.requests[name])
+                    checked_send(wire.requests[name])
                 next_settings = now+1.
             sleep(.005)
-        result = evidence.result(clock())
+        # A valid prefix cannot certify an unresolved trailing safety update.
+        wire.decoder.finish()
+        result = evidence.result(bounded_now())
     except (Exception, KeyboardInterrupt) as exc:
         result = {'status':'FAIL', 'failure':type(exc).__name__+': '+str(exc),
                   'phase':evidence.phase, 'phases':evidence.phases,
                   'neutral_packets':evidence.sent, 'flight_ready':False}
     finally:
         link.port.close()
+    try:
+        bounded_now()
+    except (Exception,KeyboardInterrupt) as exc:
+        result.update({'status':'FAIL','failure':type(exc).__name__+': '+str(exc),'flight_ready':False})
     result.update({'capture_bytes':total, 'capture_sha256':digest.hexdigest(),
                    'counts':counts, 'initial_discarded_bytes':wire.discarded,
-                   'elapsed_host_s':clock()-started})
+                   'elapsed_host_s':last_clock-started})
     return result
 
 
@@ -234,15 +286,25 @@ def main(argv=None):
         def private_file(name, mode):
             fd = os.open(args.output/name,os.O_WRONLY|os.O_CREAT|os.O_EXCL,0o600)
             return os.fdopen(fd,mode)
-        with private_file('capture.uavtalk','wb') as capture, private_file('report.json','w') as report:
+        # Final report name is published only after both files flush/close.
+        # A retained .pending file is explicitly not a completed report.
+        with private_file('report.pending','w') as report:
+            result = {}
             try:
-                link = SerialLink(wire,args.device,args.location)
-                result = run_trial(wire,link,capture)
+                with private_file('capture.uavtalk','wb') as capture:
+                    link = SerialLink(wire,args.device,args.location)
+                    result = run_trial(wire,link,capture)
+                    capture.flush()
+                    os.fsync(capture.fileno())
             except (Exception,KeyboardInterrupt) as exc:
-                result = {'status':'FAIL','failure':type(exc).__name__+': '+str(exc),'flight_ready':False}
+                result.update({'status':'FAIL','failure':type(exc).__name__+': '+str(exc),'flight_ready':False})
             result['operator_attested_app_sha256'] = args.installed_app_sha256
             json.dump(result,report,sort_keys=True,indent=2)
             report.write('\n')
+            report.flush()
+            os.fsync(report.fileno())
+        os.link(args.output/'report.pending',args.output/'report.json')  # no overwrite
+        (args.output/'report.pending').unlink()
         print(json.dumps(result,sort_keys=True))
         return 0 if result['status'] == 'PASS_DISARMED_RECEIVER_OBSERVATIONS_ONLY' else 2
     except (OSError,ProbeFailure,subprocess.SubprocessError) as exc:

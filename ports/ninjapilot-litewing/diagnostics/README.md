@@ -38,9 +38,17 @@ phases met sampled host-observation criteria; exit2 is a blocked/failed test,
 not a retry instruction. Disconnects, parsing faults and missing phase evidence
 never count as PASS. The serial handle closes on completion/failure; cleanup
 does not send controls. The probe does not electrically disconnect USB power.
+The final `report.json` is published without overwrite only after capture
+flush/fsync/close and report flush/fsync/close succeed. A `report.pending` file
+is incomplete evidence, never a completed result. A capture finalization failure
+changes the result to FAIL. Unresolved trailing framing also prevents PASS;
+even an ordinary partial UART frame at the endpoint is an inconclusive failure.
 
 Preflight waits up to15s for fresh safe settings/status and actual no-input
 timeout values. The four phases are input1/silence1/input2/silence2, each1.2s.
+Each phase must end with at least three consecutive matching receiver samples;
+early matches followed by contrary state cannot satisfy acceptance. Selected
+settings are compared as complete raw payload bytes, not just decoded values.
 Input opportunities occur every40ms; >=80ms between scheduled inputs aborts
 without a catch-up burst. Critical/Error alarms block input. Existing
 BootFault Uninitialised and unused-sensor Uninitialised states are tolerated
@@ -49,7 +57,14 @@ interpreted as flight readiness.
 
 Known boundaries: initial UART synchronization can discard up to4096 bytes;
 after sync, corruption fails. CRC provides integrity, not sender authentication.
-Freshness and phase times are host receipt times; UART buffering and task
+The verified codec bytes are compiled directly and the verified XML bytes are
+parsed from memory; cached Python bytecode and second source reads are not used.
+Freshness conservatively starts just before each nonblocking serial read, not
+after capture writing or decoding. Deadline/freshness checks surround outgoing
+writes and repeat before success and after port close. The 21s trial deadline
+cannot preempt a blocked OS call; a late return fails instead of passing or
+authorizing further writes. Final disk publication is outside this trial timer.
+Freshness and phase times are host observations; UART buffering and task
 scheduling remain distinct from the driver's100ms age policy. The report does
 not measure electrical motor-cut latency or establish powered/flight readiness.
 

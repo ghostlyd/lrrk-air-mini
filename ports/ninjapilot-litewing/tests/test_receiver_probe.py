@@ -3,6 +3,12 @@ import copy
 import io
 import os
 import contextlib
+import builtins
+import importlib.machinery
+import importlib.util
+import marshal
+import json
+import struct
 import tempfile
 import sys
 import unittest
@@ -127,6 +133,14 @@ class EvidenceTests(unittest.TestCase):
             for i in range(1,40):
                 now=i*.04; self.fill(e,now);e.next_input(now)
 
+    def test_early_matches_do_not_accept_a_phase_that_ends_disconnected(self):
+        e=self.start()
+        with self.assertRaises(contract.ProbeFailure):
+            for i in range(1,31):
+                now=i*.04
+                self.fill(e,now,connected=i<=3)
+                e.next_input(now)
+
     def test_four_real_observed_phases_required_for_pass(self):
         e=self.start(); sent=[0.]
         for i in range(1,130):
@@ -143,6 +157,15 @@ class EvidenceTests(unittest.TestCase):
         self.assertTrue(all(p['matches']>=3 for p in result['phases']))
         self.assertGreater(len(sent),50)
         with self.assertRaises(contract.ProbeFailure):contract.Evidence(0.).result(1.)
+
+    def test_early_timeout_matches_do_not_accept_silence_ending_connected(self):
+        e=self.start()
+        for i in range(1,31):
+            now=i*.04;self.fill(e,now,True);e.next_input(now)
+        self.assertEqual(e.phase,'silence1')
+        with self.assertRaises(contract.ProbeFailure):
+            for i in range(31,61):
+                now=i*.04;self.fill(e,now,connected=i>33);e.next_input(now)
 
 
 class ProtocolTests(unittest.TestCase):
@@ -169,6 +192,31 @@ class ProtocolTests(unittest.TestCase):
             with self.assertRaises(contract.ProbeFailure):self.wire.validate_send(p,True)
         with self.assertRaises(contract.ProbeFailure):self.wire.validate_send(self.wire.neutral[:-1]+b'\x00',True)
 
+    def test_verified_codec_cannot_be_replaced_by_unchecked_bytecode_cache(self):
+        source=Path(self.root).resolve()/'ground/pyuavtalk/uavtalk.py'
+        cache=importlib.util.cache_from_source(str(source))
+        code=compile('CACHE_WAS_EXECUTED=True\nclass UAVObjectDB:\n def __init__(self,path): pass\n',str(source),'exec')
+        pyc=importlib.util.MAGIC_NUMBER+struct.pack('<I',1)+b'\0'*8+marshal.dumps(code)
+        original=importlib.machinery.SourceFileLoader.get_data
+        def get_data(loader,path):
+            return pyc if str(path)==cache else original(loader,path)
+        with patch.object(importlib.machinery.SourceFileLoader,'get_data',get_data):
+            codec,db=probe.load_protocol(Path(self.root))
+        self.assertFalse(getattr(codec,'CACHE_WAS_EXECUTED',False))
+        self.assertIn('FlightStatus',db)
+
+    def test_xml_is_parsed_from_verified_bytes_not_a_second_filesystem_read(self):
+        path=Path(self.root).resolve()/'shared/uavobjectdefinition/flightstatus.xml'
+        replaced=path.read_bytes().replace(b'FlightStatus',b'PoisonedStatus')
+        original=builtins.open
+        def changed_open(file,*args,**kwargs):
+            if str(file)==str(path):return io.BytesIO(replaced)
+            return original(file,*args,**kwargs)
+        with patch.object(builtins,'open',changed_open):
+            codec,db=probe.load_protocol(Path(self.root))
+        self.assertIn('FlightStatus',db)
+        self.assertNotIn('PoisonedStatus',db)
+
     def test_initial_sync_is_bounded_then_corruption_is_fatal(self):
         o=self.db['FlightStatus']; packet=self.codec.build_packet(0x20,o.obj_id,0,o.pack({}))
         frames=self.wire.feed(b'noise'+packet)
@@ -189,31 +237,85 @@ class ProtocolTests(unittest.TestCase):
         self.assertEqual(self.wire.feed(packet[:8]),[])
         self.assertEqual(len(self.wire.feed(packet[8:])),1)
 
-    def trial(self, short_write=False, corrupt=False, stall=False):
+    def test_settings_payload_bit_change_is_rejected_even_for_equal_float_values(self):
+        obj=self.db['ManualControlSettings']
+        values=samples()['ManualControlSettings']
+        first=obj.pack(values)
+        values['FailsafeChannel'][1]=-0.0
+        second=obj.pack(values)
+        self.assertNotEqual(first,second)
+        self.assertEqual(obj.unpack(first),obj.unpack(second))
+        self.wire.feed(self.codec.build_packet(0x20,obj.obj_id,0,first))
+        with self.assertRaises(contract.ProbeFailure):
+            self.wire.feed(self.codec.build_packet(0x20,obj.obj_id,0,second))
+
+    def trial(self, short_write=False, corrupt=False, stall=False,
+              capture_delay=0., final_delay=0., write_delay=0., trailing=False,
+              cli_directory=None, close_failure=False, close_delay=0.):
         clock=type('Clock',(),{'now':0.,'__call__':lambda self:self.now})()
         wire=self.wire;codec=self.codec;db=self.db
         class Port:
             in_waiting=4096
             last_emit=-1.
             last_neutral=None
+            tail_sent=False
             closed=False
             writes=[]
             def write(self,data):
                 self.writes.append((clock.now,data))
                 if data==wire.neutral:self.last_neutral=clock.now
+                clock.now+=write_delay
                 return len(data)-1 if short_write else len(data)
             def read(self,n):
+                if self.tail_sent:return b''
                 if clock.now-self.last_emit<.05:return b''
                 self.last_emit=clock.now
                 state=samples(self.last_neutral is not None and clock.now-self.last_neutral<.1)
                 packets=b''.join(codec.build_packet(0x20,db[name].obj_id,0,db[name].pack(data)) for name,data in state.items())
                 if corrupt and clock.now>.1:return packets+b'bad'
+                if trailing and clock.now>4.6:
+                    o=db['ActuatorCommand']
+                    packets+=codec.build_packet(0x20,o.obj_id,0,o.pack({'Channel':[1]*12}))[:-1]
+                    self.tail_sent=True
                 return packets
-            def close(self):self.closed=True
+            def close(self):
+                self.closed=True
+                clock.now+=close_delay
         port=Port()
         link=probe.SerialLink.__new__(probe.SerialLink);link.port=port;link.wire=wire
         def sleep(delay):clock.now+=.2 if stall and port.last_neutral is not None else delay
-        result=probe.run_trial(wire,link,io.BytesIO(),clock,sleep)
+        class Capture(io.BytesIO):
+            def write(self,data):
+                clock.now+=capture_delay
+                if data and clock.now>=4.7:clock.now+=final_delay
+                return super().write(data)
+        if cli_directory is None:
+            result=probe.run_trial(wire,link,Capture(),clock,sleep)
+        else:
+            original_fdopen=os.fdopen
+            original_trial=probe.run_trial
+            class CloseFailure:
+                def __init__(self,raw):self.raw=raw
+                def __enter__(self):return self
+                def __exit__(self,*args):self.close()
+                def __getattr__(self,name):return getattr(self.raw,name)
+                def close(self):
+                    self.raw.close()
+                    raise OSError('simulated final buffered capture flush failure')
+            def fdopen(fd,mode):
+                raw=original_fdopen(fd,mode)
+                fail=(mode=='wb' and close_failure is True) or (mode=='w' and close_failure=='report')
+                return CloseFailure(raw) if fail else raw
+            args=['--flight-root',self.root,'--device','/dev/cu.example','--location','4-1',
+                  '--output',str(cli_directory),'--execute','--props-removed','--battery-absent',
+                  '--installed-app-sha256','3881b0feb5065fbe794ab4bd952bd149154da340d7edd951ed8bf4938bfba4c8']
+            with patch.object(probe,'SerialLink',return_value=link),patch.object(probe.os,'fdopen',fdopen), \
+                 patch.object(probe,'run_trial',lambda w,l,c:original_trial(w,l,c,clock,sleep)), \
+                 contextlib.redirect_stdout(io.StringIO()),contextlib.redirect_stderr(io.StringIO()):
+                rc=probe.main(args)
+            path=cli_directory/'report.json'
+            result=json.loads(path.read_text()) if path.exists() else {'status':'NO_FINAL_REPORT'}
+            result['exit_code']=rc
         return result,port
 
     def test_actual_runner_sends_only_neutral_and_observes_all_phases(self):
@@ -227,6 +329,75 @@ class ProtocolTests(unittest.TestCase):
         for phase in result['phases']:
             if phase['phase'].startswith('silence'):
                 self.assertFalse(any(phase['start_s']<=at<phase['end_s'] for at,p in packets))
+
+    def test_capture_delay_cannot_refresh_old_observations_or_authorize_input(self):
+        result,port=self.trial(capture_delay=.8)
+        self.assertEqual(result['status'],'FAIL')
+        self.assertFalse(any(p==self.wire.neutral for at,p in port.writes))
+        self.assertTrue(port.closed)
+
+    def test_delay_in_final_silence_cannot_pass_beyond_total_deadline(self):
+        result,port=self.trial(final_delay=22.)
+        self.assertEqual(result['status'],'FAIL')
+        self.assertTrue(port.closed)
+
+    def test_blocking_write_is_rechecked_before_more_output(self):
+        result,port=self.trial(write_delay=22.)
+        self.assertEqual(result['status'],'FAIL')
+        self.assertEqual(len(port.writes),1)
+        self.assertTrue(port.closed)
+
+    def test_incomplete_actuator_frame_at_completion_prevents_pass(self):
+        result,port=self.trial(trailing=True)
+        self.assertEqual(result['status'],'FAIL')
+        self.assertIn('truncated frame',result['failure'])
+        self.assertTrue(port.closed)
+
+    def test_slow_port_close_cannot_publish_pass_beyond_total_deadline(self):
+        result,port=self.trial(close_delay=22.)
+        self.assertEqual(result['status'],'FAIL')
+        self.assertTrue(port.closed)
+
+    def test_initial_clock_failure_still_closes_owned_port(self):
+        class Port:
+            closed=False
+            def close(self):self.closed=True
+        class Link:
+            port=Port()
+        def failed_clock():raise OSError('clock unavailable')
+        try:
+            probe.run_trial(self.wire,Link(),io.BytesIO(),failed_clock,lambda t:None)
+        except OSError:
+            pass
+        self.assertTrue(Link.port.closed)
+
+    def test_capture_finalization_failure_cannot_publish_pass_report(self):
+        with tempfile.TemporaryDirectory() as directory:
+            result,port=self.trial(cli_directory=Path(directory)/'trial',close_failure=True)
+            self.assertEqual(result['exit_code'],2)
+            self.assertEqual(result['status'],'FAIL')
+            self.assertTrue(port.closed)
+
+    def test_success_report_describes_finalized_private_capture(self):
+        import hashlib
+        with tempfile.TemporaryDirectory() as directory:
+            output=Path(directory)/'trial'
+            result,port=self.trial(cli_directory=output)
+            self.assertEqual(result['exit_code'],0)
+            data=(output/'capture.uavtalk').read_bytes()
+            self.assertEqual(result['capture_bytes'],len(data))
+            self.assertEqual(result['capture_sha256'],hashlib.sha256(data).hexdigest())
+            self.assertEqual((output.stat().st_mode&0o777),0o700)
+            for name in ('capture.uavtalk','report.json'):
+                self.assertEqual(((output/name).stat().st_mode&0o777),0o600)
+
+    def test_report_close_failure_cannot_publish_final_report(self):
+        with tempfile.TemporaryDirectory() as directory:
+            output=Path(directory)/'trial'
+            result,port=self.trial(cli_directory=output,close_failure='report')
+            self.assertEqual(result['exit_code'],2)
+            self.assertFalse((output/'report.json').exists())
+            self.assertTrue(port.closed)
 
     def test_write_corruption_and_scheduler_failure_close_without_retry(self):
         self.assertTrue(hasattr(probe,'run_trial'),'trial runner not implemented')
