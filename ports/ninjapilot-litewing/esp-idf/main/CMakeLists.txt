@@ -11,6 +11,17 @@ if(DEFINED IDF_TARGET AND NOT "${IDF_TARGET}" STREQUAL "esp32s3")
     message(FATAL_ERROR "LiteWing target wrapper requires IDF_TARGET=esp32s3")
 endif()
 
+if(NOT DEFINED NINJAPILOT_ROOT AND DEFINED ENV{NINJAPILOT_ROOT})
+    # ESP-IDF evaluates component requirements in a separate CMake process.
+    # Cache variables passed to the top-level configure are not guaranteed to
+    # be present there, so the build wrapper exports the same paths as an
+    # environment-backed fallback.
+    set(NINJAPILOT_ROOT "$ENV{NINJAPILOT_ROOT}")
+endif()
+if(NOT DEFINED OPENPILOT_ESP32_ROOT AND DEFINED ENV{OPENPILOT_ESP32_ROOT})
+    set(OPENPILOT_ESP32_ROOT "$ENV{OPENPILOT_ESP32_ROOT}")
+endif()
+
 if(NOT DEFINED NINJAPILOT_ROOT)
     message(FATAL_ERROR "NINJAPILOT_ROOT is required; use the pinned NinjaPilot checkout")
 endif()
@@ -187,10 +198,10 @@ endforeach()
 
 execute_process(
     COMMAND python3 "${NINJAPILOT_ROOT}/make/scripts/version-info.py"
-            --path="${NINJAPILOT_ROOT}"
-            --uavodir="${NINJAPILOT_ROOT}/shared/uavobjectdefinition"
-            --template="${CMAKE_CURRENT_LIST_DIR}/fw_version_info.tpl"
-            --outfile="${CMAKE_CURRENT_BINARY_DIR}/fw_version_info.h"
+            --path "${NINJAPILOT_ROOT}"
+            --uavodir "${NINJAPILOT_ROOT}/shared/uavobjectdefinition"
+            --template "${CMAKE_CURRENT_LIST_DIR}/fw_version_info.tpl"
+            --outfile "${CMAKE_CURRENT_BINARY_DIR}/fw_version_info.h"
             --type=0x13
             --revision=0x02
     RESULT_VARIABLE FW_VERSION_RC)
@@ -237,7 +248,6 @@ target_linker_script(${COMPONENT_LIB} INTERFACE "uavo_handles.ld")
 target_compile_definitions(${COMPONENT_LIB} PRIVATE
     USE_ESP32=1
     ESP_PLATFORM=1
-    PIOS_ESP32_LITEWING=1
     ODID_AUTH_MAX_PAGES=1
     ${UAVO_INIT_DEFS})
 

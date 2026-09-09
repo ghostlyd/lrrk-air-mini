@@ -15,6 +15,7 @@
 #include <freertos/task.h>
 #include <driver/ledc.h>
 
+#include <uavobjectmanager.h>
 #include <flightstatus.h>
 
 #include "litewing_contract.h"

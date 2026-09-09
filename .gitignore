@@ -25,3 +25,7 @@ htmlcov/
 build/
 managed_components/
 sdkconfig.old
+ports/ninjapilot-litewing/esp-idf/sdkconfig
+
+# Local ESP-IDF source and toolchain cache.
+.toolchains/

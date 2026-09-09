@@ -56,21 +56,44 @@ requires ESP-IDF 5.3.2, the pinned NinjaPilot checkout, the pinned
 OpenPilotESP32 backend checkout, and generated flight UAVObjects:
 
 ```sh
+# Host dependencies used by the pinned NinjaPilot UAVObject generator.
+brew install cmake ninja qt@5
+export PATH="/opt/homebrew/opt/qt@5/bin:/opt/homebrew/bin:$PATH"
+
+# From the repository root; only needed for a fresh local toolchain.
+mkdir -p .toolchains
+git clone --depth 1 --recursive --branch v5.3.2 \
+  https://github.com/espressif/esp-idf.git \
+  .toolchains/esp-idf-v5.3.2
+export IDF_TOOLS_PATH="$PWD/.toolchains/espressif"
+.toolchains/esp-idf-v5.3.2/install.sh esp32s3
+
 (cd /path/to/NinjaPilot && make uavobjects_flight)
-. /path/to/esp-idf/export.sh
+# The installed local toolchain can be activated from the repository root.
+export IDF_TOOLS_PATH="$PWD/.toolchains/espressif"
+export PATH="/opt/homebrew/bin:$PATH"
+. "$PWD/.toolchains/esp-idf-v5.3.2/export.sh"
 ports/ninjapilot-litewing/build.sh \
   --flight-checkout /path/to/NinjaPilot \
   --reference-checkout /path/to/OpenPilotESP32-WROOM-32E
 ```
 
-The command is intentionally build-only. It never calls `flash`, `monitor`,
-`esptool`, or any motor-output test. On a host without `idf.py`, it reports
-the ESP-IDF gate as unavailable while still running the host and source gates.
+When `IDF_PATH` is not already set, `build.sh` also discovers this local
+installation automatically. The command is intentionally build-only. It never
+calls `flash`, `monitor`, `esptool`, or any motor-output test. The local
+ESP-IDF 5.3.2 / ESP32-S3 toolchain is installed and verified. When the exact
+external checkouts and generated flight UAVObjects are supplied, the wrapper
+gate verifies compilation, linking, image generation, and partition sizing.
 
 The wrapper consumes the reference architecture, UART, I2C, watchdog, NVS,
 and task-runtime sources, but excludes the reference ICM-20602 and servo-pulse
 drivers. LiteWing supplies those two seams through its MPU6050 I2C queue driver
 and fixed 20 kHz brushed LEDC backend.
+
+The host generator uses Qt 5 (`qt@5` is currently deprecated upstream but is
+still required by this pinned NinjaPilot tree). ESP-IDF source and tools are
+kept under the ignored `.toolchains/` directory; the generated `sdkconfig` and
+ESP-IDF `build/` tree are also local artifacts.
 
 ## Target adapter status
 
@@ -83,6 +106,7 @@ fault, failsafe, shutdown, or a 100 ms controller-update timeout.
 
 The `target/sources.cmake` fragment is consumed by the ESP-IDF wrapper and is
 linked with the pinned reference ESP32 PiOS support while excluding the
-reference servo-pulse and ICM-20602 sources. This workstation does not have
-`idf.py`, so the ESP-IDF compile and all hardware behavior remain unverified;
-no firmware is flashed by these sources.
+reference servo-pulse and ICM-20602 sources. The local no-flash gate has been
+verified through compilation, linking, image generation, and partition-size
+checking for ESP32-S3. Hardware behavior remains unverified; no firmware is
+flashed by these sources.

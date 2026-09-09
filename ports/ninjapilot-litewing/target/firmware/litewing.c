@@ -3,6 +3,7 @@
 
 #include <esp_system.h>
 #include <freertos/FreeRTOS.h>
+#include <systemmod.h>
 
 extern void PIOS_Board_Init(void);
 extern void InitModules(void);

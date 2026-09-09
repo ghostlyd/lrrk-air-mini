@@ -6,6 +6,7 @@
 # the reference servo and ICM-20602 sources must not be linked for this target.
 
 set(LITEWING_TARGET_SRCS
+    ${CMAKE_CURRENT_LIST_DIR}/../contract/litewing_contract.c
     ${CMAKE_CURRENT_LIST_DIR}/litewing_mpu6050_protocol.c
     ${CMAKE_CURRENT_LIST_DIR}/pios_litewing_mpu6050.c
     ${CMAKE_CURRENT_LIST_DIR}/pios_litewing_brushed_pwm.c

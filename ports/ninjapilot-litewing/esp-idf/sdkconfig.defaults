@@ -18,7 +18,7 @@ CONFIG_FREERTOS_CHECK_STACKOVERFLOW_CANARY=y
 # Preserve the serial port for UAVTalk through the CH340K. ROM boot messages
 # remain available during reset; the application console must not interleave
 # text with binary telemetry frames.
-CONFIG_ESP_CONSOLE_UART_NONE=y
+CONFIG_ESP_CONSOLE_NONE=y
 
 # Keep watchdog protection enabled for bench bring-up. The PiOS watchdog
 # layer uses the IDF task watchdog and fails closed on a missing task flag.

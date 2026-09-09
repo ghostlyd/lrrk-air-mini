@@ -33,11 +33,12 @@ class EspIdfWrapperTests(unittest.TestCase):
         self.assertNotIn("/pios_icm20602.c", self.component)
         self.assertIn("pios_litewing_brushed_pwm.c", (ROOT / "target" / "sources.cmake").read_text(encoding="utf-8"))
         self.assertIn("pios_litewing_mpu6050.c", (ROOT / "target" / "sources.cmake").read_text(encoding="utf-8"))
+        self.assertIn("../contract/litewing_contract.c", (ROOT / "target" / "sources.cmake").read_text(encoding="utf-8"))
 
     def test_defaults_keep_console_clean_and_watchdogs_enabled(self):
         self.assertIn('CONFIG_IDF_TARGET="esp32s3"', self.sdkconfig)
         self.assertIn("CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ_240=y", self.sdkconfig)
-        self.assertIn("CONFIG_ESP_CONSOLE_UART_NONE=y", self.sdkconfig)
+        self.assertIn("CONFIG_ESP_CONSOLE_NONE=y", self.sdkconfig)
         self.assertIn("CONFIG_ESP_TASK_WDT_INIT=y", self.sdkconfig)
         self.assertIn('CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"', self.sdkconfig)
 

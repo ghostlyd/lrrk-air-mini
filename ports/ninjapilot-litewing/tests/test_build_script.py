@@ -39,6 +39,16 @@ class BuildScriptTests(unittest.TestCase):
         self.assertEqual(result.returncode, 20, result.stderr)
         self.assertIn("external checkouts not supplied", result.stderr)
 
+    def test_full_gate_can_activate_the_manifest_pinned_local_idf(self):
+        build_script = (ROOT / "build.sh").read_text(encoding="utf-8")
+        self.assertIn(".toolchains/esp-idf-v5.3.2", build_script)
+        self.assertIn(".toolchains/espressif", build_script)
+        self.assertIn('idf_project_dir="$script_dir/esp-idf"', build_script)
+        self.assertIn("ESP-IDF v5.3.2", build_script)
+        self.assertIn('export NINJAPILOT_ROOT="$flight_checkout"', build_script)
+        self.assertIn('export OPENPILOT_ESP32_ROOT="$reference_checkout"', build_script)
+        self.assertIn("no firmware claim made", build_script)
+
 
 if __name__ == "__main__":
     unittest.main()
