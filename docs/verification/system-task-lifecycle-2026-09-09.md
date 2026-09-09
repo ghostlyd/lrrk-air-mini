@@ -108,6 +108,10 @@ Independent review and remote CI are pending at this report's first revision.
 
 ## Remaining gates
 
+Subsequent work checks the table and ManualControl initialization path in the
+[module startup report](checked-module-startup-2026-09-09.md). The following is
+the remaining-gate snapshot at this report's original revision.
+
 The void InitMods table still ignores required module initializer/start returns.
 Those modules' internal object/queue/task failures, COM allocations, task-monitor
 initialization, debug-log setup and watchdog subscription need validation.

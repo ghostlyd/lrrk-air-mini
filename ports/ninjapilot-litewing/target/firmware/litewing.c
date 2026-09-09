@@ -5,9 +5,9 @@
 #include <freertos/FreeRTOS.h>
 #include <systemmod.h>
 #include <pios_litewing_brushed_pwm.h>
+#include <pios_litewing_modules.h>
 
 extern void PIOS_Board_Init(void);
-extern void InitModules(void);
 
 void app_main(void)
 {
@@ -20,10 +20,12 @@ void app_main(void)
         return;
     }
 
-    /* Retain the selected module order, but do not discard System's reported
-     * resource/task creation failure in the shared initialization macro.
-     * Other module initializer returns still need their own checked gate. */
-    InitModules();
+    if (PIOS_LiteWing_ModulesInitialize() != 0) {
+        PIOS_LiteWing_BrushedPWM_Shutdown();
+        AlarmsSet(SYSTEMALARMS_ALARM_BOOTFAULT, SYSTEMALARMS_ALARM_CRITICAL);
+        printf("[LiteWing] module initialization failed\n");
+        return;
+    }
     if (SystemModInitialize() != 0) {
         PIOS_LiteWing_BrushedPWM_Shutdown();
         AlarmsSet(SYSTEMALARMS_ALARM_BOOTFAULT, SYSTEMALARMS_ALARM_CRITICAL);

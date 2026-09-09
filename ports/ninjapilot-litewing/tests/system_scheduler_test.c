@@ -21,6 +21,7 @@
 #include <hwsettings.h>
 #include <pios_flashfs.h>
 #include <sanitycheck.h>
+#include <pios_litewing_modules.h>
 
 static TaskFunction_t system_entry;
 static int system_token, persistence_queue;
@@ -93,7 +94,7 @@ int32_t PIOS_TASK_MONITOR_UnregisterTask(uint16_t id)
 }
 xTaskHandle xTaskGetCurrentTaskHandle(void)
 { CHECK(executing_system && system_live); return &system_token; }
-void StartModules(void)
+static void register_test_callbacks(void)
 {
     if (lifecycle) CHECK(system_live && system_monitored && queue_live);
     module_starts++;
@@ -101,6 +102,36 @@ void StartModules(void)
     CHECK(cb && create(CALLBACK_TASK_AUXILIARY, 512));
     CHECK(PIOS_CALLBACKSCHEDULER_Dispatch(cb) == 0);
 }
+#ifndef TEST_MODULE_TABLE
+int32_t PIOS_LiteWing_ModulesStart(void) { register_test_callbacks(); return 0; }
+void StartModules(void) { register_test_callbacks(); }
+#else
+static unsigned init_calls, start_calls;
+static int fail_init = -1, fail_start = -1;
+#ifdef TEST_MANUAL_MODULE
+int32_t RealManualControlInitialize(void);
+#define MANUAL_INIT_RESULT(Index) ((Index) == 4 ? RealManualControlInitialize() : 0)
+#else
+#define MANUAL_INIT_RESULT(Index) 0
+#endif
+#define MODULE(Name, Index) \
+    int32_t Name##Initialize(void) { \
+        CHECK(init_calls++ == Index); \
+        return fail_init == Index ? -7 : MANUAL_INIT_RESULT(Index); \
+    } \
+    int32_t Name##Start(void) { \
+        CHECK(start_calls++ == Index); \
+        if (fail_start == Index) return -9; \
+        if (Index == 5) register_test_callbacks(); \
+        return 0; \
+    }
+MODULE(Attitude, 0)
+MODULE(Stabilization, 1)
+MODULE(Actuator, 2)
+MODULE(Receiver, 3)
+MODULE(ManualControl, 4)
+MODULE(Telemetry, 5)
+#endif
 void PIOS_LiteWing_BrushedPWM_Shutdown(void) { shutdowns++; }
 int32_t AlarmsSet(SystemAlarmsAlarmElem alarm, SystemAlarmsAlarmOptions severity)
 {
@@ -131,6 +162,38 @@ OBJECT(SettingsGeneration)
 OBJECT(FlightStatus)
 OBJECT(ObjectPersistence)
 OBJECT(HwSettings)
+#ifdef TEST_MANUAL_MODULE
+#include <manualcontrolcommand.h>
+#include <manualcontrolsettings.h>
+#include <flightmodesettings.h>
+#include <stabilizationsettings.h>
+#include <vtolselftuningstats.h>
+#include <vtolpathfollowersettings.h>
+OBJECT(ManualControlCommand)
+OBJECT(ManualControlSettings)
+OBJECT(FlightModeSettings)
+OBJECT(StabilizationSettings)
+OBJECT(VtolSelfTuningStats)
+OBJECT(VtolPathFollowerSettings)
+static unsigned manual_connections;
+void armHandler(bool init, FrameType_t frame)
+{ (void)init; (void)frame; CHECK(!"unexpected arming handler"); }
+void manualHandler(bool init) { (void)init; CHECK(!"unexpected manual handler"); }
+void stabilizedHandler(bool init) { (void)init; CHECK(!"unexpected stabilized handler"); }
+void pathFollowerHandler(bool init) { (void)init; CHECK(!"unexpected path follower handler"); }
+void pathPlannerHandler(bool init) { (void)init; CHECK(!"unexpected path planner handler"); }
+void takeOffLocationHandler(void) { CHECK(!"unexpected takeoff location handler"); }
+void takeOffLocationHandlerInit(void) { CHECK(!"unexpected takeoff location initializer"); }
+void StabilizationSettingsFlightModeAssistMapGet(uint8_t *out)
+{ (void)out; CHECK(!"unexpected runtime field read"); }
+void VtolPathFollowerSettingsThrustLimitsGet(VtolPathFollowerSettingsThrustLimitsData *out)
+{ (void)out; CHECK(!"unexpected runtime field read"); }
+void VtolPathFollowerSettingsTreatCustomCraftAsGet(uint8_t *out)
+{ (void)out; CHECK(!"unexpected runtime field read"); }
+void VtolSelfTuningStatsNeutralThrustOffsetGet(float *out)
+{ (void)out; CHECK(!"unexpected runtime field read"); }
+int32_t configuration_check(void) { CHECK(!"unexpected configuration check"); return -1; }
+#endif
 
 int32_t UAVObjGetData(UAVObjHandle handle, void *out)
 { struct object *obj = handle; CHECK(obj && obj->size <= 1024); memcpy(out, obj->data, obj->size); return 0; }
@@ -139,7 +202,21 @@ int32_t UAVObjSetData(UAVObjHandle handle, const void *in)
 int32_t UAVObjConnectQueue(UAVObjHandle obj, xQueueHandle queue, uint8_t mask)
 { (void)mask; CHECK(obj == ObjectPersistenceHandle() && queue == &persistence_queue); after_scheduler++; return 0; }
 int32_t UAVObjConnectCallback(UAVObjHandle obj, UAVObjEventCallback cb, uint8_t mask)
-{ (void)obj; (void)cb; (void)mask; after_scheduler++; return 0; }
+{
+    (void)obj; (void)cb; (void)mask;
+#ifdef TEST_MANUAL_MODULE
+    if (!executing_system) {
+        CHECK(cb && mask == EV_MASK_ALL_UPDATES);
+        CHECK(obj == (manual_connections == 0 ? VtolPathFollowerSettingsHandle() : SystemSettingsHandle()));
+        CHECK(manual_connections++ < 2);
+        if ((!strcmp(scenario, "connect-VtolPathFollowerSettings") && obj == VtolPathFollowerSettingsHandle()) ||
+            (!strcmp(scenario, "connect-SystemSettings") && obj == SystemSettingsHandle())) return -1;
+        return 0;
+    }
+#endif
+    after_scheduler++;
+    return 0;
+}
 UAVObjHandle UAVObjGetByID(uint32_t id) { (void)id; CHECK(!"unexpected lookup"); return NULL; }
 #define PERSIST_ONE(Name) int32_t Name(UAVObjHandle obj, uint16_t inst) { (void)obj; (void)inst; CHECK(!"unexpected persistence"); return -1; }
 #define PERSIST_ALL(Name) int32_t Name(void) { CHECK(!"unexpected persistence"); return -1; }
@@ -194,7 +271,9 @@ int xQueueReceive(xQueueHandle q, void *out, unsigned ticks)
 void PIOS_SYS_Init(void) {}
 void PIOS_Board_Init(void) {}
 bool PIOS_LiteWing_BoardServicesInitialized(void) { return true; }
-void InitModules(void) { module_inits++; }
+#ifndef TEST_MODULE_TABLE
+int32_t PIOS_LiteWing_ModulesInitialize(void) { module_inits++; return 0; }
+#endif
 
 static void lifecycle_case(void)
 {
@@ -267,12 +346,97 @@ int main(int argc, char **argv)
 {
     CHECK(argc == 2);
     scenario = argv[1];
+    if (!strncmp(scenario, "early-table-", 12)) { early_system = true; scenario += 6; }
     if (!strncmp(scenario, "life-", 5)) {
         lifecycle = true;
         scenario += 5;
         if (!strncmp(scenario, "early-", 6)) { early_system = true; scenario += 6; }
     }
     CHECK(PIOS_CALLBACKSCHEDULER_Initialize() == 0);
+#ifdef TEST_MODULE_TABLE
+#ifdef TEST_MANUAL_MODULE
+    if (!strncmp(scenario, "manual-", 7)) {
+        scenario += 7;
+        lifecycle = true;
+        bool nominal = !strcmp(scenario, "nominal") || !strcmp(scenario, "fresh");
+        if (!strcmp(scenario, "malloc1")) fail_malloc = 1;
+        if (!strcmp(scenario, "malloc2")) fail_malloc = 2;
+        if (!strcmp(scenario, "signal")) fail_signal = 1;
+        if (!strcmp(scenario, "shared-malloc")) {
+            CHECK(create(CALLBACK_TASK_FLIGHTCONTROL, 512));
+            fail_malloc = 3;  /* New callback info, not the existing worker. */
+        }
+        if (!nominal || !strcmp(scenario, "fresh")) {
+            obj_ManualControlCommand.present = obj_FlightStatus.present = false;
+            obj_ManualControlSettings.present = obj_FlightModeSettings.present = false;
+            obj_SystemSettings.present = obj_StabilizationSettings.present = false;
+            obj_VtolSelfTuningStats.present = obj_VtolPathFollowerSettings.present = false;
+        }
+        app_main();
+        if (!nominal) {
+            CHECK(init_calls == 5 && start_calls == 0 && system_creates == 0);
+            CHECK(shutdowns == 1 && fault_alarms == 1 && after_scheduler == 0);
+            unsigned connections_before_failure = 0;
+            if (fail_malloc || fail_signal || !strcmp(scenario, "connect-SystemSettings")) connections_before_failure = 2;
+            if (!strcmp(scenario, "connect-VtolPathFollowerSettings")) connections_before_failure = 1;
+            CHECK(manual_connections == connections_before_failure);
+            if (!strcmp(scenario, "shared-malloc")) {
+                CHECK(live_allocations == 2 && live_signals == 1 && !queue_live);
+            } else {
+                CHECK(live_allocations == 0 && live_signals == 0 && !queue_live);
+            }
+        } else {
+            CHECK(init_calls == 6 && system_live && shutdowns == 0);
+            CHECK(object_inits == (!strcmp(scenario, "fresh") ? 8u : 0u));
+            CHECK(manual_connections == 2);
+            run_system();
+            CHECK(start_calls == 6 && after_scheduler == 3 && system_monitored);
+            execute_until_block(0);
+            CHECK(callback_calls == 1 && fault_alarms == 0);
+        }
+        return 0;
+    }
+#endif
+    if (!strcmp(scenario, "table-order")) {
+        CHECK(PIOS_LiteWing_ModulesStart() != 0 && start_calls == 0);
+        CHECK(PIOS_LiteWing_ModulesInitialize() == 0 && init_calls == 6);
+        CHECK(PIOS_LiteWing_ModulesInitialize() != 0 && init_calls == 6);
+        CHECK(PIOS_LiteWing_ModulesStart() == 0 && start_calls == 6);
+        CHECK(PIOS_LiteWing_ModulesStart() != 0 && start_calls == 6);
+        return 0;
+    }
+    if (!strncmp(scenario, "table-", 6)) {
+        lifecycle = true;
+        if (!strncmp(scenario, "table-init-", 11)) fail_init = atoi(scenario + 11);
+        if (!strncmp(scenario, "table-start-", 12)) fail_start = atoi(scenario + 12);
+        app_main();
+        if (fail_init >= 0) {
+            CHECK(init_calls == (unsigned)fail_init + 1 && start_calls == 0);
+            CHECK(shutdowns == 1 && fault_alarms == 1 && system_creates == 0);
+            CHECK(queue_creates == 0 && after_scheduler == 0);
+        } else {
+            CHECK(init_calls == 6);
+            if (!early_system) run_system();
+            if (fail_start >= 0) {
+                CHECK(start_calls == (unsigned)fail_start + 1);
+                CHECK(shutdowns == 1 && fault_alarms == 1 && after_scheduler == 0);
+                CHECK(!system_live && !system_monitored && !queue_live);
+                CHECK(system_unregisters == 1 && system_deletes == 1);
+                no_workers();
+            } else {
+                CHECK(start_calls == 6 && after_scheduler == 3 && system_monitored);
+                CHECK(shutdowns == 0 && fault_alarms == 0);
+                execute_until_block(0);
+                CHECK(callback_calls == 1);
+            }
+        }
+        unsigned inits_before = init_calls, starts_before = start_calls;
+        CHECK(PIOS_LiteWing_ModulesInitialize() != 0);
+        CHECK(PIOS_LiteWing_ModulesStart() != 0);
+        CHECK(init_calls == inits_before && start_calls == starts_before);
+        return 0;
+    }
+#endif
     if (lifecycle) { lifecycle_case(); return 0; }
     if (!strcmp(scenario, "task")) fail_task = 2;
     if (!strcmp(scenario, "monitor")) fail_monitor = 2;

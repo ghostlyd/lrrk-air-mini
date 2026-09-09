@@ -3,36 +3,50 @@
  * generate this file; the wrapper keeps the selected, rate-mode set checked
  * in so a module cannot disappear silently from a CMake build.
  */
-extern unsigned int AttitudeInitialize(void);
-extern unsigned int StabilizationInitialize(void);
-extern unsigned int ActuatorInitialize(void);
-extern unsigned int ReceiverInitialize(void);
-extern unsigned int ManualControlInitialize(void);
-extern unsigned int TelemetryInitialize(void);
+#include <pios_litewing_modules.h>
+#include <stdbool.h>
 
-extern unsigned int AttitudeStart(void);
-extern unsigned int StabilizationStart(void);
-extern unsigned int ActuatorStart(void);
-extern unsigned int ReceiverStart(void);
-extern unsigned int ManualControlStart(void);
-extern unsigned int TelemetryStart(void);
+static bool initAttempted, initialized, startAttempted;
 
-void InitModules(void)
+extern int32_t AttitudeInitialize(void);
+extern int32_t StabilizationInitialize(void);
+extern int32_t ActuatorInitialize(void);
+extern int32_t ReceiverInitialize(void);
+extern int32_t ManualControlInitialize(void);
+extern int32_t TelemetryInitialize(void);
+
+extern int32_t AttitudeStart(void);
+extern int32_t StabilizationStart(void);
+extern int32_t ActuatorStart(void);
+extern int32_t ReceiverStart(void);
+extern int32_t ManualControlStart(void);
+extern int32_t TelemetryStart(void);
+
+#define CHECK_MODULE(call) do { int32_t rc = (call); if (rc != 0) return rc; } while (0)
+
+int32_t PIOS_LiteWing_ModulesInitialize(void)
 {
-    AttitudeInitialize();
-    StabilizationInitialize();
-    ActuatorInitialize();
-    ReceiverInitialize();
-    ManualControlInitialize();
-    TelemetryInitialize();
+    if (initAttempted) return -1;
+    initAttempted = true;
+    CHECK_MODULE(AttitudeInitialize());
+    CHECK_MODULE(StabilizationInitialize());
+    CHECK_MODULE(ActuatorInitialize());
+    CHECK_MODULE(ReceiverInitialize());
+    CHECK_MODULE(ManualControlInitialize());
+    CHECK_MODULE(TelemetryInitialize());
+    initialized = true;
+    return 0;
 }
 
-void StartModules(void)
+int32_t PIOS_LiteWing_ModulesStart(void)
 {
-    AttitudeStart();
-    StabilizationStart();
-    ActuatorStart();
-    ReceiverStart();
-    ManualControlStart();
-    TelemetryStart();
+    if (!initialized || startAttempted) return -1;
+    startAttempted = true;
+    CHECK_MODULE(AttitudeStart());
+    CHECK_MODULE(StabilizationStart());
+    CHECK_MODULE(ActuatorStart());
+    CHECK_MODULE(ReceiverStart());
+    CHECK_MODULE(ManualControlStart());
+    CHECK_MODULE(TelemetryStart());
+    return 0;
 }

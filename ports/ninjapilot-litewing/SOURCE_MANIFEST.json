@@ -93,6 +93,7 @@
       "ports/ninjapilot-litewing/target/sources.cmake",
       "ports/ninjapilot-litewing/target/include/litewing_mpu6050_protocol.h",
       "ports/ninjapilot-litewing/target/include/pios_litewing_board.h",
+      "ports/ninjapilot-litewing/target/include/pios_litewing_modules.h",
       "ports/ninjapilot-litewing/target/include/pios_litewing_brushed_pwm.h",
       "ports/ninjapilot-litewing/target/include/pios_litewing_mpu6050.h",
       "ports/ninjapilot-litewing/target/include/pios_icm20602.h",
