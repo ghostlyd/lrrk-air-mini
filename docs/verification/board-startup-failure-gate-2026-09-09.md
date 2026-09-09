@@ -86,6 +86,10 @@ were written to the device.
 
 ## Remaining startup gates
 
+Subsequent work: the [event/alarm service correction](startup-service-failures-2026-09-09.md)
+closes the specific hidden EventDispatcher/Alarms allocation failures described
+below. The following paragraph records the boundary of this original slice.
+
 The synchronous status is not full startup readiness. At the pinned sources,
 EventDispatcherInitialize, AlarmsInitialize and COM initialization can hide
 internal allocation failures; object registration and debug-log setup lack
