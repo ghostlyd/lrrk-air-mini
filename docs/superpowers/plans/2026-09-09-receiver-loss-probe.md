@@ -34,10 +34,11 @@ ports/ninjapilot-litewing; tests/test_receiver_probe.py; diagnostics/README.md.
   burst, abort on stale state/write failure and owned-handle closure.
 - [x] Run `python -m unittest discover -s ports/ninjapilot-litewing/tests -p
   'test_receiver_probe.py' -v` with LRRK_TEST_FLIGHT_ROOT set to the pinned tree.
-- [ ] Run host suite and source CI; independently review the actual diff.
-- [ ] Only after review, run one gated physical test with private captures,
+- [x] Run host suite and source CI; independently review the actual diff.
+- [x] Only after review, run one gated physical test with private captures,
   inspect all phase evidence, and record actual result without overstating it.
-- [ ] Commit, PR and merge verified source/evidence under standing authority.
+- [x] Commit and open PR under standing authority; integration status is tracked
+  by [PR32](https://github.com/ghostlyd/lrrk-air-mini/pull/32), not this checklist.
 
 An incomplete phase or unavailable physical test keeps issue23 open. The
 overall port/AI/BOM goal remains separate from this one bench acceptance task.
@@ -50,5 +51,8 @@ The next review closed those six, but reproduced an overdue/catch-up write
 between scheduling decision and transmission, plus missing post-close freshness
 validation. Transmission-boundary cadence accounting and post-close freshness
 checks now have failing-first regressions too. The focused suite has37 tests,
-including port-close deadline and initial clock-failure cleanup. Re-review and
-physical acceptance are still pending.
+including port-close deadline and initial clock-failure cleanup. Re-review
+accepted commit1ec2973 for one trial. That trial observed all four phases but
+failed final framing validation (truncated AttitudeState). It is inconclusive,
+not accepted physical receiver-loss proof. No retry occurred; see the
+[trial report](../../verification/disarmed-receiver-probe-2026-09-09.md).
