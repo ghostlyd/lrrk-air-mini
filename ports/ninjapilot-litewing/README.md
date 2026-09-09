@@ -52,6 +52,11 @@ The [Actuator lifecycle correction](../../docs/verification/actuator-startup-lif
 checks its object/subscription/queue/task startup and worker monitor registration.
 It is source/build-only; installed firmware remains Always Disarmed.
 
+The [Attitude/Receiver startup correction](../../docs/verification/input-startup-lifecycle-2026-09-09.md)
+checks their required resources, task/monitor ownership and initial sensor/state
+failures. It is not installed and does not establish full asynchronous readiness,
+runtime sample validity, or arming clearance.
+
 The [checked module startup correction](../../docs/verification/checked-module-startup-2026-09-09.md)
 consumes reported module errors and checks ManualControl's required objects and
 scheduler allocation through the actual entry point. Other module internals and

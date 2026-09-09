@@ -164,7 +164,10 @@ set(LIB_SRCS
 set(LITEWING_CONTROL_DIR "${CMAKE_CURRENT_BINARY_DIR}/litewing_control")
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
     "${PORT_ROOT}/prepare_control.py"
+    "${PORT_ROOT}/prepare_input_startup.py"
+    "${PORT_ROOT}/target/startup/input_start.inc"
     "${PORT_ROOT}/target/startup/actuator_start.inc"
+    "${FLIGHT}/modules/Attitude/attitude.c"
     "${FLIGHT}/modules/Receiver/receiver.c"
     "${FLIGHT}/modules/Actuator/actuator.c")
 execute_process(COMMAND python3 "${PORT_ROOT}/prepare_control.py"
@@ -174,7 +177,7 @@ if(NOT LITEWING_CONTROL_RC EQUAL 0)
     message(FATAL_ERROR "Pinned control consumer adaptation failed")
 endif()
 set(NINJA_MODULE_SRCS
-    "${FLIGHT}/modules/Attitude/attitude.c"
+    "${LITEWING_CONTROL_DIR}/attitude.c"
     "${FLIGHT}/modules/Stabilization/stabilization.c"
     "${FLIGHT}/modules/Stabilization/innerloop.c"
     "${FLIGHT}/modules/Stabilization/outerloop.c"
