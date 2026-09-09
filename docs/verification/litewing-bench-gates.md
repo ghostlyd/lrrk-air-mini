@@ -12,6 +12,8 @@ ESP-Drone firmware remains the recovery image.
   the maintained command is `ports/ninjapilot-litewing/simulate.sh` and a
   missing Qt/qmake dependency is recorded as unavailable, not as a pass.
 - [ ] ESP-IDF version, target, build output, and compiler version are recorded.
+- [ ] The target adapter is linked with the pinned reference I2C backend, with
+  the reference ICM-20602 and servo-pulse sources excluded.
 - [ ] No `idf.py flash`, `esptool`, arming, or motor command occurred during the
   source/build gate.
 

@@ -150,9 +150,15 @@ or a passing host-only test.
 The source/provenance record and reproducible bootstrap are maintained in
 [`ports/ninjapilot-litewing/`](../ports/ninjapilot-litewing/). The upstream
 `litewing` branch currently contains a POSIX/Gazebo twin rather than a
-flashable LiteWing ESP32-S3 board target. The repository-owned work therefore
-starts with source integrity, the LiteWing board contract, and host-side
-regression gates before adding the MPU6050 I2C and brushed-duty HAL pieces.
+flashable LiteWing ESP32-S3 board target. The repository-owned target adapter
+now contains the MPU6050 I2C and brushed-duty HAL seams; the ESP-IDF wrapper,
+toolchain build, and physical gates remain open.
+
+The adapter depends on the pinned reference ESP32 PiOS support for the
+architecture header, IDF I2C transaction backend, and common ESP32 services.
+It explicitly excludes the reference ICM-20602 SPI driver and servo-pulse
+backend. See [`ports/ninjapilot-litewing/target/README.md`](../ports/ninjapilot-litewing/target/README.md)
+and `target/sources.cmake` for the source boundary.
 
 The implemented host AI layer is documented in
 [`docs/AI_ASSISTANT.md`](AI_ASSISTANT.md). It is advisory, offline-capable,

@@ -36,7 +36,7 @@
 - [x] Document which code is upstream, which code is adapted, and which files are repository-owned.
 - [x] Add tests that reject missing required manifest fields, invalid commit formats, and a hardware-validation claim that is not explicitly false.
 - [x] Update the dependency inventory to state that the NinjaPilot LiteWing target is selected and pinned, while the flashable ESP32-S3 target remains under construction.
-- [ ] Run the manifest tests and commit as `docs: pin NinjaPilot LiteWing source inputs`.
+- [x] Run the manifest tests and commit as `feat: establish LiteWing NinjaPilot and AI foundation` (merged in PR #4).
 
 ### Task 2: Implement reversible, fail-closed source bootstrap
 
@@ -49,12 +49,12 @@
 
 - [x] Accept an explicit checkout directory and require it to be inside a caller-selected workspace.
 - [x] Verify the checkout remote, exact commit, required source files, and patch checksums before mutation.
-- [ ] Verify every reference patch hash, run `git apply --check` for each `apply: true` patch before applying it, then record the resulting source commit and applied-patch hashes in a local marker outside the repository.
+- [x] Verify every reference patch hash, run `git apply --check` for each `apply: true` patch before applying it, then record the resulting source commit and applied-patch hashes in a local marker outside the repository.
 - [x] Make the operation idempotent: a matching marker is a no-op, while a mismatched marker stops with an actionable error.
 - [x] Provide `revert.sh` that removes only the patches applied by this workflow and refuses to operate when the marker or source revision is ambiguous.
 - [x] Ensure scripts never call `idf.py flash`, `esptool`, or any actuator command.
-- [ ] Test shell syntax, wrong-revision rejection, missing-patch rejection, checksum rejection, and idempotent re-run using temporary Git repositories.
-- [ ] Commit as `build: add verified NinjaPilot LiteWing bootstrap`.
+- [x] Test shell syntax, wrong-revision rejection, missing-patch rejection, checksum rejection, and idempotent re-run using temporary Git repositories.
+- [x] Commit as `feat: establish LiteWing NinjaPilot and AI foundation` (merged in PR #4).
 
 ### Task 3: Create the repository-owned LiteWing target patch and simulator regression
 
@@ -69,7 +69,7 @@
 - [x] Add a simulator command that builds/runs the POSIX target when the pinned checkout and required host tools are present, and reports `unavailable` with the missing dependency when they are not.
 - [x] Do not add optional ToF, optical-flow, barometer, or magnetometer initialization to the first target image.
 - [x] Document that the schematic does not prove motor-corner order and that human bench verification is required.
-- [ ] Commit as `feat: add LiteWing target contract and sim gate`.
+- [x] Commit as `feat: establish LiteWing NinjaPilot and AI foundation` (merged in PR #4).
 
 ### Task 4: Add the MPU6050-over-I2C sensor path
 
@@ -78,13 +78,13 @@
 - Create: `ports/ninjapilot-litewing/tests/test_mpu6050_contract.py`
 - Modify: `ports/ninjapilot-litewing/README.md`
 
-- [ ] Implement the target transport on I2C0 with SDA GPIO11, SCL GPIO10, and data-ready GPIO12.
-- [ ] Probe the configured MPU6050 address and `WHO_AM_I` before publishing samples.
-- [ ] Configure explicit sample rate, digital low-pass filter, accelerometer range, and gyro range, then publish the existing flight-tree sensor record format.
-- [ ] Reject missing, invalid, or stale sensor data and keep arming disabled on the fault path.
-- [ ] Add host tests for address probing, identity mismatch, short reads, stale data, and valid sample conversion.
-- [ ] Record the selected sensor-path revision semantics for board revision `0x02`.
-- [ ] Commit as `feat: add LiteWing MPU6050 I2C transport`.
+- [x] Implement the target transport on I2C0 with SDA GPIO11, SCL GPIO10, and data-ready GPIO12.
+- [x] Probe the configured MPU6050 address and `WHO_AM_I` before publishing samples.
+- [x] Configure explicit sample rate, digital low-pass filter, accelerometer range, and gyro range, then publish the existing flight-tree sensor record format.
+- [x] Reject missing, invalid, or stale sensor data and keep arming disabled on the fault path.
+- [x] Add host tests for address probing, identity mismatch, short reads, stale data, and valid sample conversion.
+- [x] Record the selected sensor-path revision semantics for board revision `0x02`.
+- [x] Commit as `feat: add LiteWing MPU6050 and brushed HAL` (combined sensor/output adapter slice).
 
 ### Task 5: Add the brushed motor duty backend
 
@@ -93,12 +93,12 @@
 - Create: `ports/ninjapilot-litewing/tests/test_brushed_output_contract.py`
 - Modify: `ports/ninjapilot-litewing/README.md`
 
-- [ ] Implement four ESP32-S3 PWM channels on GPIO5, GPIO6, GPIO3, and GPIO4 with a deterministic 20 kHz carrier.
-- [ ] Map the shared actuator range `0..1000` to duty, clamp before hardware writes, and write all four channels as one frame where the ESP-IDF API permits.
-- [ ] Force all outputs to zero on initialization, disarm, failsafe, sensor fault, stale telemetry/transport, and target shutdown.
-- [ ] Do not expose ESC calibration or servo-pulse assumptions in the LiteWing backend.
-- [ ] Add host tests that prove clamping, zeroing, frame atomicity, and no output on fault.
-- [ ] Commit as `feat: add fail-closed LiteWing brushed output`.
+- [x] Implement four ESP32-S3 PWM channels on GPIO5, GPIO6, GPIO3, and GPIO4 with a deterministic 20 kHz carrier.
+- [x] Map the shared actuator range `0..1000` to duty, clamp before hardware writes, and stage all four channels as one validated frame before the LEDC updates.
+- [x] Force all outputs to zero on initialization, disarm, failsafe, sensor fault, stale telemetry/transport, and target shutdown.
+- [x] Do not expose ESC calibration or servo-pulse assumptions in the LiteWing backend.
+- [x] Add host tests that prove clamping, zeroing, frame atomicity, and no output on fault.
+- [x] Commit as `feat: add LiteWing MPU6050 and brushed HAL` (combined sensor/output adapter slice).
 
 ### Task 6: Add build gates and bench evidence templates
 
@@ -113,7 +113,7 @@
 - [x] Add CI for JSON/shell/host tests and source-integrity checks without requiring hardware or secrets.
 - [x] Add a bench checklist covering USB identity, IMU `WHO_AM_I`, watchdog, zero output, disarm/failsafe, and physical motor/IMU orientation.
 - [x] Record current toolchain availability as evidence; the current workstation lacks `idf.py`, so no ESP32 build claim is allowed until that changes.
-- [ ] Commit as `ci: add LiteWing source and build gates`.
+- [x] Commit as `feat: establish LiteWing NinjaPilot and AI foundation` (merged in PR #4).
 
 ### Task 7: Review and integration gate
 

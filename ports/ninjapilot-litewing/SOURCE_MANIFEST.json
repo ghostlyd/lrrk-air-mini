@@ -2,7 +2,7 @@
   "schema_version": 1,
   "target": {
     "name": "ninjapilot-litewing",
-    "status": "selected-under-construction",
+    "status": "hal-adapter-implemented-under-construction",
     "board": "LiteWing V2.6.C",
     "board_type": "0x13",
     "board_rev": "0x02",
@@ -71,6 +71,32 @@
     "battery_adc_gpio": 2,
     "usb_bridge": "CH340K",
     "optional_modules": ["VL53L1X", "PMW3901"]
+  },
+  "target_adapter": {
+    "source": "repository-owned",
+    "status": "implemented-but-not-ESP-IDF-built-on-this-host",
+    "source_fragment": "ports/ninjapilot-litewing/target/sources.cmake",
+    "required_files": [
+      "ports/ninjapilot-litewing/target/sources.cmake",
+      "ports/ninjapilot-litewing/target/include/litewing_mpu6050_protocol.h",
+      "ports/ninjapilot-litewing/target/include/pios_litewing_board.h",
+      "ports/ninjapilot-litewing/target/include/pios_litewing_brushed_pwm.h",
+      "ports/ninjapilot-litewing/target/include/pios_litewing_mpu6050.h",
+      "ports/ninjapilot-litewing/target/include/pios_icm20602.h",
+      "ports/ninjapilot-litewing/target/pios_litewing_board.c",
+      "ports/ninjapilot-litewing/target/pios_litewing_mpu6050.c",
+      "ports/ninjapilot-litewing/target/pios_litewing_brushed_pwm.c",
+      "ports/ninjapilot-litewing/target/litewing_mpu6050_protocol.c"
+    ],
+    "reference_backend_files": [
+      "pios/esp32/pios_esp32.h",
+      "pios/esp32/inc/pios_esp32_priv.h",
+      "pios/esp32/pios_i2c.c"
+    ],
+    "excluded_reference_files": [
+      "pios/esp32/pios_servo.c",
+      "pios/esp32/pios_icm20602.c"
+    ]
   },
   "verification": {
     "source_gate": "required",

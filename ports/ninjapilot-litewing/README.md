@@ -11,7 +11,7 @@ work therefore proceeds in gates:
 1. verify source revisions and patch hashes;
 2. preserve the POSIX simulation path;
 3. add the LiteWing board contract;
-4. implement MPU6050 I2C and brushed-duty HAL pieces;
+4. implement and review the MPU6050 I2C and brushed-duty HAL pieces;
 5. build with the recorded ESP-IDF toolchain; and
 6. complete separate prop-off bench and human-orientation checks.
 
@@ -47,3 +47,18 @@ IMU orientation are provisional until a human verifies the physical board with
 props removed.
 
 Optional VL53L1X and PMW3901 modules are not enabled by this first target.
+
+## Target adapter status
+
+The repository-owned adapter under [`target/`](target/) now supplies the two
+hardware seams the pinned OpenPilotESP32 reference does not: an MPU6050 I2C
+driver that probes `WHO_AM_I`, publishes the existing PIOS sensor queue record,
+and fails the output gate on stale data; and a four-channel LEDC backend that
+maps `0..1000` to 20 kHz duty, stages frames, and zeroes on disarm, sensor
+fault, failsafe, shutdown, or a 100 ms controller-update timeout.
+
+The `target/sources.cmake` fragment is consumed by the eventual ESP-IDF
+wrapper. It must be linked with the pinned reference ESP32 PiOS support while
+excluding the reference servo-pulse and ICM-20602 sources. This workstation
+does not have `idf.py`, so the ESP-IDF compile and all hardware behavior remain
+unverified; no firmware is flashed by these sources.
