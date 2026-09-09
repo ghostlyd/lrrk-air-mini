@@ -53,6 +53,19 @@ class BoardStartupTests(unittest.TestCase):
                 old = ("if (PIOS_TASK_MONITOR_Initialize(TASKINFO_RUNNING_NUMELEM) != 0) {\n"
                        "        board_set_boot_fault();\n        return;\n    }")
                 new = "(void)PIOS_TASK_MONITOR_Initialize(TASKINFO_RUNNING_NUMELEM);"
+            elif mutant == "double-free":
+                path = output / "pios_board.c"
+                old = "pios_free(tx_buffer);"
+                new = "pios_free(rx_buffer);"
+            elif mutant == "transferred-free":
+                path = output / "pios_board.c"
+                old = "    return result;"
+                new = "    if (result == 0) pios_free(rx_buffer);\n" + old
+            elif mutant == "repeat-status":
+                path = output / "pios_board.c"
+                old = "    if (board_init_started) {\n        return;\n    }"
+                new = ("    if (board_init_started) {\n"
+                       "        board_services_initialized = false;\n        return;\n    }")
             else:
                 raise AssertionError("unknown board mutation")
             code = path.read_text()
@@ -101,16 +114,24 @@ class BoardStartupTests(unittest.TestCase):
     def test_watchdog_previous_reset_flags_are_not_a_status_code(self):
         self.case("watchdog-flags")
 
-    def test_removing_entry_gate_or_monitor_error_check_is_rejected(self):
-        for mutant in ("entry-gate", "monitor-return"):
+    def test_behavioral_negative_controls_are_rejected(self):
+        failures = "test_reported_prerequisite_failures_stop_before_dependent_services"
+        nominal = "test_nominal_returns_start_modules_without_claiming_boot_success"
+        cases = (
+            ("entry-gate", failures, "modules == 0 && system_inits == 0"),
+            ("monitor-return", failures, "PIOS_LiteWing_BoardServicesInitialized() == nominal"),
+            ("double-free", failures, "owned[index] && !transferred"),
+            ("transferred-free", nominal, "owned[index] && !transferred"),
+            ("repeat-status", nominal, "PIOS_LiteWing_BoardServicesInitialized() == nominal"),
+        )
+        for mutant, method, assertion in cases:
             with self.subTest(mutant=mutant):
                 env = dict(os.environ, LRRK_TEST_BOARD_MUTANT=mutant)
                 result = subprocess.run([
                     sys.executable, "-m", "unittest",
-                    "test_board_startup.BoardStartupTests."
-                    "test_reported_prerequisite_failures_stop_before_dependent_services",
+                    "test_board_startup.BoardStartupTests." + method,
                 ], cwd=ROOT / "tests", env=env, capture_output=True,
                     text=True, timeout=30)
                 self.assertNotEqual(result.returncode, 0)
                 # Require the behavior assertion, not a missing/compiler error.
-                self.assertIn("modules == 0 && system_inits == 0", result.stderr)
+                self.assertIn(assertion, result.stderr)

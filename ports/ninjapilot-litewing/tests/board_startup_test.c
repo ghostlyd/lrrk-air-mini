@@ -22,6 +22,7 @@ static char trace[2048];
 static unsigned calls, later_calls, modules, system_inits, shutdown_requests;
 static unsigned critical_writes, success_writes, allocations, frees;
 static bool failed, led_ready, alarms_ready, objects_ready, hardware_started;
+static bool owned[2], transferred;
 static uint8_t rx_buffer[2048], tx_buffer[512];
 static MixerSettingsData mixer;
 static ActuatorSettingsData actuator;
@@ -46,6 +47,8 @@ extern void app_main(void);
 
 static int step(const char *name)
 {
+    /* Every board service is called while the sequence is still incomplete. */
+    if (modules == 0) CHECK(!PIOS_LiteWing_BoardServicesInitialized());
     calls++;
     if (failed) later_calls++;
     CHECK(strlen(trace) + strlen(name) + 2 < sizeof(trace));
@@ -175,15 +178,27 @@ void *pios_malloc(size_t size)
     bool rx = allocations++ == 0;
     CHECK(size == (rx ? sizeof(rx_buffer) : sizeof(tx_buffer)));
     if (step(rx ? "rx" : "tx") != 0) return NULL;
+    owned[rx ? 0 : 1] = true;
     return rx ? rx_buffer : tx_buffer;
 }
-void pios_free(void *buffer) { CHECK(buffer == rx_buffer || buffer == tx_buffer); frees++; }
+void pios_free(void *buffer)
+{
+    CHECK(buffer == rx_buffer || buffer == tx_buffer);
+    unsigned index = buffer == rx_buffer ? 0 : 1;
+    CHECK(owned[index] && !transferred);
+    owned[index] = false;
+    frees++;
+}
 int32_t PIOS_COM_Init(uint32_t *id, const struct pios_com_driver *driver, uint32_t uart,
                       uint8_t *rx, uint16_t rx_len, uint8_t *tx, uint16_t tx_len)
 {
     CHECK(driver == &pios_esp32_usart_com_driver && uart == 43);
     CHECK(rx == rx_buffer && tx == tx_buffer && rx_len == 2048 && tx_len == 512);
-    int rc = step("com"); *id = rc == 0 ? 44 : 0; return rc;
+    CHECK(owned[0] && owned[1] && !transferred);
+    int rc = step("com");
+    *id = rc == 0 ? 44 : 0;
+    transferred = rc == 0;
+    return rc;
 }
 int32_t PIOS_GCSRCVR_Init(uint32_t *id)
 { int rc = step("gcs"); *id = rc == 0 ? 45 : 0; return rc; }
@@ -209,11 +224,14 @@ int main(int argc, char **argv)
     CHECK(argc == 2);
     scenario = argv[1];
     bool nominal = strcmp(scenario, "nominal") == 0 || strcmp(scenario, "watchdog-flags") == 0;
+    CHECK(!PIOS_LiteWing_BoardServicesInitialized());
     app_main();
+    CHECK(PIOS_LiteWing_BoardServicesInitialized() == nominal);
     CHECK(success_writes == 0);
     if (nominal) {
         CHECK(!failed && shutdown_requests == 0 && modules == 1 && system_inits == 1);
         CHECK(hardware_started && critical_writes == 0);
+        CHECK(owned[0] && owned[1] && transferred && frees == 0);
         CHECK(strcmp(trace, "delay led monitor scheduler events storage manager objects identity-get identity-set settings-health inspect0 inspect1 inspect2 load0 load1 load2 marker debuglog alarms wdg uart rx tx com gcs rcvr hardware modules system heap ") == 0);
     } else {
         CHECK(failed);
@@ -232,5 +250,6 @@ int main(int argc, char **argv)
     scenario = "nominal";
     PIOS_Board_Init();
     CHECK(calls == before && shutdown_requests == shutdown_before);
+    CHECK(PIOS_LiteWing_BoardServicesInitialized() == nominal);
     return 0;
 }

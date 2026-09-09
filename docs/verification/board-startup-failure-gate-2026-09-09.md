@@ -53,8 +53,12 @@ board hardware integration.
   publishes boot success or duplicates board initialization on a second call.
 - The new tests failed against original production source (32 scenario
   failures), then passed after implementation.
-- Two disposable-source mutations remove the entry gate or ignore the task
-  monitor error. Both are rejected by the module-start assertion, also in CI.
+- Five disposable-source mutations remove the entry gate, ignore the task
+  monitor error, duplicate a free, free a transferred buffer, or corrupt the
+  repeated-call status. Each is rejected by its behavioral assertion in CI.
+  The latter three controls address review feedback: buffer ownership is now
+  tracked individually, and the completion query is checked before/during/after
+  initialization and after repetition. These refinements change tests only.
 - Full local host gates passed: **83 assistant + 168 port = 251 tests**, no
   skips, with both pinned trees, optional SDK fixture, generated objects,
   real ELF and non-executing build-graph checks supplied. Host-only CI
