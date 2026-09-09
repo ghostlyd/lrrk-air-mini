@@ -1,0 +1,45 @@
+#pragma once
+/* Host-only OS/hardware boundary; real generated objects and modules are linked. */
+#include <assert.h>
+#include <stdbool.h>
+#include <stdint.h>
+#include <stddef.h>
+#include <stdlib.h>
+#include <string.h>
+#include <math.h>
+typedef void *xTaskHandle;
+typedef void *xQueueHandle;
+typedef uint32_t portTickType;
+#define PIOS_EXCLUDE_ADVANCED_FEATURES
+#define PIOS_STATIC_ASSERT(x) assert(x)
+#define PIOS_Assert assert
+#define MODULE_INITCALL(a, b)
+#define NELEMENTS(a) (sizeof(a) / sizeof((a)[0]))
+#define tskIDLE_PRIORITY 0
+#define portTICK_RATE_MS 1
+#define pdTRUE 1
+#define PIOS_SERVO_BANK_MODE_PWM 0
+#define PIOS_SERVO_BANK_MODE_SINGLE_PULSE 1
+enum { PIOS_RCVR_TIMEOUT = -1, PIOS_RCVR_INVALID = -2, PIOS_RCVR_NODRIVER = -3 };
+void xTaskCreate(void (*)(void *), const char *, unsigned, void *, unsigned, xTaskHandle *);
+void PIOS_TASK_MONITOR_RegisterTask(unsigned, xTaskHandle);
+portTickType xTaskGetTickCount(void);
+void vTaskDelayUntil(portTickType *, portTickType);
+xQueueHandle xQueueCreate(unsigned, unsigned);
+int xQueueReceive(xQueueHandle, void *, unsigned);
+int32_t PIOS_RCVR_Read(uint32_t, uint8_t);
+void PIOS_Servo_Update(void);
+void PIOS_Servo_Set(uint8_t, uint16_t);
+void PIOS_Servo_SetBankMode(uint8_t, int);
+void PIOS_Servo_SetHz(const uint16_t *, const uint32_t *, uint8_t);
+uint8_t PIOS_Servo_GetPinBank(uint8_t);
+#include <uavobjectmanager.h>
+#include <alarms.h>
+#ifdef __clang__
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wimplicit-const-int-float-conversion"
+#endif
+#include <mathmisc.h>
+#ifdef __clang__
+#pragma clang diagnostic pop
+#endif

@@ -82,3 +82,12 @@ jobs:
         run: |
           LRRK_TEST_FLIGHT_ROOT="$RUNNER_TEMP/litewing-external/NinjaPilot" \
             python3 -m unittest discover -s ports/ninjapilot-litewing/tests -p 'test_gcs_*.py' -v
+      - name: Generate real flight objects for control-consumer integration tests
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends qtbase5-dev qt5-qmake
+          make -C "$RUNNER_TEMP/litewing-external/NinjaPilot" -j2 uavobjects_flight
+      - name: Test full control tasks with generated UAVObjects
+        run: |
+          LRRK_TEST_FLIGHT_ROOT="$RUNNER_TEMP/litewing-external/NinjaPilot" \
+            python3 -m unittest discover -s ports/ninjapilot-litewing/tests -p 'test_thrust_*.py' -v

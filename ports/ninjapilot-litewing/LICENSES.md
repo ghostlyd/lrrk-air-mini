@@ -37,6 +37,12 @@ anchors reject unreviewed inputs. The adaptation adds a local packet-completion
 timestamp and passes it to the target receiver. It does not relicense UAVTalk
 or edit the external checkout.
 
+`target/include/litewing_thrust_control.h` is GPL-3.0-or-later.
+`prepare_control.py` generates hash-checked copies of the pinned Receiver and
+Actuator translation units, retaining their OpenPilot GPL notices. They use a
+checked byte read followed by validated enum conversion and fault handling.
+The originals in the external checkout are not modified.
+
 The KiCad and BOM evidence under `hardware/LieWingV2.6.C/` remains upstream
 hardware attribution. This directory records the evidence used for the target
 contract; it does not certify a physical board revision or fitted motor SKU.

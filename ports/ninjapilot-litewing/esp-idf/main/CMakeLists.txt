@@ -129,6 +129,17 @@ set(LIB_SRCS
 # Rate-mode first bring-up: Attitude is the standalone complementary filter;
 # navigation, Remote ID, Wi-Fi, and autonomous modules are intentionally not
 # compiled into this first hardware target.
+set(LITEWING_CONTROL_DIR "${CMAKE_CURRENT_BINARY_DIR}/litewing_control")
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+    "${PORT_ROOT}/prepare_control.py"
+    "${FLIGHT}/modules/Receiver/receiver.c"
+    "${FLIGHT}/modules/Actuator/actuator.c")
+execute_process(COMMAND python3 "${PORT_ROOT}/prepare_control.py"
+    --source "${FLIGHT}/modules" --output "${LITEWING_CONTROL_DIR}"
+    RESULT_VARIABLE LITEWING_CONTROL_RC)
+if(NOT LITEWING_CONTROL_RC EQUAL 0)
+    message(FATAL_ERROR "Pinned control consumer adaptation failed")
+endif()
 set(NINJA_MODULE_SRCS
     "${FLIGHT}/modules/Attitude/attitude.c"
     "${FLIGHT}/modules/Stabilization/stabilization.c"
@@ -137,8 +148,8 @@ set(NINJA_MODULE_SRCS
     "${FLIGHT}/modules/Stabilization/cruisecontrol.c"
     "${FLIGHT}/modules/Stabilization/virtualflybar.c"
     "${FLIGHT}/modules/Stabilization/relay_tuning.c"
-    "${FLIGHT}/modules/Actuator/actuator.c"
-    "${FLIGHT}/modules/Receiver/receiver.c"
+    "${LITEWING_CONTROL_DIR}/actuator.c"
+    "${LITEWING_CONTROL_DIR}/receiver.c"
     "${FLIGHT}/modules/ManualControl/manualcontrol.c"
     "${FLIGHT}/modules/ManualControl/armhandler.c"
     "${FLIGHT}/modules/ManualControl/manualhandler.c"
