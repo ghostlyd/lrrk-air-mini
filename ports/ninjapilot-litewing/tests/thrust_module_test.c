@@ -31,9 +31,24 @@ static const char *scenario;
 static bool deny_publication, shutdown_latched;
 static uint16_t first_recovery_output;
 static bool powered_recovery;
+#ifdef TEST_STARTUP
+static bool startup_observing;
+static unsigned startup_output_write_mask;
+#endif
 static SystemAlarmsAlarmOptions alarms[SYSTEMALARMS_ALARM_NUMELEM];
 static uint16_t hardware_output[ACTUATORCOMMAND_CHANNEL_NUMELEM];
 uint32_t pios_rcvr_group_map[8] = { 1, 1, 1, 1, 1, 1, 1, 1 };
+
+static void observe_publication(struct object *obj) {
+#ifdef TEST_STARTUP
+    if (startup_observing && obj->id == ACTUATORCOMMAND_OBJID) {
+        ActuatorCommandData actual; memcpy(&actual, obj->data, sizeof(actual));
+        for (int i = 0; i < 4; ++i) assert(actual.Channel[i] == 0);
+    }
+#else
+    (void)obj;
+#endif
+}
 
 UAVObjHandle UAVObjGetByID(uint32_t id) {
     for (unsigned i = 0; i < object_count; ++i) if (objects[i].id == id) return &objects[i];
@@ -52,7 +67,7 @@ int32_t UAVObjGetData(UAVObjHandle h, void *out) {
 int32_t UAVObjSetData(UAVObjHandle h, const void *in) {
     assert(h); struct object *obj = h;
     if (deny_publication && obj->id == MANUALCONTROLCOMMAND_OBJID) return -1;
-    memcpy(obj->data, in, obj->size); return 0;
+    memcpy(obj->data, in, obj->size); observe_publication(obj); return 0;
 }
 int32_t UAVObjGetDataField(UAVObjHandle h, void *out, uint32_t offset, uint32_t size) {
     if (!h) return -1;
@@ -68,7 +83,7 @@ int32_t UAVObjGetDataField(UAVObjHandle h, void *out, uint32_t offset, uint32_t 
 }
 int32_t UAVObjSetDataField(UAVObjHandle h, const void *in, uint32_t offset, uint32_t size) {
     assert(h); struct object *obj = h; assert(offset + size <= obj->size);
-    memcpy(obj->data + offset, in, size); return 0;
+    memcpy(obj->data + offset, in, size); observe_publication(obj); return 0;
 }
 int32_t UAVObjGetInstanceData(UAVObjHandle h, uint16_t instance, void *out) { return UAVObjGetData(h, out); }
 int32_t UAVObjSetInstanceData(UAVObjHandle h, uint16_t instance, const void *in) { return UAVObjSetData(h, in); }
@@ -80,15 +95,39 @@ int8_t UAVObjReadOnly(UAVObjHandle h) { return deny_publication && ((struct obje
 int32_t UAVObjConnectCallback(UAVObjHandle h, UAVObjEventCallback cb, uint8_t mask) { return 0; }
 int32_t UAVObjConnectQueue(UAVObjHandle h, xQueueHandle q, uint8_t mask) { return 0; }
 FrameType_t GetCurrentFrameType(void) { return FRAME_TYPE_MULTIROTOR; }
+#ifndef TEST_STARTUP
 int32_t AlarmsSet(SystemAlarmsAlarmElem a, SystemAlarmsAlarmOptions s) { alarms[a] = s; return 0; }
 int32_t AlarmsClear(SystemAlarmsAlarmElem a) { alarms[a] = SYSTEMALARMS_ALARM_OK; return 0; }
 SystemAlarmsAlarmOptions AlarmsGet(SystemAlarmsAlarmElem a) { return alarms[a]; }
+#else
+static int alarm_mutex;
+static unsigned alarm_lock_depth;
+xSemaphoreHandle xSemaphoreCreateRecursiveMutex(void) { return &alarm_mutex; }
+void xSemaphoreTakeRecursive(xSemaphoreHandle mutex, uint32_t timeout) {
+    assert(mutex == &alarm_mutex && timeout == UINT32_MAX); ++alarm_lock_depth;
+}
+void xSemaphoreGiveRecursive(xSemaphoreHandle mutex) {
+    assert(mutex == &alarm_mutex && alarm_lock_depth > 0); --alarm_lock_depth;
+}
+#endif
 void xTaskCreate(void (*f)(void *), const char *name, unsigned size, void *p, unsigned priority, xTaskHandle *h) {}
 void PIOS_TASK_MONITOR_RegisterTask(unsigned id, xTaskHandle h) {}
 portTickType xTaskGetTickCount(void) { return ticks; }
 static void next_iteration(void) {
     if (++iterations > iteration_limit) longjmp(stop_task, 1);
     ticks += 20;
+#ifdef TEST_STARTUP
+    /* Observe real task side effects BEFORE supplying the next queue result.
+     * The script clock is deterministic; it is not an RTOS timing simulation. */
+    if (iterations == 1) {
+        assert(startup_output_write_mask == 15);
+        assert(AlarmsGet(SYSTEMALARMS_ALARM_ACTUATOR) == SYSTEMALARMS_ALARM_CRITICAL);
+        ActuatorCommandData actual; ActuatorCommandGet(&actual);
+        for (int i = 0; i < 4; ++i) assert(actual.Channel[i] == 0 && hardware_output[i] == 0);
+    }
+    if (iterations == 61 && strcmp(scenario, "startup-absent") != 0)
+        assert(AlarmsGet(SYSTEMALARMS_ALARM_ACTUATOR) == SYSTEMALARMS_ALARM_OK);
+#endif
     if (iterations == 1 && strcmp(scenario, "failed-publication") == 0) {
         deny_publication = true; fail_thrust_read = 1;
     }
@@ -110,7 +149,14 @@ static void next_iteration(void) {
 }
 void vTaskDelayUntil(portTickType *t, portTickType period) { next_iteration(); *t = ticks; }
 xQueueHandle xQueueCreate(unsigned n, unsigned size) { return (void *)1; }
-int xQueueReceive(xQueueHandle q, void *ev, unsigned timeout) { next_iteration(); return pdTRUE; }
+int xQueueReceive(xQueueHandle q, void *ev, unsigned timeout) {
+    next_iteration();
+#ifdef TEST_STARTUP
+    if (strcmp(scenario, "startup-absent") == 0 || iterations <= 5 ||
+        (strcmp(scenario, "startup-relapse") == 0 && iterations >= 66)) return 0;
+#endif
+    return pdTRUE;
+}
 int32_t PIOS_RCVR_Read(uint32_t id, uint8_t channel) {
     if (channel == 1) return 1600;
     if (channel == 6) return 1700;
@@ -119,6 +165,12 @@ int32_t PIOS_RCVR_Read(uint32_t id, uint8_t channel) {
 void PIOS_Servo_Update(void) {}
 void PIOS_Servo_Set(uint8_t channel, uint16_t value) {
     assert(channel < ACTUATORCOMMAND_CHANNEL_NUMELEM);
+#ifdef TEST_STARTUP
+    if (startup_observing && channel < 4) {
+        assert(value == 0);
+        startup_output_write_mask |= 1u << channel;
+    }
+#endif
     hardware_output[channel] = shutdown_latched ? 0 : value;
     if (channel == 0 && iterations == 15) first_recovery_output = hardware_output[0];
 }
@@ -200,9 +252,52 @@ int main(int argc, char **argv) {
     ms.Mixer1Type = ms.Mixer2Type = MIXERSETTINGS_MIXER1TYPE_MOTOR;
     ms.Mixer1Vector.ThrottleCurve1 = ms.Mixer2Vector.ThrottleCurve1 = 64;
     MixerSettingsSet(&ms);
+#ifdef TEST_STARTUP
+    assert(AlarmsInitialize() == 0);
+    assert(AlarmsGet(SYSTEMALARMS_ALARM_BOOTFAULT) == SYSTEMALARMS_ALARM_UNINITIALISED);
+    if (strcmp(scenario, "alarm-grace") == 0) {
+        ticks = 2000;
+        AlarmsSet(SYSTEMALARMS_ALARM_ACTUATOR, SYSTEMALARMS_ALARM_CRITICAL);
+        ticks = 3000; AlarmsClear(SYSTEMALARMS_ALARM_ACTUATOR);
+        assert(AlarmsGet(SYSTEMALARMS_ALARM_ACTUATOR) == SYSTEMALARMS_ALARM_CRITICAL);
+        ticks = 3001; AlarmsClear(SYSTEMALARMS_ALARM_ACTUATOR);
+        assert(AlarmsGet(SYSTEMALARMS_ALARM_ACTUATOR) == SYSTEMALARMS_ALARM_OK);
+        /* A new failure escalates immediately, including during grace. */
+        AlarmsSet(SYSTEMALARMS_ALARM_ACTUATOR, SYSTEMALARMS_ALARM_CRITICAL);
+        assert(AlarmsGet(SYSTEMALARMS_ALARM_ACTUATOR) == SYSTEMALARMS_ALARM_CRITICAL);
+        assert(alarm_lock_depth == 0);
+        return 0;
+    }
+    fs.Armed = FLIGHTSTATUS_ARMED_DISARMED; FlightStatusSet(&fs);
+    desired.Thrust = -1; ActuatorDesiredSet(&desired);
+    command.Throttle = command.Thrust = -1; ManualControlCommandSet(&command);
+#endif
     SettingsUpdatedCb(NULL); MixerSettingsUpdatedCb(NULL); ActuatorSettingsUpdatedCb(NULL);
     iteration_limit = 20; /* Allow existing throttle slew limiter to settle. */
+#ifdef TEST_STARTUP
+    iteration_limit = 70;
+    /* Seed nonzero sentinel state before the task, proving explicit clearing
+     * rather than merely observing a zero-initialized fixture. */
+    ActuatorCommandData initial; ActuatorCommandGet(&initial);
+    for (int i = 0; i < 4; ++i) {
+        initial.Channel[i] = 777;
+        hardware_output[i] = 777;
+    }
+    ActuatorCommandSet(&initial);
+    startup_observing = true;
+#endif
     if (!setjmp(stop_task)) actuatorTask(NULL);
+#ifdef TEST_STARTUP
+    ActuatorCommandData actual; ActuatorCommandGet(&actual);
+    for (int i = 0; i < 4; ++i) assert(actual.Channel[i] == 0 && hardware_output[i] == 0);
+    SystemAlarmsAlarmOptions want = strcmp(scenario, "startup-recovery") == 0 ?
+        SYSTEMALARMS_ALARM_OK : SYSTEMALARMS_ALARM_CRITICAL;
+    assert(AlarmsGet(SYSTEMALARMS_ALARM_ACTUATOR) == want);
+    assert(AlarmsGet(SYSTEMALARMS_ALARM_BOOTFAULT) == SYSTEMALARMS_ALARM_UNINITIALISED);
+    assert(alarm_lock_depth == 0);
+    fprintf(stderr, "startup scenario=%s final_actuator_alarm=%u outputs_zero=1 boot_uninitialised=1\n", scenario, want);
+    return 0;
+#endif
     if (powered_recovery) {
         int limit = strcmp(scenario, "filtered-recovery") == 0 ? 2 :
             strcmp(scenario, "feedforward-recovery") == 0 ? 60 : 30;

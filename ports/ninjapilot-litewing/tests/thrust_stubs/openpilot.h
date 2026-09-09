@@ -9,6 +9,7 @@
 #include <math.h>
 typedef void *xTaskHandle;
 typedef void *xQueueHandle;
+typedef void *xSemaphoreHandle;
 typedef uint32_t portTickType;
 #define PIOS_EXCLUDE_ADVANCED_FEATURES
 #define PIOS_STATIC_ASSERT(x) assert(x)
@@ -18,6 +19,7 @@ typedef uint32_t portTickType;
 #define tskIDLE_PRIORITY 0
 #define portTICK_RATE_MS 1
 #define pdTRUE 1
+#define portMAX_DELAY UINT32_MAX
 #define PIOS_SERVO_BANK_MODE_PWM 0
 #define PIOS_SERVO_BANK_MODE_SINGLE_PULSE 1
 enum { PIOS_RCVR_TIMEOUT = -1, PIOS_RCVR_INVALID = -2, PIOS_RCVR_NODRIVER = -3 };
@@ -27,6 +29,9 @@ portTickType xTaskGetTickCount(void);
 void vTaskDelayUntil(portTickType *, portTickType);
 xQueueHandle xQueueCreate(unsigned, unsigned);
 int xQueueReceive(xQueueHandle, void *, unsigned);
+xSemaphoreHandle xSemaphoreCreateRecursiveMutex(void);
+void xSemaphoreTakeRecursive(xSemaphoreHandle, uint32_t);
+void xSemaphoreGiveRecursive(xSemaphoreHandle);
 int32_t PIOS_RCVR_Read(uint32_t, uint8_t);
 void PIOS_Servo_Update(void);
 void PIOS_Servo_Set(uint8_t, uint16_t);
