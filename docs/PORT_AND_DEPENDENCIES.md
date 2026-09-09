@@ -45,6 +45,11 @@ board is identified otherwise.
 
 ### Board-level components evidenced by the V2.6 BOM
 
+Purchase decisions must also use [parts selection and purchase gates](PARTS_SELECTION.md).
+In particular, the published battery guide's 2.0 mm connector conflicts with
+the 2.50 mm J2 specified by this revision's BOM; neither identifies the fitted
+connector until the physical board is checked.
+
 | Function | Part or assembly evidence | Designator / source |
 | --- | --- | --- |
 | MCU and Wi-Fi | ESP32-S3-WROOM-1 | U8 in `production/bom.csv` |
