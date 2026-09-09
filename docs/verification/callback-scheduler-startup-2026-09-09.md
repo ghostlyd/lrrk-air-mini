@@ -115,7 +115,25 @@ production warning suppression was added.
 
 The application fits the existing 1 MiB partition. These artifacts are **not
 installed**; no application, bootloader, partition, NVS or eFuse bytes changed
-on the device. Review and remote CI are pending at this report's first revision.
+on the device. Later documentation-only commits do not rebuild these artifacts.
+
+## Review and integration
+
+Independent review of `830e7c1` through `e42b532`, plus documentation `228f224`,
+found no Critical or Important findings and independently passed all 15 focused
+tests, including the generated graph check. The full-suite/build/artifact
+observations above are parent-executed, not independently repeated by that review.
+GitHub checks are recorded on [PR 37](https://github.com/ghostlyd/lrrk-air-mini/pull/37);
+merge requires their acceptance and does not establish physical readiness.
+
+One nonblocking Minor finding remains within issue 27: the new System failure
+path deletes its task without retiring System's own monitor slot. The selected
+configuration has no surviving consumer enumerating that slot after System
+stops, but its handle becomes stale. The System fixture does not model that
+slot's lifetime. Correcting this must coordinate task creation, registration
+and self-deletion: System may run before its creator registers it, so merely
+adding an unregister call is insufficient. This is explicitly deferred to the
+System/module startup lifecycle slice, not counted as completed validation.
 
 ## Remaining readiness gates
 
