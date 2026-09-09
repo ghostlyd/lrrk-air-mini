@@ -48,6 +48,10 @@ checks System-owned initialization resources, removes its creator/monitor race,
 and propagates synchronous System errors to the actual entry point. Required
 module internals and the complete boot/physical gates still need validation.
 
+The [Actuator lifecycle correction](../../docs/verification/actuator-startup-lifecycle-2026-09-09.md)
+checks its object/subscription/queue/task startup and worker monitor registration.
+It is source/build-only; installed firmware remains Always Disarmed.
+
 The [checked module startup correction](../../docs/verification/checked-module-startup-2026-09-09.md)
 consumes reported module errors and checks ManualControl's required objects and
 scheduler allocation through the actual entry point. Other module internals and

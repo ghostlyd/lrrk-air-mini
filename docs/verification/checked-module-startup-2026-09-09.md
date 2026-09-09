@@ -111,6 +111,9 @@ candidate for this correction. Neither revision has been installed.
 Required module internals still need checked object/queue/task/connection and
 watchdog results, particularly Actuator, Attitude, Receiver, Stabilization and
 Telemetry. ManualControl's start-time connections and dispatch remain unchecked.
+The subsequent [Actuator lifecycle correction](actuator-startup-lifecycle-2026-09-09.md)
+addresses its selected-configuration startup resources and monitor failure path;
+it does not establish complete board or flight readiness.
 Board COM/registration/debug-log/watchdog internals, existing System reset and
 later connection/read branches, and runtime sample validity remain open.
 

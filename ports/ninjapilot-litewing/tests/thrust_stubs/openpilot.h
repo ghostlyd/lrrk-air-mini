@@ -11,7 +11,12 @@ typedef void *xTaskHandle;
 typedef void *xQueueHandle;
 typedef void *xSemaphoreHandle;
 typedef uint32_t portTickType;
+#ifndef TEST_ACTUATOR_LIFECYCLE
 #define PIOS_EXCLUDE_ADVANCED_FEATURES
+#else
+#define PIOS_INCLUDE_WDG
+#define PIOS_WDG_ACTUATOR 2
+#endif
 #define PIOS_STATIC_ASSERT(x) assert(x)
 #define PIOS_Assert assert
 #define MODULE_INITCALL(a, b)
@@ -19,12 +24,18 @@ typedef uint32_t portTickType;
 #define tskIDLE_PRIORITY 0
 #define portTICK_RATE_MS 1
 #define pdTRUE 1
+#define pdPASS 1
 #define portMAX_DELAY UINT32_MAX
 #define PIOS_SERVO_BANK_MODE_PWM 0
 #define PIOS_SERVO_BANK_MODE_SINGLE_PULSE 1
 enum { PIOS_RCVR_TIMEOUT = -1, PIOS_RCVR_INVALID = -2, PIOS_RCVR_NODRIVER = -3 };
-void xTaskCreate(void (*)(void *), const char *, unsigned, void *, unsigned, xTaskHandle *);
-void PIOS_TASK_MONITOR_RegisterTask(unsigned, xTaskHandle);
+int xTaskCreate(void (*)(void *), const char *, unsigned, void *, unsigned, xTaskHandle *);
+int32_t PIOS_TASK_MONITOR_RegisterTask(uint16_t, xTaskHandle);
+xTaskHandle xTaskGetCurrentTaskHandle(void);
+void vTaskDelete(xTaskHandle);
+void vQueueDelete(xQueueHandle);
+bool PIOS_WDG_RegisterFlag(uint16_t);
+bool PIOS_WDG_UpdateFlag(uint16_t);
 portTickType xTaskGetTickCount(void);
 void vTaskDelayUntil(portTickType *, portTickType);
 xQueueHandle xQueueCreate(unsigned, unsigned);

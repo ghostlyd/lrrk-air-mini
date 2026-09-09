@@ -110,8 +110,11 @@ void xSemaphoreGiveRecursive(xSemaphoreHandle mutex) {
     assert(mutex == &alarm_mutex && alarm_lock_depth > 0); --alarm_lock_depth;
 }
 #endif
-void xTaskCreate(void (*f)(void *), const char *name, unsigned size, void *p, unsigned priority, xTaskHandle *h) {}
-void PIOS_TASK_MONITOR_RegisterTask(unsigned id, xTaskHandle h) {}
+int xTaskCreate(void (*f)(void *), const char *name, unsigned size, void *p, unsigned priority, xTaskHandle *h) { return pdPASS; }
+int32_t PIOS_TASK_MONITOR_RegisterTask(uint16_t id, xTaskHandle h) { return 0; }
+xTaskHandle xTaskGetCurrentTaskHandle(void) { return (void *)1; }
+void vTaskDelete(xTaskHandle h) { assert(!"unexpected task deletion"); }
+void vQueueDelete(xQueueHandle h) { assert(!"unexpected queue deletion"); }
 portTickType xTaskGetTickCount(void) { return ticks; }
 static void next_iteration(void) {
     if (++iterations > iteration_limit) longjmp(stop_task, 1);
