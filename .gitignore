@@ -1,0 +1,27 @@
+# Local credentials and environment files. Keep examples explicitly trackable.
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+
+# Local NinjaPilot checkouts, downloaded patches, and verification markers.
+.lrrk-litewing-patches/
+.lrrk-litewing-patch-marker
+ports/ninjapilot-litewing/.cache/
+ports/ninjapilot-litewing/.venv/
+
+# Python caches and test artifacts.
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.coverage
+htmlcov/
+*.egg-info/
+
+# ESP-IDF generated output.
+build/
+managed_components/
+sdkconfig.old

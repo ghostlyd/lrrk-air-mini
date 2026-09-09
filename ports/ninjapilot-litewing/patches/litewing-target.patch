@@ -1,0 +1,46 @@
+diff --git a/flight/targets/boards/litewing/LITEWING_CONTRACT.md b/flight/targets/boards/litewing/LITEWING_CONTRACT.md
+new file mode 100644
+index 0000000..9f8db55
+--- /dev/null
++++ b/flight/targets/boards/litewing/LITEWING_CONTRACT.md
+@@ -0,0 +1,40 @@
++# LiteWing V2.6.C target contract
++
++This file is added by the `lrrk-air-mini` LiteWing adapter. It is a source
++contract for the first ESP32-S3 target implementation; it does not claim that
++the target is flashable or hardware validated.
++
++## Board identity
++
++- Board type: `0x13`
++- Board revision: `0x02`
++- MCU: ESP32-S3-WROOM-1
++- Recovery firmware: the existing upstream LiteWing ESP-Drone image
++
++## Required peripherals
++
++| Function | Pin or interface |
++| --- | --- |
++| MPU6050 SDA | I2C0 GPIO11 |
++| MPU6050 SCL | I2C0 GPIO10 |
++| MPU6050 data ready | GPIO12 |
++| Motor 1 | GPIO5 |
++| Motor 2 | GPIO6 |
++| Motor 3 | GPIO3 |
++| Motor 4 | GPIO4 |
++| Battery sense | ADC GPIO2 |
++| UART0/USB bridge | CH340K |
++
++The sensor path must probe the MPU6050 identity before publishing data. A
++missing or stale IMU is an arming-blocking fault.
++
++## Brushed output contract
++
++The board drives four brushed motors through low-side MOSFETs. Actuator values
++are clamped to `0..1000` and mapped to deterministic 20 kHz duty. Zero is the
++safe value. Initialization, disarm, failsafe, sensor fault, transport loss,
++and shutdown must write zero to all four channels. There is no ESC calibration
++or 1000-2000 microsecond servo-pulse path.
++
++Quad-X corner order is provisional until a human verifies the physical motor
++corners and IMU frame with props removed.
