@@ -63,8 +63,13 @@ class EvidenceTests(unittest.TestCase):
     def start(self):
         e=contract.Evidence(0.)
         self.fill(e, 0.)
-        self.assertTrue(e.next_input(0.))
+        self.assertTrue(self.step(e,0.))
         return e
+
+    def step(self,e,now):
+        due=e.next_input(now)
+        if due:e.begin_input(now)
+        return due
 
     def test_no_input_before_complete_preflight(self):
         e=contract.Evidence(0.)
@@ -123,15 +128,15 @@ class EvidenceTests(unittest.TestCase):
 
     def test_missed_input_interval_aborts_without_catchup(self):
         e=self.start()
-        self.assertFalse(e.next_input(.039))
-        self.assertTrue(e.next_input(.04))
-        with self.assertRaises(contract.ProbeFailure):e.next_input(.12)
+        self.assertFalse(self.step(e,.039))
+        self.assertTrue(self.step(e,.04))
+        with self.assertRaises(contract.ProbeFailure):self.step(e,.12)
 
     def test_missing_connection_never_passes_phase(self):
         e=self.start()
         with self.assertRaises(contract.ProbeFailure):
             for i in range(1,40):
-                now=i*.04; self.fill(e,now);e.next_input(now)
+                now=i*.04; self.fill(e,now);self.step(e,now)
 
     def test_early_matches_do_not_accept_a_phase_that_ends_disconnected(self):
         e=self.start()
@@ -139,7 +144,7 @@ class EvidenceTests(unittest.TestCase):
             for i in range(1,31):
                 now=i*.04
                 self.fill(e,now,connected=i<=3)
-                e.next_input(now)
+                self.step(e,now)
 
     def test_four_real_observed_phases_required_for_pass(self):
         e=self.start(); sent=[0.]
@@ -149,7 +154,7 @@ class EvidenceTests(unittest.TestCase):
             # implementation's packet/payload builders.
             connected=e.phase in ('input1','input2')
             self.fill(e,now,connected)
-            if e.next_input(now):sent.append(now)
+            if self.step(e,now):sent.append(now)
             if e.done:break
         self.assertTrue(e.done)
         result=e.result(now)
@@ -161,11 +166,11 @@ class EvidenceTests(unittest.TestCase):
     def test_early_timeout_matches_do_not_accept_silence_ending_connected(self):
         e=self.start()
         for i in range(1,31):
-            now=i*.04;self.fill(e,now,True);e.next_input(now)
+            now=i*.04;self.fill(e,now,True);self.step(e,now)
         self.assertEqual(e.phase,'silence1')
         with self.assertRaises(contract.ProbeFailure):
             for i in range(31,61):
-                now=i*.04;self.fill(e,now,connected=i>33);e.next_input(now)
+                now=i*.04;self.fill(e,now,connected=i>33);self.step(e,now)
 
 
 class ProtocolTests(unittest.TestCase):
@@ -251,7 +256,7 @@ class ProtocolTests(unittest.TestCase):
 
     def trial(self, short_write=False, corrupt=False, stall=False,
               capture_delay=0., final_delay=0., write_delay=0., trailing=False,
-              cli_directory=None, close_failure=False, close_delay=0.):
+              cli_directory=None, close_failure=False, close_delay=0., decision_delay=0.):
         clock=type('Clock',(),{'now':0.,'__call__':lambda self:self.now})()
         wire=self.wire;codec=self.codec;db=self.db
         class Port:
@@ -290,7 +295,17 @@ class ProtocolTests(unittest.TestCase):
                 if data and clock.now>=4.7:clock.now+=final_delay
                 return super().write(data)
         if cli_directory is None:
-            result=probe.run_trial(wire,link,Capture(),clock,sleep)
+            original_next=probe.Evidence.next_input
+            decisions=0
+            def delayed_decision(e,now):
+                nonlocal decisions
+                decision=original_next(e,now)
+                if decision:
+                    decisions+=1
+                    if decisions==2:clock.now+=decision_delay
+                return decision
+            with patch.object(probe.Evidence,'next_input',delayed_decision):
+                result=probe.run_trial(wire,link,Capture(),clock,sleep)
         else:
             original_fdopen=os.fdopen
             original_trial=probe.run_trial
@@ -357,6 +372,24 @@ class ProtocolTests(unittest.TestCase):
         result,port=self.trial(close_delay=22.)
         self.assertEqual(result['status'],'FAIL')
         self.assertTrue(port.closed)
+
+    def test_port_close_delay_cannot_pass_stale_final_observations(self):
+        result,port=self.trial(close_delay=.8)
+        self.assertEqual(result['status'],'FAIL')
+        self.assertIn('stale',result['failure'])
+        self.assertTrue(port.closed)
+
+    def test_overdue_input_decision_is_rejected_before_actual_write(self):
+        result,port=self.trial(decision_delay=.05)
+        self.assertEqual(result['status'],'FAIL')
+        self.assertEqual([at for at,p in port.writes if p==self.wire.neutral],[0.])
+        self.assertTrue(port.closed)
+
+    def test_short_decision_delay_does_not_create_catchup_burst(self):
+        result,port=self.trial(decision_delay=.02)
+        self.assertEqual(result['status'],'PASS_DISARMED_RECEIVER_OBSERVATIONS_ONLY')
+        times=[at for at,p in port.writes if p==self.wire.neutral]
+        self.assertTrue(all(b-a>=.04-1e-9 for a,b in zip(times,times[1:])))
 
     def test_initial_clock_failure_still_closes_owned_port(self):
         class Port:

@@ -17,7 +17,8 @@ class Evidence:
     """One bounded four-phase trial; any failure is permanent for this instance.
 
     Times are host monotonic receipt times, not firmware measurement times.
-    next_input consumes a send opportunity; the caller must abort on write error.
+    next_input proposes an opportunity. begin_input revalidates and records
+    the host transmit boundary; the caller must abort on any write error.
     """
     def __init__(self, now):
         if not math.isfinite(now):
@@ -171,10 +172,18 @@ class Evidence:
             self.phase, self.phase_started = PHASES[index], now
             self.phase_matches, self.last_send = 0, None
         if self.phase.startswith('input') and (self.last_send is None or now-self.last_send >= .04-1e-9):
-            self.last_send = now
-            self.sent += 1
             return True
         return False
+
+    def begin_input(self, now):
+        self.check(now)
+        self.require(not self.done and self.phase.startswith('input') and
+                     now-self.phase_started < 1.2-1e-9, 'input phase ended before transmission')
+        if self.last_send is not None:
+            self.require(.04-1e-9 <= now-self.last_send < .08-1e-9,
+                         'neutral transmission cadence missed or catch-up attempted')
+        self.last_send = now
+        self.sent += 1
 
     def result(self, now):
         self.check(now)

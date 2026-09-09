@@ -46,5 +46,9 @@ Initial independent review required six corrections: I/O ageing/deadlines,
 verified-byte execution/parsing, consecutive phase endpoint matches, final
 framing validation, capture-before-report finalization, and raw settings-byte
 immutability. All have host regressions observed failing before correction.
-The focused suite now has34 tests, including port-close deadline and initial
-clock-failure cleanup. Re-review and physical acceptance are still pending.
+The next review closed those six, but reproduced an overdue/catch-up write
+between scheduling decision and transmission, plus missing post-close freshness
+validation. Transmission-boundary cadence accounting and post-close freshness
+checks now have failing-first regressions too. The focused suite has37 tests,
+including port-close deadline and initial clock-failure cleanup. Re-review and
+physical acceptance are still pending.

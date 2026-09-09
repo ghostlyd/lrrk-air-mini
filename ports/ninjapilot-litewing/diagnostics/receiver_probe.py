@@ -197,6 +197,8 @@ def run_trial(wire, link, capture, clock=time.monotonic, sleep=time.sleep):
         now = bounded_now()
         if evidence.phase != 'preflight':
             evidence.check(now)
+        if allow_neutral:
+            evidence.begin_input(now)
         link.send(packet, allow_neutral=allow_neutral)
         now = bounded_now()
         if evidence.phase != 'preflight':
@@ -256,7 +258,9 @@ def run_trial(wire, link, capture, clock=time.monotonic, sleep=time.sleep):
     finally:
         link.port.close()
     try:
-        bounded_now()
+        now = bounded_now()
+        if result['status'] == 'PASS_DISARMED_RECEIVER_OBSERVATIONS_ONLY':
+            evidence.check(now)
     except (Exception,KeyboardInterrupt) as exc:
         result.update({'status':'FAIL','failure':type(exc).__name__+': '+str(exc),'flight_ready':False})
     result.update({'capture_bytes':total, 'capture_sha256':digest.hexdigest(),

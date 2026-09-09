@@ -49,8 +49,13 @@ timeout values. The four phases are input1/silence1/input2/silence2, each1.2s.
 Each phase must end with at least three consecutive matching receiver samples;
 early matches followed by contrary state cannot satisfy acceptance. Selected
 settings are compared as complete raw payload bytes, not just decoded values.
-Input opportunities occur every40ms; >=80ms between scheduled inputs aborts
-without a catch-up burst. Critical/Error alarms block input. Existing
+Input opportunities occur every40ms; >=80ms since the previous host write attempt aborts
+without a catch-up burst. Cadence is revalidated and recorded immediately before
+the host write attempt, not at the earlier scheduling decision. A delayed
+decision cannot authorize an overdue packet or a compressed catch-up interval;
+`neutral_packets` counts attempted writes, not electrically timed delivery.
+Host scheduling can still delay the OS call after its final check: this is not
+a realtime/electrical guarantee. Critical/Error alarms block input. Existing
 BootFault Uninitialised and unused-sensor Uninitialised states are tolerated
 only for this Always Disarmed, battery-absent trial. They are not cleared or
 interpreted as flight readiness.
