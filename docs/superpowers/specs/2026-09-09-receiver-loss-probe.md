@@ -34,6 +34,14 @@ before physical use. Existing firmware and the receive-only AI API are unchanged
 - Require >=3 consecutive connected neutral-command observations ending each input phase
   and >=3 consecutive disconnected timeout/failsafe observations ending each silence phase.
   Phase evidence must be received after phase entry; preflight cannot count.
+- After the four phases, finish only an already-pending frame within250ms and
+  the unchanged21s total trial deadline. Read no farther than its boundary;
+  complete partial length headers before requesting the remaining bytes.
+  No packets at all may be transmitted during completion, including ACKs.
+  Preserve all CRC/schema/settings/safety/freshness checks and require final
+  disconnected timeout receiver state. Late, absent, malformed or unsafe tail
+  data fail. Report additional bytes and host-relative completion times. Do not
+  claim coverage of subsequent unread telemetry or repair an earlier FAIL.
 - Every failure latches, ends input, and prevents PASS. Continue no control
   writes in cleanup; close only the owned serial handle. No automatic retry.
 - Exact USB VID1a86/PID7522, explicit callout and location supplied by operator;

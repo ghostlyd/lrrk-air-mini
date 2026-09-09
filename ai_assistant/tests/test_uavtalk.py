@@ -38,6 +38,24 @@ class UAVTalkTests(unittest.TestCase):
         self.assertEqual(frames, list(read_frames(io.BytesIO(data))))
         self.assertEqual(len(frames), 3)
 
+    def test_boundary_read_budget_preserves_next_frame(self):
+        self.assertEqual(getattr(UAVTalkDecoder(),'bytes_to_frame_boundary',None),0)
+        for prefix, expected in ((b'',0),(OBJECT[:1],3),(OBJECT[:2],2),
+                                 (OBJECT[:3],1),(OBJECT[:4],10),(OBJECT[:-1],1),
+                                 (OBJECT,0),(TIMESTAMPED[:4],12),(ACK[:4],7)):
+            with self.subTest(prefix=prefix):
+                decoder=UAVTalkDecoder();decoder.feed(prefix)
+                self.assertEqual(getattr(decoder,'bytes_to_frame_boundary',None),expected)
+        decoder=UAVTalkDecoder();decoder.feed(OBJECT[:2])
+        unread=io.BytesIO(OBJECT[2:]+ACK)
+        frames=[]
+        while decoder.bytes_to_frame_boundary:
+            frames.extend(decoder.feed(unread.read(decoder.bytes_to_frame_boundary)))
+        decoder.finish()
+        self.assertEqual(len(frames),1)
+        self.assertEqual(frames[0].payload,b'abc')
+        self.assertEqual(unread.read(),ACK)
+
     def test_rejects_all_single_bit_corruptions(self):
         for index in range(len(OBJECT)):
             for bit in range(8):

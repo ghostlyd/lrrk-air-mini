@@ -166,8 +166,10 @@ class SerialLink:
         if self.port.write(packet) != len(packet):
             raise ProbeFailure('incomplete serial write')
 
-    def read(self):
-        return self.port.read(min(max(self.port.in_waiting,1),4096))
+    def read(self, max_bytes=4096):
+        if type(max_bytes) is not int or not 1 <= max_bytes <= 4096:
+            raise ProbeFailure('invalid serial read limit')
+        return self.port.read(min(max(self.port.in_waiting,1),max_bytes))
 
 
 def run_trial(wire, link, capture, clock=time.monotonic, sleep=time.sleep):
@@ -184,6 +186,8 @@ def run_trial(wire, link, capture, clock=time.monotonic, sleep=time.sleep):
     digest = hashlib.sha256()
     counts = {}
     last_clock = started
+    completion_started = None
+    completion_confirmed = False
     def bounded_now():
         nonlocal last_clock
         now = clock()
@@ -203,32 +207,38 @@ def run_trial(wire, link, capture, clock=time.monotonic, sleep=time.sleep):
         now = bounded_now()
         if evidence.phase != 'preflight':
             evidence.check(now)
+    def consume(max_bytes=4096):
+        nonlocal total, gcs_status
+        # Conservatively age the batch from before the nonblocking read.
+        # Disk/decoder/ACK delays must never refresh old observations.
+        received_at = bounded_now()
+        data = link.read(max_bytes)
+        bounded_now()
+        if len(data) > max_bytes:
+            raise ProbeFailure('serial read exceeded requested frame boundary')
+        if total+len(data) > 1024*1024:
+            raise ProbeFailure('capture size bound exceeded')
+        if capture.write(data) != len(data):
+            raise ProbeFailure('incomplete private capture write')
+        total += len(data)
+        digest.update(data)
+        frames = wire.feed(data)
+        if bounded_now()-received_at > .75:
+            raise ProbeFailure('stale inbound batch after I/O or decoding')
+        acknowledgements = []
+        for kind, obj, values in frames:
+            if obj.name in READ_NAMES:
+                evidence.observe(obj.name,values,received_at)
+                counts[obj.name] = counts.get(obj.name,0)+1
+            if kind in (0x22,0xa2):
+                acknowledgements.append(wire.codec.build_packet(0x23,obj.obj_id,0))
+            if obj.name == 'FlightTelemetryStats' and values.get('Status') == 'HandshakeAck':
+                gcs_status = 3
+        return acknowledgements
     try:
         while not evidence.done:
-            # Conservatively age the batch from before the nonblocking read.
-            # Disk/decoder/ACK delays must never refresh old observations.
-            received_at = bounded_now()
-            data = link.read()
-            bounded_now()
-            if total+len(data) > 1024*1024:
-                raise ProbeFailure('capture size bound exceeded')
-            if capture.write(data) != len(data):
-                raise ProbeFailure('incomplete private capture write')
-            total += len(data)
-            digest.update(data)
-            frames = wire.feed(data)
-            if bounded_now()-received_at > .75:
-                raise ProbeFailure('stale inbound batch after I/O or decoding')
             # Observe all available frames before considering another input.
-            acknowledgements = []
-            for kind, obj, values in frames:
-                if obj.name in READ_NAMES:
-                    evidence.observe(obj.name,values,received_at)
-                    counts[obj.name] = counts.get(obj.name,0)+1
-                if kind in (0x22,0xa2):
-                    acknowledgements.append(wire.codec.build_packet(0x23,obj.obj_id,0))
-                if obj.name == 'FlightTelemetryStats' and values.get('Status') == 'HandshakeAck':
-                    gcs_status = 3
+            acknowledgements = consume()
             for packet in acknowledgements:
                 checked_send(packet)
             now = bounded_now()
@@ -248,15 +258,36 @@ def run_trial(wire, link, capture, clock=time.monotonic, sleep=time.sleep):
                     checked_send(wire.requests[name])
                 next_settings = now+1.
             sleep(.005)
-        # A valid prefix cannot certify an unresolved trailing safety update.
+        # Complete only the frame already in progress. No requests, handshake,
+        # ACKs or controls are sent, and no subsequent whole frame is started.
+        completion_started = bounded_now()
+        completion_bytes = total
+        had_pending = bool(wire.decoder.bytes_to_frame_boundary)
+        def completion_check():
+            now = bounded_now()
+            if now-completion_started >= .25-1e-9:
+                raise ProbeFailure('truncated frame: completion deadline exceeded')
+            evidence.check(now)
+        while wire.decoder.bytes_to_frame_boundary:
+            completion_check()
+            consume(wire.decoder.bytes_to_frame_boundary)
+            completion_check()
+            if wire.decoder.bytes_to_frame_boundary:
+                sleep(.005)
         wire.decoder.finish()
         result = evidence.result(bounded_now())
+        completion_confirmed = had_pending
     except (Exception, KeyboardInterrupt) as exc:
         result = {'status':'FAIL', 'failure':type(exc).__name__+': '+str(exc),
                   'phase':evidence.phase, 'phases':evidence.phases,
                   'neutral_packets':evidence.sent, 'flight_ready':False}
     finally:
+        completion_ended = last_clock
         link.port.close()
+    if completion_started is not None:
+        result['completion'] = {'start_s':completion_started-started,
+            'end_s':completion_ended-started, 'additional_bytes':total-completion_bytes,
+            'completed_pending_frame':completion_confirmed}
     try:
         now = bounded_now()
         if result['status'] == 'PASS_DISARMED_RECEIVER_OBSERVATIONS_ONLY':

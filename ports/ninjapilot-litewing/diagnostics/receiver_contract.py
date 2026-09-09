@@ -188,6 +188,9 @@ class Evidence:
     def result(self, now):
         self.check(now)
         self.require(self.done and len(self.phases) == 4, 'receiver-loss trial incomplete')
+        command = self.latest['ManualControlCommand'][1]
+        self.require(self.phase_matches >= 3 and self.matches_phase(command) and
+                     self.neutral_command(command), 'final receiver is not disconnected/timeout')
         return {'status':'PASS_DISARMED_RECEIVER_OBSERVATIONS_ONLY',
                 'phases':copy.deepcopy(self.phases), 'neutral_packets':self.sent,
                 'electrical_timing_verified':False, 'flight_ready':False}

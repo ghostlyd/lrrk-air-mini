@@ -17,6 +17,11 @@ identifies the exact installed receiver/thrust candidate and settings-preserving
 reset observations. Always Disarmed remains set; receiver-loss, electrical and
 flight acceptance are not established by installing that candidate.
 
+A [subsequent bounded disarmed receiver trial](../../docs/verification/disarmed-receiver-completion-2026-09-09.md)
+observed loss/recovery/loss with a complete validated capture. This narrow
+physical receiver-observation pass does not establish electrical cutoff timing,
+powered tests or flight readiness, and does not enable arming.
+
 The selected upstream `litewing` branch currently includes a POSIX/Gazebo
 LiteWing twin, not a flashable ESP32-S3 target. The repository-owned target
 work therefore proceeds in gates:

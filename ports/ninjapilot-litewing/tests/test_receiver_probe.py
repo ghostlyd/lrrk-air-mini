@@ -256,7 +256,9 @@ class ProtocolTests(unittest.TestCase):
 
     def trial(self, short_write=False, corrupt=False, stall=False,
               capture_delay=0., final_delay=0., write_delay=0., trailing=False,
-              cli_directory=None, close_failure=False, close_delay=0., decision_delay=0.):
+              cli_directory=None, close_failure=False, close_delay=0., decision_delay=0.,
+              tail_mode=None, tail_split=25, tail_chunk=4096, tail_delay=0.,
+              completion_capture_delay=0.):
         clock=type('Clock',(),{'now':0.,'__call__':lambda self:self.now})()
         wire=self.wire;codec=self.codec;db=self.db
         class Port:
@@ -264,6 +266,8 @@ class ProtocolTests(unittest.TestCase):
             last_emit=-1.
             last_neutral=None
             tail_sent=False
+            tail_remainder=b''
+            tail_reads=[]
             closed=False
             writes=[]
             def write(self,data):
@@ -272,15 +276,34 @@ class ProtocolTests(unittest.TestCase):
                 clock.now+=write_delay
                 return len(data)-1 if short_write else len(data)
             def read(self,n):
-                if self.tail_sent:return b''
+                if self.tail_sent:
+                    if not tail_mode or clock.now<4.805+tail_delay:return b''
+                    self.tail_reads.append((clock.now,n))
+                    amount=min(n,tail_chunk)
+                    data=self.tail_remainder[:amount];self.tail_remainder=self.tail_remainder[amount:]
+                    return data
                 if clock.now-self.last_emit<.05:return b''
                 self.last_emit=clock.now
                 state=samples(self.last_neutral is not None and clock.now-self.last_neutral<.1)
                 packets=b''.join(codec.build_packet(0x20,db[name].obj_id,0,db[name].pack(data)) for name,data in state.items())
                 if corrupt and clock.now>.1:return packets+b'bad'
-                if trailing and clock.now>4.6:
-                    o=db['ActuatorCommand']
-                    packets+=codec.build_packet(0x20,o.obj_id,0,o.pack({'Channel':[1]*12}))[:-1]
+                if (trailing or tail_mode) and clock.now>4.6:
+                    if tail_mode:
+                        name='AttitudeState';values={}
+                        if tail_mode=='armed':name='FlightStatus';values={'Armed':'Armed','FlightMode':'Stabilized1'}
+                        if tail_mode=='motor':name='ActuatorCommand';values={'Channel':[1]*12}
+                        if tail_mode=='reconnected':name='ManualControlCommand';values=samples(True)[name]
+                        if tail_mode=='settings':
+                            name='SystemSettings';values=samples()[name];values['ThrustControl']='Collective'
+                        o=db[name];frame=codec.build_packet(0x22,o.obj_id,0,o.pack(values))
+                        if tail_mode=='bad_crc':frame=frame[:-1]+bytes([frame[-1]^1])
+                        # Tail includes a subsequent whole frame that must remain
+                        # unread: completion ends at the already-open frame only.
+                        self.tail_remainder=frame[tail_split:]+codec.build_packet(0x23,db['FlightStatus'].obj_id,0)
+                        packets+=frame[:tail_split]
+                    else:
+                        o=db['ActuatorCommand']
+                        packets+=codec.build_packet(0x20,o.obj_id,0,o.pack({'Channel':[1]*12}))[:-1]
                     self.tail_sent=True
                 return packets
             def close(self):
@@ -292,6 +315,7 @@ class ProtocolTests(unittest.TestCase):
         class Capture(io.BytesIO):
             def write(self,data):
                 clock.now+=capture_delay
+                if port.tail_reads and data:clock.now+=completion_capture_delay
                 if data and clock.now>=4.7:clock.now+=final_delay
                 return super().write(data)
         if cli_directory is None:
@@ -367,6 +391,76 @@ class ProtocolTests(unittest.TestCase):
         self.assertEqual(result['status'],'FAIL')
         self.assertIn('truncated frame',result['failure'])
         self.assertTrue(port.closed)
+
+    def test_completes_only_pending_frame_without_any_further_writes(self):
+        result,port=self.trial(tail_mode='safe')
+        self.assertEqual(result['status'],'PASS_DISARMED_RECEIVER_OBSERVATIONS_ONLY')
+        end=result['phases'][-1]['end_s']
+        self.assertFalse(any(at>=end for at,p in port.writes))
+        self.assertEqual([n for at,n in port.tail_reads],[14])
+        self.assertEqual(port.tail_remainder,self.codec.build_packet(0x23,self.db['FlightStatus'].obj_id,0))
+        self.assertEqual(result['completion']['additional_bytes'],14)
+        self.assertTrue(port.closed)
+
+    def test_partial_header_and_bytewise_tail_finish_at_same_boundary(self):
+        for split in (1,2,3,4,25,38):
+            with self.subTest(split=split):
+                self.wire=probe.Wire(self.codec,self.db)
+                result,port=self.trial(tail_mode='safe',tail_split=split,tail_chunk=1)
+                self.assertEqual(result['status'],'PASS_DISARMED_RECEIVER_OBSERVATIONS_ONLY')
+                self.assertEqual(len(port.tail_remainder),11)
+
+    def test_serial_read_honors_explicit_limit(self):
+        class Port:
+            in_waiting=6
+            data=io.BytesIO(b'abcdef')
+            def read(self,n):return self.data.read(n)
+        link=probe.SerialLink.__new__(probe.SerialLink);link.port=Port()
+        try:data=link.read(2)
+        except TypeError:self.fail('bounded serial read is not implemented')
+        self.assertEqual(data,b'ab')
+        for invalid in (0,-1,4097,True):
+            with self.assertRaises(contract.ProbeFailure):link.read(invalid)
+        self.assertEqual(link.read(),b'cdef')
+
+    def test_missing_tail_and_late_capture_write_fail_completion_deadline(self):
+        for kwargs in ({'tail_delay':.3},{'completion_capture_delay':.3}):
+            with self.subTest(kwargs=kwargs):
+                self.wire=probe.Wire(self.codec,self.db)
+                result,port=self.trial(tail_mode='safe',**kwargs)
+                self.assertEqual(result['status'],'FAIL')
+                self.assertIn('completion deadline',result['failure'])
+                self.assertTrue(port.closed)
+
+    def test_completed_tail_still_checks_crc_armed_motor_and_settings(self):
+        for mode,reason in (('bad_crc','CRC'),('armed','not disarmed'),
+                            ('motor','motor commands'),('settings','payload bytes changed')):
+            with self.subTest(mode=mode):
+                self.wire=probe.Wire(self.codec,self.db)
+                result,port=self.trial(tail_mode=mode,tail_split=1)
+                self.assertEqual(result['status'],'FAIL')
+                self.assertIn(reason,result['failure'])
+                self.assertTrue(port.tail_reads)
+                self.assertTrue(port.closed)
+
+    def test_receiver_reconnection_in_completed_tail_prevents_pass(self):
+        result,port=self.trial(tail_mode='reconnected',tail_split=1)
+        self.assertEqual(result['status'],'FAIL')
+        self.assertIn('final receiver',result['failure'])
+        self.assertTrue(port.closed)
+
+    def test_failed_completion_preserves_byte_and_time_evidence(self):
+        for mode,kwargs,expected_bytes in (('bad_crc',{},14),
+                    ('safe',{'tail_delay':.3},0),('safe',{'completion_capture_delay':.3},14)):
+            with self.subTest(mode=mode,kwargs=kwargs):
+                self.wire=probe.Wire(self.codec,self.db)
+                result,port=self.trial(tail_mode=mode,**kwargs)
+                self.assertEqual(result['status'],'FAIL')
+                self.assertIn('completion',result)
+                completion=result['completion']
+                self.assertEqual(completion['additional_bytes'],expected_bytes)
+                self.assertGreater(completion['end_s'],completion['start_s'])
+                self.assertFalse(completion['completed_pending_frame'])
 
     def test_slow_port_close_cannot_publish_pass_beyond_total_deadline(self):
         result,port=self.trial(close_delay=22.)
@@ -476,7 +570,7 @@ class ProtocolTests(unittest.TestCase):
             def close(self):self.closed=True
         class Link:
             port=Port()
-            def read(self):return b'a'
+            def read(self,max_bytes=4096):return b'a'
             def send(self,*args,**kw):raise AssertionError('no send after capture failure')
         class Capture:
             def write(self,data):return 0
