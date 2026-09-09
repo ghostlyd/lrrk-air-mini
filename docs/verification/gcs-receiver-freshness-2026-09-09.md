@@ -1,5 +1,10 @@
 # LiteWing GCS receiver freshness — 2026-09-09
 
+Later bench evidence: a candidate incorporating this correction and PR30 was
+subsequently [installed and reset-checked over USB](control-fixes-usb-install-2026-09-09.md).
+No receiver input was sent during those checks; physical receiver-loss acceptance
+remains open. The source-verification account below predates that installation.
+
 ## Scope and diagnosis
 
 Addresses the source correction in [issue #23](https://github.com/ghostlyd/lrrk-air-mini/issues/23),

@@ -12,6 +12,11 @@ The [thrust-control correction](../../docs/verification/thrust-control-width-202
 records the checked byte-to-enum read and complete control-task regressions.
 Invalid, unreadable, or `None` thrust modes select fault handling on this target.
 
+The [subsequent USB installation report](../../docs/verification/control-fixes-usb-install-2026-09-09.md)
+identifies the exact installed receiver/thrust candidate and settings-preserving
+reset observations. Always Disarmed remains set; receiver-loss, electrical and
+flight acceptance are not established by installing that candidate.
+
 The selected upstream `litewing` branch currently includes a POSIX/Gazebo
 LiteWing twin, not a flashable ESP32-S3 target. The repository-owned target
 work therefore proceeds in gates:
