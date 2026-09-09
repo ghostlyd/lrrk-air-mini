@@ -1,0 +1,30 @@
+diff --git a/flight/targets/boards/simlitewing/board_hw_defs.c b/flight/targets/boards/simlitewing/board_hw_defs.c
+--- a/flight/targets/boards/simlitewing/board_hw_defs.c
++++ b/flight/targets/boards/simlitewing/board_hw_defs.c
+@@ -36,7 +36,7 @@
+  * Telemetry on main USART
+  */
+ const struct pios_udp_cfg pios_udp_telem_cfg = {
+-    .ip   = "0.0.0.0",
++    .ip   = "127.0.0.1",
+     .port = 9000,
+ };
+ #endif /* PIOS_COM_TELEM */
+@@ -46,7 +46,7 @@
+  * GPS USART
+  */
+ const struct pios_udp_cfg pios_udp_gps_cfg = {
+-    .ip   = "0.0.0.0",
++    .ip   = "127.0.0.1",
+     .port = 9001,
+ };
+ 
+@@ -57,7 +57,7 @@
+  * AUX USART (UART label on rev2)
+  */
+ const struct pios_udp_cfg pios_udp_aux_cfg = {
+-    .ip   = "0.0.0.0",
++    .ip   = "127.0.0.1",
+     .port = 9002,
+ };
+ #endif /* PIOS_COM_AUX */

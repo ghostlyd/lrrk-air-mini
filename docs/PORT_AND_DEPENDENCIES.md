@@ -26,8 +26,8 @@ passes source, build, simulation, bench, and human-orientation gates.
 The OpenPilotESP32 WROOM patch set is pinned for provenance but is not applied
 to the selected NinjaPilot `litewing` commit: the shared patch fails closed on
 that newer branch, and the separate sensor patch targets ICM20602 rather than
-LiteWing's MPU6050. The repository-owned bootstrap applies only the reviewed
-LiteWing contract patch.
+LiteWing's MPU6050. The repository-owned bootstrap applies the reviewed
+LiteWing contract and native simulator loopback patches.
 
 ## LiteWing hardware baseline
 

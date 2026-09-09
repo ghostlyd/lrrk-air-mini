@@ -34,8 +34,9 @@ ports/ninjapilot-litewing/revert.sh /path/to/workspace /path/to/workspace/NinjaP
 The manifest records the two OpenPilotESP32 WROOM patches as checksum-pinned
 reference material, but marks them `apply: false`: the selected NinjaPilot
 `litewing` commit has diverged and the MPU patch targets a different ICM20602
-device. The bootstrap verifies and applies only the repository-owned LiteWing
-contract patch, then writes a marker outside the checkout. A matching marker
+device. The bootstrap verifies and applies the repository-owned LiteWing
+contract and native simulator loopback patches, then writes a marker outside
+the checkout. A matching marker
 makes a repeat invocation a no-op. A source mismatch, dirty checkout, patch
 mismatch, or ambiguous marker fails closed.
 
@@ -63,6 +64,11 @@ for observed startup and remaining physics requirements.
 Gazebo Harmonic, the native `simposix` target, and the isolated Python bridge
 environment are covered in [dependency setup and verification](../../docs/verification/gazebo-dependencies-2026-09-09.md).
 These checks do not establish a working LiteWing physics/control loop.
+
+The [disarmed integration probe](simulation/README.md) now verifies live
+Gazebo IMU ingestion by the native firmware, disarmed/zero motor telemetry,
+freshness rejection, and loopback socket ownership. It remains separate from
+armed closed-loop dynamics and physical ESP32 driver validation.
 
 ## Hardware contract
 
