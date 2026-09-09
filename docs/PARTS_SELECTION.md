@@ -2,13 +2,16 @@
 
 Reviewed 2026-09-09. This is a source-backed inventory, not a claim that a
 specific battery or replacement assembly was fitted or tested. The owner has
-no battery. Physical board revision remains unconfirmed.
+no battery. Owner photos confirm a printed **V1.2** marking; the source
+directory `LieWingV2.6.C` also contains this same silkscreen text. See the
+[photo identification record](verification/board-photo-identification-2026-09-09.md)
+for observations and the remaining electrical/connector checks.
 
 ## Required versus optional
 
 | Item | Quantity | Evidence and selection status |
 | --- | --- | --- |
-| Existing LiteWing controller/PCB | 1 | Keep existing board; identify printed revision before selecting accessories or treating V2.6.C as its schematic |
+| Existing LiteWing controller/PCB | 1 | Printed V1.2 confirmed; candidate V2.6.C source design also prints V1.2 and visually matches; electrical equivalence remains unverified |
 | Battery | 1 | Required for eventual flight; voltage class established below, exact SKU blocked on connector, polarity, dimensions, mass and charging compatibility |
 | Coreless brushed motors | 4 | Published LiteWing specification says 720; inspect fitted motors before buying replacements |
 | Matched propellers | 4 | Published sizes are 55 or 65 mm; match fitted motor shafts, rotation, guards and clearance; do not assume interchangeable assemblies |
@@ -40,7 +43,7 @@ conflict must not be resolved by assuming either connector is fitted.
 
 Before selecting an exact battery, record:
 
-1. A clear board-revision marking and connector photograph, including PCB +/-.
+1. Board marking and connector photograph: received; V1.2 and PCB +/- visible. Record electrical confirmation separately.
 2. Connector pitch/type and independently verified polarity of the proposed pack.
 3. Available mounting dimensions and allowed pack mass, including retention.
 4. Pack manufacturer's continuous discharge and maximum charge-current ratings.

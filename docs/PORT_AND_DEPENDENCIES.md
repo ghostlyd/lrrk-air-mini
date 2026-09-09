@@ -40,8 +40,12 @@ connector designation alone is not proof of the assembled board's wiring.
 
 The primary hardware evidence is the KiCad design and production BOM in
 `hardware/LieWingV2.6.C/` (the directory name preserves the upstream `LieWing`
-spelling). V2.6 is the revision to use for port planning unless the physical
-board is identified otherwise.
+spelling). Owner photos show a **V1.2** board marking. The PCB source in that
+V2.6.C directory itself prints `V 1.2`, with a closely matching visual layout;
+the directory name and silkscreen are not interchangeable revision labels.
+See [photo identification](verification/board-photo-identification-2026-09-09.md).
+This remains the candidate design for port planning, not proof of net-by-net
+or fitted-part equivalence.
 
 ### Board-level components evidenced by the V2.6 BOM
 
