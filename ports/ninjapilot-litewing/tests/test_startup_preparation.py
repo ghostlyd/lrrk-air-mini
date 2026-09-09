@@ -78,6 +78,35 @@ class StartupPreparationTests(unittest.TestCase):
                 self.assertEqual((output / "alarms.c").read_text(), "preserve earlier output")
                 self.assertEqual(external.read_bytes(), original)
 
+    def test_input_file_or_directory_alias_cannot_overwrite_backing_input(self):
+        # An output-only alias check misses ordinary output files reached by
+        # a symlink from an input. Removing input containment must fail this.
+        for name in INPUTS:
+            for alias in ("file", "directory"):
+                with self.subTest(input=name, alias=alias):
+                    with tempfile.TemporaryDirectory() as directory:
+                        root = Path(directory)
+                        source = root / "source"
+                        shutil.copytree(self.source, source)
+                        output = root / "build"
+                        output.mkdir()
+                        for item in INPUTS:
+                            shutil.copyfile(source / item, output / Path(item).name)
+                        original = {item: (output / item).read_bytes() for item in OUTPUTS}
+                        target = source / name
+                        if alias == "file":
+                            target.unlink()
+                            target.symlink_to(output / target.name)
+                        else:
+                            target.unlink()
+                            target.parent.rmdir()
+                            target.parent.symlink_to(output, target_is_directory=True)
+                        result = subprocess.run([sys.executable, str(ROOT / "prepare_startup.py"),
+                            "--source", str(source), "--output", str(output)],
+                            capture_output=True, text=True, timeout=5)
+                        self.assertEqual(result.returncode, 1)
+                        self.assertEqual(original, {item: (output / item).read_bytes() for item in OUTPUTS})
+
 
 class StartupBuildSelectionTests(unittest.TestCase):
     def test_real_generated_firmware_graph_selects_adapted_services(self):

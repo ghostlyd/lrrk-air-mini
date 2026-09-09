@@ -44,6 +44,16 @@ class StartupServicesTests(unittest.TestCase):
             subprocess.run([sys.executable, str(ROOT / "prepare_startup.py"),
                             "--source", str(flight / "flight"), "--output", str(output)],
                            check=True, capture_output=True, text=True, timeout=5)
+        if os.environ.get("LRRK_TEST_REJECT_FULL_STARTUP_SIGNAL") == "1":
+            # Disposable negative control only: wrong handling of the actual
+            # scheduler's initially full signal must block nominal board boot.
+            source = output / "eventdispatcher.c"
+            code = source.read_text()
+            anchor = "    PIOS_CALLBACKSCHEDULER_Dispatch(eventSchedulerCallback);"
+            if code.count(anchor) != 2:
+                raise AssertionError("reviewed event dispatch anchors changed")
+            source.write_text(code.replace(anchor,
+                "    if (PIOS_CALLBACKSCHEDULER_Dispatch(eventSchedulerCallback) == 0) return -1;", 1))
         # Original alarm source has a relative inc/alarms.h include.
         shutil.copyfile(flight / "flight/libraries/inc/alarms.h", output / "inc/alarms.h")
         cls.binary = output / "startup-services"
@@ -89,6 +99,14 @@ class StartupServicesTests(unittest.TestCase):
 
     def test_nominal_queue_dispatch_and_alarm_grace_remain_usable(self):
         self.case("nominal")
+
+    def test_rejecting_initial_full_signal_is_detected(self):
+        env = dict(os.environ, LRRK_TEST_REJECT_FULL_STARTUP_SIGNAL="1")
+        result = subprocess.run([sys.executable, "-m", "unittest",
+            "test_startup_services.StartupServicesTests.test_nominal_queue_dispatch_and_alarm_grace_remain_usable",
+        ], cwd=ROOT / "tests", env=env, capture_output=True, text=True, timeout=30)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("PIOS_LiteWing_BoardServicesInitialized() && modules == 1 && system_inits == 1", result.stderr)
 
     def test_original_service_failures_are_rejected_as_negative_control(self):
         env = dict(os.environ, LRRK_TEST_ORIGINAL_STARTUP_SERVICES="1")

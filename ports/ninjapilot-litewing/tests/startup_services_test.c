@@ -22,6 +22,7 @@
 static struct mutex_state { bool live; unsigned held; } locks[2];
 static unsigned mutex_creates, callback_creates, callback_dispatches, alarm_initializers;
 static bool direct_alarm, periodic_allocation, queue_live, queue_pending, callback_pending;
+static bool scheduler_signal_full;
 static unsigned queue_item_size, callbacks_seen;
 static unsigned char queue_storage[256];
 static int queue_token, callback_token;
@@ -108,16 +109,20 @@ DelayedCallbackInfo *PIOS_CALLBACKSCHEDULER_Create(DelayedCallback cb,
     callback_creates++;
     if (inject("event-callback")) return NULL;
     scheduled_callback = cb;
+    /* Pinned vSemaphoreCreateBinary creates an initially full signal even
+     * though this callback has not yet been marked pending. */
+    scheduler_signal_full = true;
     return (DelayedCallbackInfo *)&callback_token;
 }
 int32_t PIOS_CALLBACKSCHEDULER_Dispatch(DelayedCallbackInfo *cb)
 {
     CHECK(cb == (DelayedCallbackInfo *)&callback_token && scheduled_callback);
     callback_dispatches++;
-    bool was_pending = callback_pending;
+    bool signal_was_full = scheduler_signal_full;
     callback_pending = true;
+    scheduler_signal_full = true;
     /* Real signal may already be full: zero does not mean a lost callback. */
-    return was_pending ? 0 : pdTRUE;
+    return signal_was_full ? 0 : pdTRUE;
 }
 int32_t PIOS_CALLBACKSCHEDULER_Schedule(DelayedCallbackInfo *cb, int32_t ms, DelayedCallbackUpdateMode mode)
 {
@@ -202,6 +207,7 @@ int main(int argc, char **argv)
     CHECK(PIOS_LiteWing_BoardServicesInitialized() && modules == 1 && system_inits == 1);
     CHECK(shutdown_requests == 0);
     CHECK(alarm_data.Alarm.BootFault == SYSTEMALARMS_ALARM_UNINITIALISED);
+    CHECK(callback_dispatches == 1 && callback_pending && scheduler_signal_full);
     UAVObjEvent event = { .obj = &objects[3], .instId = 0, .event = EV_UPDATED };
     if (strcmp(scenario, "periodic-allocation") == 0) {
         periodic_allocation = true;
@@ -212,9 +218,19 @@ int main(int argc, char **argv)
     /* Queue dispatch remains usable, including a signal already pending. */
     CHECK(EventCallbackDispatch(&event, observed_event) == pdTRUE);
     CHECK(callback_dispatches == 2 && callback_pending);
+    /* Simulate scheduler consuming its signal and clearing the waiting flag
+     * before calling the complete real event-task callback. */
+    scheduler_signal_full = false;
+    callback_pending = false;
     scheduled_callback();
     CHECK(callbacks_seen == 1 && !queue_pending);
     CHECK(locks[0].held == 0);
+    CHECK(EventCallbackDispatch(&event, observed_event) == pdTRUE);
+    CHECK(callback_dispatches == 3 && callback_pending && scheduler_signal_full);
+    scheduler_signal_full = false;
+    callback_pending = false;
+    scheduled_callback();
+    CHECK(callbacks_seen == 2 && !queue_pending && locks[0].held == 0);
 
     /* Real alarm transitions keep their strict >1000ms decrease grace. */
     now = 2000;

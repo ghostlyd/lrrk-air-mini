@@ -26,7 +26,10 @@ def prepare(source, output):
         raise ValueError("output must be separate from the source subtree and its ancestors")
     inputs = {}
     for name, digest in PINS.items():
-        data = (source / name).read_bytes()
+        input_path = (source / name).resolve()
+        if source not in input_path.parents:
+            raise ValueError("startup input escapes source subtree: " + name)
+        data = input_path.read_bytes()
         if hashlib.sha256(data).hexdigest() != digest:
             raise ValueError("unreviewed startup input: " + name)
         inputs[name] = data.decode("utf-8")
