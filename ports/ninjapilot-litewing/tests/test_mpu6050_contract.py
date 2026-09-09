@@ -47,8 +47,10 @@ class LiteWingMpu6050Tests(unittest.TestCase):
             "PIOS_LiteWing_BrushedPWM_SetImuHealthy(healthy)",
             "set_health(false)",
             "LITEWING_MPU6050_STALE_TIMEOUT_MS",
+            "first (I2C0) bus",
         ):
             self.assertIn(marker, source)
+        self.assertNotIn("i2c_id == 0u", source)
 
 
 if __name__ == "__main__":

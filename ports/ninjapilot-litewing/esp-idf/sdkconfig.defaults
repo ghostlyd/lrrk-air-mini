@@ -1,0 +1,47 @@
+# LiteWing NinjaPilot wrapper defaults. This file configures a build target;
+# it does not authorize flashing or physical actuation.
+CONFIG_IDF_TARGET="esp32s3"
+
+# The flight loop is deliberately fixed at the S3's highest normal clock.
+CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ_240=y
+CONFIG_PM_ENABLE=n
+
+# Keep IDF/FreeRTOS housekeeping separate from the flight tasks. The ESP32
+# PiOS shim pins its created flight tasks to the application core.
+CONFIG_FREERTOS_UNICORE=n
+CONFIG_FREERTOS_HZ=1000
+CONFIG_FREERTOS_ENABLE_BACKWARD_COMPATIBILITY=y
+CONFIG_FREERTOS_USE_TRACE_FACILITY=y
+CONFIG_FREERTOS_GENERATE_RUN_TIME_STATS=y
+CONFIG_FREERTOS_CHECK_STACKOVERFLOW_CANARY=y
+
+# Preserve the serial port for UAVTalk through the CH340K. ROM boot messages
+# remain available during reset; the application console must not interleave
+# text with binary telemetry frames.
+CONFIG_ESP_CONSOLE_NONE=y
+
+# Keep watchdog protection enabled for bench bring-up. The PiOS watchdog
+# layer uses the IDF task watchdog and fails closed on a missing task flag.
+CONFIG_ESP_TASK_WDT_INIT=y
+CONFIG_ESP_TASK_WDT_TIMEOUT_S=2
+CONFIG_ESP_TASK_WDT_PANIC=y
+CONFIG_ESP_INT_WDT=y
+CONFIG_ESP_TASK_WDT_CHECK_IDLE_TASK_CPU0=n
+CONFIG_ESP_TASK_WDT_CHECK_IDLE_TASK_CPU1=n
+
+# Explicit four-megabyte layout, including a dedicated NVS settings region.
+CONFIG_ESPTOOLPY_FLASHMODE_QIO=y
+CONFIG_ESPTOOLPY_FLASHFREQ_80M=y
+CONFIG_ESPTOOLPY_FLASHSIZE_4MB=y
+CONFIG_PARTITION_TABLE_CUSTOM=y
+CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
+
+CONFIG_COMPILER_OPTIMIZATION_PERF=y
+CONFIG_SPI_MASTER_IN_IRAM=y
+CONFIG_ESP_COREDUMP_ENABLE_TO_FLASH=y
+CONFIG_ESP_COREDUMP_DATA_FORMAT_ELF=y
+CONFIG_BT_ENABLED=n
+
+# Make allocation corruption fail at the point of detection during bring-up.
+CONFIG_HEAP_POISONING_COMPREHENSIVE=y
+CONFIG_HEAP_TRACING_STANDALONE=n

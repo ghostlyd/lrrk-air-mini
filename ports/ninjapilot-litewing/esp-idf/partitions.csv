@@ -1,0 +1,9 @@
+# LiteWing NinjaPilot layout. The settings partition is intentionally separate
+# from the default NVS namespace so settings reset cannot affect radio state.
+# Nothing in this repository invokes idf.py flash.
+# Name,     Type, SubType, Offset, Size
+nvs,        data, nvs,              , 0x6000
+phy_init,   data, phy,              , 0x1000
+factory,    app,  factory, 0x10000, 1M
+settings,   data, nvs,              , 0x8000
+coredump,   data, coredump,         , 0x10000

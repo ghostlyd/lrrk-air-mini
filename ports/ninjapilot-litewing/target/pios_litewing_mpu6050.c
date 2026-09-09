@@ -286,7 +286,9 @@ const PIOS_SENSORS_Driver PIOS_ICM20602_Driver = {
 
 int32_t PIOS_LiteWing_MPU6050_Init(uint32_t i2c_id, uint8_t address)
 {
-    if (i2c_id == 0u || address > 0x7Fu || device.queue != 0) {
+    /* The pinned ESP32 backend uses slot 0 for its first (I2C0) bus. Zero is
+     * therefore a valid handle, not an uninitialized sentinel. */
+    if (address > 0x7Fu || device.queue != 0) {
         return -1;
     }
 
