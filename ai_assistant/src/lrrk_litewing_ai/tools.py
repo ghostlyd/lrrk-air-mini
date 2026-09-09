@@ -97,8 +97,11 @@ def run_preflight_tool(runtime: AssistantRuntime) -> Dict[str, Any]:
 def explain_finding(runtime: AssistantRuntime, finding_id: str) -> Dict[str, Any]:
     if not isinstance(finding_id, str) or not finding_id:
         raise ValueError("finding_id is required")
-    if runtime.last_report is None:
-        run_preflight_tool(runtime)
+    if runtime.latest is None:
+        raise ValueError("a current telemetry snapshot is required")
+    # Time-sensitive findings can expire without a new snapshot arriving.
+    # Explain a fresh analysis, never a cached PASS from an earlier check.
+    run_preflight_tool(runtime)
     assert runtime.last_report is not None
     for finding in runtime.last_report.findings:
         if finding.finding_id == finding_id:
