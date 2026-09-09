@@ -42,7 +42,19 @@ The final `report.json` is published without overwrite only after capture
 flush/fsync/close and report flush/fsync/close succeed. A `report.pending` file
 is incomplete evidence, never a completed result. A capture finalization failure
 changes the result to FAIL. Unresolved trailing framing also prevents PASS;
-even an ordinary partial UART frame at the endpoint is an inconclusive failure.
+the [first trial](../../../docs/verification/disarmed-receiver-probe-2026-09-09.md)
+remains a historical FAIL/inconclusive result, not a retrospectively repaired pass.
+
+After all four phases, completion may read for at most250ms (still inside the
+21s total deadline), solely to finish a frame already in progress. Read sizes
+stop at that frame's boundary; a partial header is completed first to obtain
+the remaining length. No new whole frame is started, and no request, handshake,
+ACK or receiver packet is sent in completion. The completed bytes still undergo
+CRC, schema, settings and safety validation. Missing/late/corrupt bytes or a
+contrary final receiver state fail; nothing is discarded to manufacture PASS.
+The report's `completion` records host-relative start/end, additional bytes and
+whether a pending frame was completed. This finite capture does not assert
+anything about later unread telemetry or continuous electrical safety.
 
 Preflight waits up to15s for fresh safe settings/status and actual no-input
 timeout values. The four phases are input1/silence1/input2/silence2, each1.2s.

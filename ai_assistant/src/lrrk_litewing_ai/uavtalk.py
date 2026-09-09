@@ -103,6 +103,19 @@ class UAVTalkDecoder:
             self._pending.clear()
             raise UAVTalkError("truncated frame at end of capture")
 
+    @property
+    def bytes_to_frame_boundary(self) -> int:
+        """Next bounded read to complete only the pending header/frame, or zero.
+
+        A partial header needs its length bytes first. Call feed after each
+        read: the budget is not a substitute for header, payload or CRC checks.
+        """
+        if not self._pending:
+            return 0
+        if len(self._pending) < 4:
+            return 4-len(self._pending)
+        return int.from_bytes(self._pending[2:4], "little")+1-len(self._pending)
+
 
 def read_frames(stream: BinaryIO) -> Iterator[UAVTalkFrame]:
     """Decode a binary capture without requesting or acknowledging objects."""
