@@ -130,6 +130,8 @@ class InputStartupTests(unittest.TestCase):
             watchdog = "ATTITUDE" if module == "Attitude" else "MANUAL"
             fault = "sensor-test" if module == "Attitude" else "runtime-command"
             mutations = {
+                "single-parking-delay": ("for (;;) vTaskDelay(portMAX_DELAY);", "vTaskDelay(portMAX_DELAY);", fault + "-park-deferred"),
+                "fallback-stack": ("STACK_SIZE_BYTES / 4,", ("135," if module == "Attitude" else "288,"), "early"),
                 "watchdog-result": (f"if (!PIOS_WDG_RegisterFlag(PIOS_WDG_{watchdog}))", f"if (!PIOS_WDG_RegisterFlag(PIOS_WDG_{watchdog}) && false)", "watchdog"),
                 "task-result": ("TASK_PRIORITY, NULL) != pdPASS)", "TASK_PRIORITY, NULL) != pdPASS && false)", "task"),
                 "monitor-result": ("xTaskGetCurrentTaskHandle()) != 0)", "xTaskGetCurrentTaskHandle()) != 0 && false)", "monitor-early"),
@@ -143,6 +145,7 @@ class InputStartupTests(unittest.TestCase):
             }
             if module == "Attitude":
                 mutations.update({
+                    "initial-settings": ("    settingsUpdatedCb(AttitudeSettingsHandle());", "    /* removed initial settings application */", "deferred"),
                     "allocation-result": ("if (!mpu6000_data) return -1;", "if (!mpu6000_data && false) return -1;", "allocation"),
                     "init-read": ("if (AttitudeStateGet(&attitude) != 0)", "if (AttitudeStateGet(&attitude) != 0 && false)", "init-read"),
                     "init-write": ("if (AttitudeStateSet(&attitude) != 0)", "if (AttitudeStateSet(&attitude) != 0 && false)", "init-write"),
@@ -153,6 +156,7 @@ class InputStartupTests(unittest.TestCase):
                 })
             else:
                 mutations.update({
+                    "initial-settings": ("    SettingsUpdatedCb(NULL);", "    /* removed initial settings application */", "deferred"),
                     "instance-growth": ("next != count || actual != count + 1", "next != count", "instance-1"),
                     "instance-result": ("next != count || actual != count + 1", "actual != count + 1", "instance-zero-grown"),
                     "runtime-command": ("ManualControlCommandGet(&cmd) != 0 || FlightStatusGet(&flightStatus) != 0", "(ManualControlCommandGet(&cmd), false) || FlightStatusGet(&flightStatus) != 0", "runtime-command-deferred"),
@@ -193,6 +197,11 @@ class InputStartupTests(unittest.TestCase):
                 result = subprocess.run(args + ["-dM", "-E"], cwd=entry["directory"], capture_output=True,
                                         text=True, check=True, timeout=30)
                 macros = {line.split()[1] for line in result.stdout.splitlines() if line.startswith("#define ")}
+                values = {line.split()[1]: line.split(maxsplit=2)[2] for line in result.stdout.splitlines()
+                          if line.startswith("#define ") and len(line.split(maxsplit=2)) == 3}
+                fixture_bytes = subprocess.run([str(self.binaries[module]), "stack-bytes"], check=True,
+                                               capture_output=True, text=True, timeout=5).stdout.strip()
+                self.assertEqual(int(fixture_bytes), int(values["PIOS_" + module.upper() + "_STACK_SIZE"]))
                 for name in ("USE_ESP32", "PIOS_INCLUDE_WDG", "PIOS_INCLUDE_ICM20602", "PIOS_QUATERNION_STABILIZATION"):
                     self.assertIn(name, macros)
                 for name in ("PIOS_EXCLUDE_ADVANCED_FEATURES", "PIOS_INCLUDE_RAW_SENSORS", "PIOS_INCLUDE_ADXL345", "PIOS_INCLUDE_ADC", "USE_INPUT_LPF", "PIOS_INCLUDE_USB_RCTX"):

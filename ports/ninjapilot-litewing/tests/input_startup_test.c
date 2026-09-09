@@ -28,7 +28,7 @@
 #define INPUT_WDG PIOS_WDG_ATTITUDE
 #define INPUT_OBJECTS 5
 #define LATER_MODULES 5
-#define INPUT_STACK_WORDS 135
+#define INPUT_STACK_WORDS (PIOS_ATTITUDE_STACK_SIZE / 4)
 #else
 #define INPUT_INIT ReceiverInitialize
 #define INPUT_START ReceiverStart
@@ -37,7 +37,7 @@
 #define INPUT_WDG PIOS_WDG_MANUAL
 #define INPUT_OBJECTS 7
 #define LATER_MODULES 2
-#define INPUT_STACK_WORDS 288
+#define INPUT_STACK_WORDS (PIOS_RECEIVER_STACK_SIZE / 4)
 #endif
 
 struct object { uint32_t id, size; unsigned instances; unsigned char data[3][2048]; UAVObjMetadata metadata; };
@@ -47,6 +47,7 @@ static struct subscription subscriptions[2];
 static unsigned object_count, registrations, connections, subscription_count, allocations, instance_calls;
 static unsigned creates, monitor_calls, unregisters, task_deletes, parked, watchdog_calls;
 static unsigned shutdowns, fault_alarms, loop_waits, later_inits, later_starts, sensor_tests, scales;
+static unsigned frame_queries;
 static unsigned output_handle_requests;
 static int fail_object, fail_callback, fail_instance;
 static bool fail_instance_zero, fail_instance_grown, fail_allocation, fail_watchdog, fail_task, fail_monitor, fail_unregister;
@@ -58,6 +59,20 @@ static jmp_buf worker_exit;
 static SystemAlarmsAlarmOptions alarms[SYSTEMALARMS_ALARM_NUMELEM];
 const struct pios_board_info pios_board_info_blob = { .board_rev = 0x02 };
 uint32_t pios_rcvr_group_map[8] = { 1, 1, 1, 1, 1, 1, 1, 1 };
+
+static void check_initial_settings(void) {
+#ifdef TEST_ATTITUDE
+    CHECK(scales == 1 && rotate == 1);
+    CHECK(gyro_scale.X == 4.5f && gyro_scale.Y == 6.0f && gyro_scale.Z == 7.5f);
+    CHECK(accel_scale.X == 2.5f && accel_scale.Y == 3.0f && accel_scale.Z == 3.5f);
+    /* Seeded 90-degree yaw, not the zero/default board rotation. */
+    CHECK(fabsf(R[0][0]) < 1e-5f && fabsf(R[0][1] - 1.0f) < 1e-5f);
+    CHECK(fabsf(R[1][0] + 1.0f) < 1e-5f && fabsf(R[1][1]) < 1e-5f);
+    CHECK(fabsf(R[2][2] - 1.0f) < 1e-5f);
+#else
+    CHECK(frame_queries == 1 && frameType == FRAME_TYPE_GROUND);
+#endif
+}
 
 UAVObjHandle UAVObjGetByID(uint32_t id) {
     for (unsigned i = 0; i < object_count; ++i) if (objects[i].id == id) return &objects[i];
@@ -180,10 +195,14 @@ void vTaskDelete(xTaskHandle h) {
 }
 void vTaskDelay(portTickType delay) {
     CHECK(in_worker && worker_live && monitored && shutdowns == 1 && fault_alarms == 1 && delay == portMAX_DELAY);
-    ++parked; longjmp(worker_exit, 1);
+    /* A delay can return. Require a second safe wait rather than hiding an
+     * eventual fall-through into deletion of the still-monitored task. */
+    if (++parked == 1) return;
+    CHECK(parked == 2); longjmp(worker_exit, 1);
 }
 void vTaskDelayUntil(portTickType *t, portTickType delay) {
-    CHECK(in_worker && monitored && delay == 20); ++loop_waits; longjmp(worker_exit, 1);
+    CHECK(in_worker && monitored && delay == 20); check_initial_settings();
+    ++loop_waits; longjmp(worker_exit, 1);
 }
 bool PIOS_WDG_RegisterFlag(uint16_t flag) {
     ++watchdog_calls; CHECK(!in_worker && flag == INPUT_WDG && creates == 0); return !fail_watchdog;
@@ -195,6 +214,7 @@ uint32_t PIOS_DELAY_DiffuS(uint32_t before) { return 0; }
 int xQueueReceive(xQueueHandle queue, void *out, unsigned timeout) {
     CHECK(in_worker && monitored && queue == &sensor_queue_token && out && timeout == 10);
     CHECK(sensor_tests == 1 && !fail_test && !fail_sensor_queue);
+    check_initial_settings();
     ++loop_waits; longjmp(worker_exit, 1);
 }
 int32_t PIOS_RCVR_Read(uint32_t id, uint8_t channel) { CHECK(!"receiver loop ran past first wait"); return -1; }
@@ -205,11 +225,11 @@ int32_t AlarmsSet(SystemAlarmsAlarmElem alarm, SystemAlarmsAlarmOptions severity
 int32_t AlarmsClear(SystemAlarmsAlarmElem alarm) { alarms[alarm] = SYSTEMALARMS_ALARM_OK; return 0; }
 SystemAlarmsAlarmOptions AlarmsGet(SystemAlarmsAlarmElem alarm) { return alarms[alarm]; }
 void PIOS_LiteWing_BrushedPWM_Shutdown(void) { ++shutdowns; }
-FrameType_t GetCurrentFrameType(void) { return FRAME_TYPE_MULTIROTOR; }
+FrameType_t GetCurrentFrameType(void) { CHECK(in_worker && monitored); ++frame_queries; return FRAME_TYPE_CUSTOM; }
 void PIOS_NOTIFY_StartNotification(pios_notify_notification notification, pios_notify_priority priority) {}
 static bool sensor_test(uintptr_t context) { CHECK(in_worker && monitored && context == 0); ++sensor_tests; return !fail_test; }
 static QueueHandle_t sensor_queue(uintptr_t context) { CHECK(in_worker && monitored && context == 0); return fail_sensor_queue ? NULL : &sensor_queue_token; }
-static void sensor_scale(float *scale, uint8_t count, uintptr_t context) { CHECK(in_worker && monitored && count == 2 && context == 0); ++scales; scale[0] = scale[1] = 1.0f; }
+static void sensor_scale(float *scale, uint8_t count, uintptr_t context) { CHECK(in_worker && monitored && count == 2 && context == 0); ++scales; scale[0] = 2.0f; scale[1] = 3.0f; }
 const PIOS_SENSORS_Driver PIOS_ICM20602_Driver = { .test = sensor_test, .get_queue = sensor_queue, .get_scale = sensor_scale };
 
 #define LATER(Name) int32_t Name##Initialize(void) { ++later_inits; return 0; } \
@@ -229,6 +249,7 @@ LATER(ManualControl) LATER(Telemetry)
 static unsigned resources_touched(void) { return registrations + connections + allocations + instance_calls; }
 int main(int argc, char **argv) {
     CHECK(argc == 2); const char *s = argv[1];
+    if (!strcmp(s, "stack-bytes")) { printf("%u\n", INPUT_STACK_WORDS * 4u); return 0; }
     if (!strncmp(s, "object-", 7)) fail_object = atoi(s + 7);
     if (!strncmp(s, "callback-", 9)) fail_callback = atoi(s + 9);
     if (!strcmp(s, "instance-zero-grown")) { fail_instance = 1; fail_instance_grown = true; }
@@ -273,6 +294,21 @@ int main(int argc, char **argv) {
 #endif
     if (!FlightStatusHandle()) CHECK(FlightStatusInitialize() == 0);
     if (!ManualControlCommandHandle()) CHECK(ManualControlCommandInitialize() == 0);
+    /* No event dispatcher is simulated here: only the worker's explicit
+     * initial callback can apply these distinguishable settings. */
+#ifdef TEST_ATTITUDE
+    AttitudeSettingsData seeded_attitude; CHECK(AttitudeSettingsGet(&seeded_attitude) == 0);
+    seeded_attitude.BoardRotation.Roll = seeded_attitude.BoardRotation.Pitch = 0;
+    seeded_attitude.BoardRotation.Yaw = 90;
+    CHECK(AttitudeSettingsSet(&seeded_attitude) == 0);
+    AccelGyroSettingsData seeded_scales; CHECK(AccelGyroSettingsGet(&seeded_scales) == 0);
+    seeded_scales.gyro_scale = (AccelGyroSettingsgyro_scaleData){ 1.5f, 2.0f, 2.5f };
+    seeded_scales.accel_scale = (AccelGyroSettingsaccel_scaleData){ 1.25f, 1.5f, 1.75f };
+    CHECK(AccelGyroSettingsSet(&seeded_scales) == 0);
+#else
+    uint8_t custom_as = VTOLPATHFOLLOWERSETTINGS_TREATCUSTOMCRAFTAS_GROUND;
+    VtolPathFollowerSettingsTreatCustomCraftAsSet(&custom_as);
+#endif
     if (!strcmp(s, "repeat")) { unsigned before = resources_touched(); CHECK(INPUT_INIT() != 0 && resources_touched() == before); }
     rc = PIOS_LiteWing_ModulesStart();
     if (fail_task || fail_watchdog) {
@@ -286,7 +322,7 @@ int main(int argc, char **argv) {
         if (worker_failure) {
             CHECK(shutdowns == 1 && fault_alarms == 1 && loop_waits == 0);
             CHECK(unregisters == (unsigned)!fail_monitor);
-            if (fail_unregister) CHECK(worker_live && monitored && parked == 1 && task_deletes == 0);
+            if (fail_unregister) CHECK(worker_live && monitored && parked == 2 && task_deletes == 0);
             else CHECK(!worker_live && !monitored && parked == 0 && task_deletes == 1);
         } else CHECK(worker_live && monitored && loop_waits == 1 && task_deletes == 0 && shutdowns == 0 && fault_alarms == 0);
     }

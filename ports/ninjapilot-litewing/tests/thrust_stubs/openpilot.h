@@ -15,7 +15,9 @@ typedef uint32_t portTickType;
 #define PIOS_EXCLUDE_ADVANCED_FEATURES
 #else
 #define PIOS_INCLUDE_WDG
+#ifndef TEST_INPUT_LIFECYCLE
 #define PIOS_WDG_ACTUATOR 2
+#endif
 #endif
 #define PIOS_STATIC_ASSERT(x) assert(x)
 #define PIOS_Assert assert

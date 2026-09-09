@@ -78,7 +78,7 @@ driver are controlled boundaries. Early/deferred worker execution is
 deterministic, not a FreeRTOS scheduling or physical concurrency simulation.
 
 The initial pre-adaptation fixture compiled and rejected 57 behavioral cases.
-Permanent original-source controls reject 33 cases and 33 deliberate
+Permanent original-source controls reject 33 cases and 39 deliberate
 gate-removal mutations retain the regression evidence; compile errors do not count as negative-control
 success. The original Receiver's pre-existing enum/byte warning remains visible
 but is not fatal only in the original-source compilation. Adapted test builds
@@ -94,10 +94,32 @@ the exact subscription object/callback/mask tuples and require worker reads to
 occur after monitor registration. Previous full runtime thrust/failsafe tests
 are retained separately; they do not cover the new initializers.
 
+Independent review found three fixture gaps in the initial candidate. Removing
+either initial settings callback, replacing indefinite parking with one delay,
+or hardcoding the smaller upstream fallback task depths escaped the tests. All
+six escaped mutations and both SDK/fixture stack mismatches were independently
+reproduced before correction. These were test gaps; the production calls,
+parking loop and board stack constants were already present and unchanged.
+
+The fixture now seeds distinguishable scale/90-degree-yaw settings and checks
+their applied values and rotation at Attitude's first sample receive. Receiver's
+controlled frame classifier returns Custom; a seeded TreatCustomCraftAs setting
+must resolve to Ground before the first wait. This is synthetic settings-effect
+coverage, not physical orientation or navigation evidence. A simulated parking
+delay now returns once; a second safe wait is required while the task remains
+live and monitored. A single-delay mutant reaches the forbidden deletion and
+fails. Six permanent mutations cover these review findings.
+
 The real ESP32-S3 compiler macro check confirms watchdog, quaternion and selected
 IMU support, with advanced-feature exclusion disabled. RAW_SENSORS, ADXL345,
 ADC, input LPF and USB RCTX branches are not selected by this target fixture.
 Those optional paths and advanced navigation readiness are not established.
+The input fixture consumes the real board header for stack/watchdog constants,
+and compares numeric stack bytes with the actual SDK preprocessor: Attitude
+4096 and Receiver 3072 bytes, or 1024/768 words at the module's task-create
+boundary before the ESP32 shim converts back to bytes. This checks argument
+parity, not runtime stack sufficiency. The original fixture incorrectly used
+the 540/1152-byte upstream fallbacks; that mismatch is corrected.
 
 The generated-build selection test first failed against the old graph because
 it selected the unadapted Attitude source. CMake now selects both adapted inputs
@@ -144,7 +166,7 @@ Generated Attitude SHA-256:
 `52fe8228107c53b509914d530dc6c723fe65dd38c89d546e7e5c26b2db733f97`.
 Generated Receiver SHA-256:
 `f76bcc891a4ea4963d7d4021175c8af6eb9b3a565e2af36c82e0164d715f79b6`.
-Later report-only changes do not alter these retained bytes. Independent review
+Later report and test-only changes do not alter these retained bytes. Independent review
 and exact final-revision CI results are recorded in the PR.
 
 ## Remaining gates
