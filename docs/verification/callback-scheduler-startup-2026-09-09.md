@@ -135,6 +135,10 @@ and self-deletion: System may run before its creator registers it, so merely
 adding an unregister call is insufficient. This is explicitly deferred to the
 System/module startup lifecycle slice, not counted as completed validation.
 
+The [subsequent System lifecycle correction](system-task-lifecycle-2026-09-09.md)
+addresses that specific finding with self-registration and owned retirement.
+Its source/build evidence remains separate from installation and full startup.
+
 ## Remaining readiness gates
 
 System-task creation itself, required module initializer/start returns, their

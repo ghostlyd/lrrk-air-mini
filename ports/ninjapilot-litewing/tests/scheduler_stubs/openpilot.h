@@ -19,3 +19,10 @@ void vTaskDelay(unsigned);
 void PIOS_SYS_Reset(void);
 xQueueHandle xQueueCreate(unsigned, unsigned);
 int xQueueReceive(xQueueHandle, void *, unsigned);
+void vQueueDelete(xQueueHandle);
+xTaskHandle xTaskGetCurrentTaskHandle(void);
+void PIOS_SYS_Init(void);
+void InitModules(void);
+int32_t SystemModInitialize(void);
+bool PIOS_LiteWing_BoardServicesInitialized(void);
+#define MODULE_INITIALISE_ALL do { InitModules(); SystemModInitialize(); } while (0)
