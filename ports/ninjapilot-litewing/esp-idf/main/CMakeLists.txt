@@ -84,6 +84,7 @@ set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
     "${PORT_ROOT}/prepare_startup.py"
     "${PORT_ROOT}/target/startup/scheduler_start.inc"
     "${PORT_ROOT}/target/startup/scheduler_create.inc"
+    "${PORT_ROOT}/target/startup/system_start.inc"
     "${FLIGHT}/pios/common/pios_callbackscheduler.c"
     "${FLIGHT}/modules/System/systemmod.c")
 execute_process(COMMAND python3 "${PORT_ROOT}/prepare_scheduler.py"

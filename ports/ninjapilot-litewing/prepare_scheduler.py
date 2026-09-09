@@ -49,10 +49,34 @@ def prepare(source, output):
     # The copy lives in the build directory; retain the pinned public header
     # through the existing System/inc include path, not a copied header.
     system = replace_exact(system, '#include "inc/systemmod.h"', '#include <systemmod.h>')
+    system = replace_exact(system, "static xTaskHandle systemTaskHandle;", """static bool systemInitAttempted;
+static bool systemStartAttempted;
+static bool systemResourcesReady;""")
+    system = replace_function(system, "int32_t SystemModStart(void)",
+        (ROOT / "target/startup/system_start.inc").read_text())
+    system = replace_exact(system, "int32_t SystemModInitialize(void)\n{", """int32_t SystemModInitialize(void)
+{
+    if (systemInitAttempted) return -1;
+    systemInitAttempted = true;""")
+    for name in ("SystemSettings", "SystemStats", "FlightStatus", "ObjectPersistence",
+                 "TaskInfo", "CallbackInfo", "I2CStats", "WatchdogStatus"):
+        system = replace_exact(system, "    " + name + "Initialize();",
+            "    if (!" + name + "Handle() && (" + name + "Initialize() != 0 || !" + name + "Handle())) {\n"
+            "        return -1;\n    }")
+    system = replace_exact(system, "    SystemModStart();", """    systemResourcesReady = true;
+    if (SystemModStart() != 0) {
+        releaseSystemQueue();
+        return -1;
+    }""")
+    system = replace_exact(system, "    /* create all modules thread */", """    /* Register in the task itself, before any dependent startup. There is
+     * no creator-side registration to resurrect a deleted task's handle. */
+    if (PIOS_TASK_MONITOR_RegisterTask(TASKINFO_RUNNING_SYSTEM, xTaskGetCurrentTaskHandle()) != 0) {
+        stopSystemBeforeConnections(false);
+        return;
+    }
+    /* create all modules thread */""")
     codes["systemmod.c"] = replace_exact(system, "    PIOS_CALLBACKSCHEDULER_Start();", """    if (PIOS_CALLBACKSCHEDULER_Start() != 0) {
-        PIOS_LiteWing_BrushedPWM_Shutdown();
-        AlarmsSet(SYSTEMALARMS_ALARM_BOOTFAULT, SYSTEMALARMS_ALARM_CRITICAL);
-        vTaskDelete(NULL);
+        stopSystemBeforeConnections(true);
         return;
     }""")
     for name in codes:
