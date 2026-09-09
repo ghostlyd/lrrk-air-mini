@@ -1,5 +1,10 @@
 # LiteWing thrust-control storage and failure handling
 
+Later bench evidence: the exact reviewed candidate was subsequently installed
+and checked in a separate [USB installation/reset session](control-fixes-usb-install-2026-09-09.md).
+The source-verification account below predates that installation; its unflashed
+statements describe that earlier phase, not the current device state.
+
 ## Scope
 
 Source correction for [issue 28](https://github.com/ghostlyd/lrrk-air-mini/issues/28),

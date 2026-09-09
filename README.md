@@ -35,6 +35,10 @@ supervision and physical output validation remain outstanding.
 The [GCS receiver freshness work](docs/verification/gcs-receiver-freshness-2026-09-09.md)
 records source, protocol-integration and remaining physical receiver-loss gates.
 
+The reviewed receiver/thrust fixes are now [installed and checked over USB](docs/verification/control-fixes-usb-install-2026-09-09.md),
+with preserved settings and disarmed telemetry across a reset. Arming is still
+disabled; receiver-loss acceptance and the other physical gates remain open.
+
 ## Firmware build
 
 The firmware is an ESP-IDF project. Install a compatible ESP-IDF toolchain,
