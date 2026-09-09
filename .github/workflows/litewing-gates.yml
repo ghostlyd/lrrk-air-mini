@@ -110,3 +110,7 @@ jobs:
             python3 -m unittest discover -s ports/ninjapilot-litewing/tests -p test_startup_services.py -v
           LRRK_TEST_FLIGHT_ROOT="$RUNNER_TEMP/litewing-external/NinjaPilot" \
             python3 -m unittest discover -s ports/ninjapilot-litewing/tests -p test_startup_preparation.py -v
+      - name: Test complete scheduler lifecycle and System startup caller
+        run: |
+          LRRK_TEST_FLIGHT_ROOT="$RUNNER_TEMP/litewing-external/NinjaPilot" \
+            python3 -m unittest discover -s ports/ninjapilot-litewing/tests -p 'test_*scheduler*.py' -v

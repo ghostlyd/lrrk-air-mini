@@ -38,6 +38,11 @@ now return errors, existing alarms are preserved, and a failed periodic-event
 allocation releases its mutex. These changes are source-tested and built only;
 the installed firmware and Always Disarmed setting are unchanged.
 
+The [callback scheduler correction](../../docs/verification/callback-scheduler-startup-2026-09-09.md)
+adds checked worker startup, owned-resource cleanup and a System-task stop path
+after scheduler failure. Real-code host regressions and an ESP32-S3 build pass;
+the candidate is not installed and complete startup/arming readiness remains open.
+
 The selected upstream `litewing` branch currently includes a POSIX/Gazebo
 LiteWing twin, not a flashable ESP32-S3 target. The repository-owned target
 work therefore proceeds in gates:

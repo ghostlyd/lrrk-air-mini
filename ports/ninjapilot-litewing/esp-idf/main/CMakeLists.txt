@@ -76,6 +76,22 @@ set(PIOS_ESP32_SRCS
 )
 
 # --- PiOS: shared flight services ------------------------------------
+# Check complete pinned sources before adapting scheduler resource ownership
+# and its System caller. Workers must not run callbacks from a failed batch.
+set(LITEWING_SCHEDULER_DIR "${CMAKE_CURRENT_BINARY_DIR}/litewing_scheduler")
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+    "${PORT_ROOT}/prepare_scheduler.py"
+    "${PORT_ROOT}/prepare_startup.py"
+    "${PORT_ROOT}/target/startup/scheduler_start.inc"
+    "${PORT_ROOT}/target/startup/scheduler_create.inc"
+    "${FLIGHT}/pios/common/pios_callbackscheduler.c"
+    "${FLIGHT}/modules/System/systemmod.c")
+execute_process(COMMAND python3 "${PORT_ROOT}/prepare_scheduler.py"
+    --source "${FLIGHT}" --output "${LITEWING_SCHEDULER_DIR}"
+    RESULT_VARIABLE LITEWING_SCHEDULER_RC)
+if(NOT LITEWING_SCHEDULER_RC EQUAL 0)
+    message(FATAL_ERROR "Pinned scheduler lifecycle adaptation failed")
+endif()
 # The architecture-specific LED implementation replaces the STM32 GPIO LED
 # source. The reference servo and ICM-20602 files are deliberately absent.
 set(PIOS_COMMON_SRCS
@@ -86,7 +102,7 @@ set(PIOS_COMMON_SRCS
     "${FLIGHT}/pios/common/pios_deltatime.c"
     "${FLIGHT}/pios/common/pios_sensors.c"
     "${FLIGHT}/pios/common/pios_task_monitor.c"
-    "${FLIGHT}/pios/common/pios_callbackscheduler.c"
+    "${LITEWING_SCHEDULER_DIR}/pios_callbackscheduler.c"
     "${FLIGHT}/pios/common/pios_notify.c"
     "${FLIGHT}/pios/common/pios_debuglog.c"
 )
@@ -172,7 +188,7 @@ set(NINJA_MODULE_SRCS
     "${FLIGHT}/modules/ManualControl/pathplannerhandler.c"
     "${FLIGHT}/modules/ManualControl/takeofflocationhandler.c"
     "${FLIGHT}/modules/Telemetry/telemetry.c"
-    "${FLIGHT}/modules/System/systemmod.c"
+    "${LITEWING_SCHEDULER_DIR}/systemmod.c"
 )
 
 set(BOARD_SRCS
