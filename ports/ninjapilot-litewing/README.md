@@ -48,6 +48,11 @@ checks System-owned initialization resources, removes its creator/monitor race,
 and propagates synchronous System errors to the actual entry point. Required
 module internals and the complete boot/physical gates still need validation.
 
+The [checked module startup correction](../../docs/verification/checked-module-startup-2026-09-09.md)
+consumes reported module errors and checks ManualControl's required objects and
+scheduler allocation through the actual entry point. Other module internals and
+all physical gates remain separate; the built candidate is not installed.
+
 The selected upstream `litewing` branch currently includes a POSIX/Gazebo
 LiteWing twin, not a flashable ESP32-S3 target. The repository-owned target
 work therefore proceeds in gates:
