@@ -1,9 +1,9 @@
 # LiteWing port and dependency inventory
 
-Status: wrapper implementation baseline. This document records what is evidenced in
+Status: ESP32-S3 wrapper build verified on 2026-09-09. This document records what is evidenced in
 this repository and on the connected development host. The approved
-NinjaPilot/OpenPilot LiteWing target is pinned, but the flashable ESP32-S3
-target and all hardware gates remain incomplete. It does not claim that a
+NinjaPilot/OpenPilot LiteWing target is pinned, and the ESP32-S3
+image builds successfully; all hardware gates remain incomplete. It does not claim that a
 flight has been performed.
 
 ## Scope and target boundary
@@ -100,9 +100,11 @@ The observed bridge identity is USB vendor/product `1A86:7522`. The device is
 available for later bench diagnostics; no firmware flash is implied by its
 presence.
 
-The current workstation does not expose `idf.py` or `qmake`, so the ESP32-S3
-and POSIX simulator build gates are recorded as unavailable rather than passed.
-The source, C contract, and offline AI tests run locally.
+The local ESP-IDF 5.3.2 installation now builds the wrapper through compile,
+link, image generation, and partition sizing. Homebrew CMake, Ninja, and Qt 5
+provide host tools; `qmake` is under `/opt/homebrew/opt/qt@5/bin` and ESP-IDF
+activation is documented in the port README. This build does not establish
+POSIX simulator or physical hardware behavior.
 
 ## OpenAI assistance dependency boundary
 
@@ -153,7 +155,7 @@ wrapper are maintained in
 `litewing` branch currently contains a POSIX/Gazebo twin rather than a
 flashable LiteWing ESP32-S3 board target. The repository-owned target adapter
 and ESP-IDF board glue now contain the MPU6050 I2C and brushed-duty HAL seams;
-the toolchain build and physical gates remain open.
+the toolchain build has passed and physical gates remain open.
 
 The adapter depends on the pinned reference ESP32 PiOS support for the
 architecture header, IDF I2C transaction backend, and common ESP32 services.

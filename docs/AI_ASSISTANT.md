@@ -50,3 +50,31 @@ The first adapter is JSONL replay. `UAVTalkAdapter` is a deliberately
 read-only boundary until the NinjaPilot telemetry schema and transport are
 validated against the selected target. No adapter may issue an actuator,
 arming, gain, failsafe, takeoff, landing, or navigation write.
+
+### Binary capture inspection
+
+The receive-only `lrrk_litewing_ai.uavtalk` module now decodes saved binary
+captures into frame records, including object ID, instance ID, raw payload,
+and optional device timestamp ticks:
+
+```sh
+PYTHONPATH=ai_assistant/src python3 -m lrrk_litewing_ai.uavtalk capture.bin
+```
+
+Its format follows the manifest-pinned
+[NinjaPilot sender](https://github.com/MAVProxyUser/NinjaPilot-15.02.ninja/blob/ac77304a58de6c8bd552f94668b46903adb71cb2/flight/uavtalk/uavtalk.c):
+every frame includes an instance ID, length excludes the CRC byte, and the
+CRC uses polynomial `0x07`. The parser accepts arbitrary chunk boundaries,
+rejects malformed types, lengths, checksums, and truncated captures, and caps
+payloads at the pinned generated `UAVOBJECTS_LARGEST` of 217 bytes.
+Fixed synthetic test vectors use independently calculated upstream-table CRCs.
+
+Captures must begin at a frame boundary; corruption stops decoding. Earlier
+records may already have been printed when a later frame fails, so consumers
+must check the command exit status. CRC provides corruption detection, not
+authentication. Timestamp ticks are not wall-clock freshness evidence.
+
+This supplies framing, not normalized `TelemetrySnapshot` values. Schema-bound
+field decoding, timestamp/freshness handling, and actual target captures are
+still required before enabling the live UAVTalk adapter. No serial port is
+opened and no acknowledgment, object request, or flight command is sent.
