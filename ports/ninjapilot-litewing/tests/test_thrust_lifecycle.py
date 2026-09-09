@@ -104,6 +104,8 @@ class ActuatorLifecycleTests(unittest.TestCase):
     def test_omitted_safety_checks_are_detected(self):
         code = (self.output / "actuator.c").read_text()
         mutations = {
+            "duplicate-subscription": ("if (VtolPathFollowerSettingsConnectCallback(&SettingsUpdatedCb) != 0)", "if (SystemSettingsConnectCallback(&SettingsUpdatedCb) != 0)", "deferred"),
+            "settings-before-monitor": ("    /* The task owns its monitor handle.", "    SettingsUpdatedCb(NULL);\n    MixerSettingsUpdatedCb(NULL);\n    /* The task owns its monitor handle.", "monitor-early"),
             "task-result": ("TASK_PRIORITY, NULL) != pdPASS)", "TASK_PRIORITY, NULL) != pdPASS && false)", "task"),
             "watchdog-result": ("if (!PIOS_WDG_RegisterFlag(PIOS_WDG_ACTUATOR))", "if (!PIOS_WDG_RegisterFlag(PIOS_WDG_ACTUATOR) && false)", "watchdog"),
             "queue-free": ("        vQueueDelete(queue);", "        /* removed unpublished queue cleanup */", "connection"),

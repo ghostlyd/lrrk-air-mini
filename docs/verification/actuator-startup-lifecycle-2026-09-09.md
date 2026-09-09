@@ -55,12 +55,21 @@ nominal path; the earlier full runtime thrust/failsafe tests remain separate.
 
 The first test run compiled successfully and failed 22 behavioral cases before
 the production change. Permanent original-source controls reject the same
-22 cases. Nine deliberate mutations catch ignored task/watchdog/monitor
+22 cases. Eleven deliberate mutations catch ignored task/watchdog/monitor
 results, missing queue cleanup or fault shutdown/alarm, repeated initialization
-or start, and start before initialization. Compile errors cannot satisfy a
+or start, start before initialization, a duplicate subscription replacing a
+required callback, and settings reads before monitor registration. Compile errors cannot satisfy a
 negative control. Resource failure coverage includes each of seven object
 registrations, four callback subscriptions, queue allocation/connection,
 watchdog/task creation and early/deferred monitor registration.
+
+Independent review found two nonblocking fixture gaps in the initial candidate:
+it counted subscriptions without their identities, and enforced monitored
+output setup without enforcing monitored settings reads. Both escaped mutations
+were reproduced before correction. The fixture now models callback deduplication,
+checks the expected object/callback/event-mask tuples and requires worker reads
+to occur after monitor registration. Production code and retained build bytes
+are unchanged by these test-only corrections.
 
 The actual ESP32-S3 compiler's preprocessor output confirms watchdog support
 and advanced-feature paths are enabled, while DIAG_MIXERSTATUS is not. A test

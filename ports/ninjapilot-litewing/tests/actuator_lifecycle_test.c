@@ -23,6 +23,23 @@ static int queue_token, worker_token;
 static void (*worker_entry)(void *);
 static jmp_buf worker_exit;
 static SystemAlarmsAlarmOptions alarms[SYSTEMALARMS_ALARM_NUMELEM];
+struct subscription { UAVObjHandle obj; UAVObjEventCallback cb; uint8_t mask; };
+static struct subscription subscriptions[4];
+static unsigned subscription_count;
+
+static void check_subscriptions(unsigned count) {
+    const struct subscription expected[] = {
+        { ActuatorSettingsHandle(), ActuatorSettingsUpdatedCb, EV_MASK_ALL_UPDATES },
+        { MixerSettingsHandle(), MixerSettingsUpdatedCb, EV_MASK_ALL_UPDATES },
+        { VtolPathFollowerSettingsHandle(), SettingsUpdatedCb, EV_MASK_ALL_UPDATES },
+        { SystemSettingsHandle(), SettingsUpdatedCb, EV_MASK_ALL_UPDATES },
+    };
+    CHECK(subscription_count == count && count <= 4);
+    for (unsigned i = 0; i < count; ++i) {
+        CHECK(subscriptions[i].obj == expected[i].obj && subscriptions[i].cb == expected[i].cb);
+        CHECK(subscriptions[i].mask == expected[i].mask);
+    }
+}
 
 UAVObjHandle UAVObjGetByID(uint32_t id) {
     for (unsigned i = 0; i < object_count; ++i) if (objects[i].id == id) return &objects[i];
@@ -36,6 +53,7 @@ UAVObjHandle UAVObjRegister(uint32_t id, bool single, bool settings, bool priori
     cb(obj, 0); return obj;
 }
 int32_t UAVObjGetData(UAVObjHandle h, void *out) {
+    if (in_worker) CHECK(monitored);
     if (!h) return -1;
     struct object *o = h; memcpy(out, o->data, o->size); return 0;
 }
@@ -43,6 +61,7 @@ int32_t UAVObjSetData(UAVObjHandle h, const void *in) {
     CHECK(h); struct object *o = h; memcpy(o->data, in, o->size); return 0;
 }
 int32_t UAVObjGetDataField(UAVObjHandle h, void *out, uint32_t offset, uint32_t size) {
+    if (in_worker) CHECK(monitored);
     if (!h) return -1;
     struct object *o = h; CHECK(offset + size <= o->size); memcpy(out, o->data + offset, size); return 0;
 }
@@ -57,10 +76,23 @@ int32_t UAVObjGetMetadata(UAVObjHandle h, UAVObjMetadata *m) { CHECK(h); *m = ((
 void UAVObjSetAccess(UAVObjMetadata *m, UAVObjAccessType a) { m->flags = (m->flags & ~1) | a; }
 int8_t UAVObjReadOnly(UAVObjHandle h) { return 0; }
 int32_t UAVObjConnectCallback(UAVObjHandle h, UAVObjEventCallback cb, uint8_t mask) {
-    CHECK(h && cb); return ++callbacks == (unsigned)fail_callback ? -1 : 0;
+    CHECK(h && cb); ++callbacks;
+    /* The real manager updates an existing subscription without allocating.
+     * A duplicate must not masquerade as a fourth independent connection. */
+    for (unsigned i = 0; i < subscription_count; ++i) {
+        if (subscriptions[i].obj == h && subscriptions[i].cb == cb) {
+            subscriptions[i].mask = mask;
+            return 0;
+        }
+    }
+    if (callbacks == (unsigned)fail_callback) return -1;
+    CHECK(subscription_count < 4);
+    subscriptions[subscription_count++] = (struct subscription){ h, cb, mask };
+    return 0;
 }
 int32_t UAVObjConnectQueue(UAVObjHandle h, xQueueHandle q, uint8_t mask) {
     ++connects; CHECK(h && q == &queue_token && queue_live && !queue_published);
+    CHECK(h == ActuatorDesiredHandle() && mask == EV_MASK_ALL_UPDATES);
     if (fail_connect) return -1;
     queue_published = true; return 0;
 }
@@ -146,6 +178,8 @@ int main(int argc, char **argv) {
     int32_t rc = PIOS_LiteWing_ModulesInitialize();
     if (init_fail) {
         CHECK(rc != 0 && later_inits == 0 && task_creates == 0 && !queue_live);
+        if (fail_callback) { CHECK(callbacks == (unsigned)fail_callback); check_subscriptions(fail_callback - 1); }
+        else check_subscriptions(fail_object ? 0 : 4);
         CHECK(PIOS_LiteWing_ModulesStart() != 0 && later_starts == 0);
         CHECK(connects == (unsigned)fail_connect && deletes == (unsigned)fail_connect);
         CHECK(ActuatorStart() != 0 && task_creates == 0);
@@ -154,6 +188,7 @@ int main(int argc, char **argv) {
         return 0;
     }
     CHECK(rc == 0 && later_inits == 3 && registrations == 7 && callbacks == 4);
+    check_subscriptions(4);
     CHECK(queue_live && queue_published && connects == 1 && creates == 1 && deletes == 0);
     CHECK(FlightStatusInitialize() == 0 && ManualControlCommandInitialize() == 0);
     if (!strcmp(s, "repeat")) {
