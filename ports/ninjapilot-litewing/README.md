@@ -111,10 +111,28 @@ ports/ninjapilot-litewing/build.sh \
 
 When `IDF_PATH` is not already set, `build.sh` also discovers this local
 installation automatically. The command is intentionally build-only. It never
-calls `flash`, `monitor`, `esptool`, or any motor-output test. The local
+opens a serial device, invokes flashing/monitoring, or runs a motor-output test.
+ESP-IDF uses `esptool` offline to generate the binary image. The local
 ESP-IDF 5.3.2 / ESP32-S3 toolchain is installed and verified. When the exact
 external checkouts and generated flight UAVObjects are supplied, the wrapper
 gate verifies compilation, linking, image generation, and partition sizing.
+
+Keep the SDK and ESP-IDF Python environments separate. This workstation's
+installed IDF environment is `idf5.3_py3.9_env`; selecting a different Python
+minor version can make `export.sh` look for a nonexistent environment. For
+this existing installation, activate it before invoking `build.sh` (from the
+checkout that contains the installed `.toolchains` directory):
+
+```sh
+export IDF_TOOLS_PATH="$PWD/.toolchains/espressif"
+export PATH="$IDF_TOOLS_PATH/python_env/idf5.3_py3.9_env/bin:/opt/homebrew/opt/qt@5/bin:/opt/homebrew/bin:$PATH"
+. "$PWD/.toolchains/esp-idf-v5.3.2/export.sh"
+```
+
+The environment name describes the verified workstation, not a portable
+requirement; other installations must select their own installed IDF Python
+environment. Do not install another toolchain merely because an unrelated
+virtual environment is active.
 
 The wrapper consumes the reference architecture, UART, I2C, watchdog, NVS,
 and task-runtime sources, but excludes the reference ICM-20602 and servo-pulse
@@ -133,7 +151,10 @@ hardware seams the pinned OpenPilotESP32 reference does not: an MPU6050 I2C
 driver that probes `WHO_AM_I`, publishes the existing PIOS sensor queue record,
 and fails the output gate on stale data; and a four-channel LEDC backend that
 maps `0..1000` to 20 kHz duty, stages frames, and zeroes on disarm, sensor
-fault, failsafe, shutdown, or a 100 ms controller-update timeout.
+fault, failsafe, shutdown, or stale controller updates. The output watchdog
+tests for age greater than 100 ms on a 20 ms polling task; polling phase,
+scheduling and mutex contention add delay. This is not a proven 100 ms
+electrical motor-cut deadline.
 
 The `target/sources.cmake` fragment is consumed by the ESP-IDF wrapper and is
 linked with the pinned reference ESP32 PiOS support while excluding the

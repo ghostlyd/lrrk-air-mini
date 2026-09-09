@@ -21,7 +21,9 @@
 #include "litewing_contract.h"
 #include "pios_litewing_brushed_pwm.h"
 
-#define LITEWING_LEDC_RESOLUTION_BITS 12u
+/* 20 kHz * 2^12 exceeds the ESP32-S3's fastest LEDC source (80 MHz).
+ * Eleven bits retains more hardware steps than the 0..1000 actuator range. */
+#define LITEWING_LEDC_RESOLUTION_BITS 11u
 #define LITEWING_LEDC_DUTY_MAX ((1u << LITEWING_LEDC_RESOLUTION_BITS) - 1u)
 #define LITEWING_OUTPUT_WATCHDOG_MS 100u
 #define LITEWING_OUTPUT_WATCHDOG_PERIOD_MS 20u
@@ -55,27 +57,52 @@ static uint32_t duty_to_ledc(uint16_t duty)
            LITEWING_ACTUATOR_MAX;
 }
 
-static void write_frame_locked(const struct litewing_output_frame *frame)
+static void stop_outputs_locked(void)
 {
+    /* Latch until reboot. A later update_duty would re-enable a stopped
+     * channel, so recovery must never be inferred from fresh control data. */
+    output_state.hardware_ready = false;
+    output_state.link_fresh = false;
+    litewing_safe_frame(&pending_frame);
     for (uint8_t index = 0; index < LITEWING_OUTPUT_CHANNELS; ++index) {
-        (void)ledc_set_duty(LEDC_LOW_SPEED_MODE, motor_channels[index],
-                            duty_to_ledc(frame->duty[index]));
-    }
-    /* LEDC has no multi-channel commit primitive. Stage every channel first,
-     * then update them in one critical section; the resulting skew is bounded
-     * to four register writes and never exposes a partially validated frame. */
-    for (uint8_t index = 0; index < LITEWING_OUTPUT_CHANNELS; ++index) {
-        (void)ledc_update_duty(LEDC_LOW_SPEED_MODE, motor_channels[index]);
+        /* Best effort on every channel even when an earlier stop fails.
+         * Software cannot guarantee electrical low if the peripheral fails. */
+        (void)ledc_stop(LEDC_LOW_SPEED_MODE, motor_channels[index], 0);
     }
 }
 
-static void force_zero_locked(void)
+static bool write_frame_locked(const struct litewing_output_frame *frame)
+{
+    if (!output_state.hardware_ready) {
+        stop_outputs_locked();
+        return false;
+    }
+    for (uint8_t index = 0; index < LITEWING_OUTPUT_CHANNELS; ++index) {
+        if (ledc_set_duty(LEDC_LOW_SPEED_MODE, motor_channels[index],
+                          duty_to_ledc(frame->duty[index])) != ESP_OK) {
+            stop_outputs_locked();
+            return false;
+        }
+    }
+    /* LEDC has no multi-channel commit primitive. Stage every channel first,
+     * then update under the mutex. This is not an atomic cross-channel commit
+     * or a measured timing guarantee; each change takes effect on a PWM cycle. */
+    for (uint8_t index = 0; index < LITEWING_OUTPUT_CHANNELS; ++index) {
+        if (ledc_update_duty(LEDC_LOW_SPEED_MODE, motor_channels[index]) != ESP_OK) {
+            stop_outputs_locked();
+            return false;
+        }
+    }
+    return true;
+}
+
+static bool force_zero_locked(void)
 {
     struct litewing_output_frame safe;
 
     litewing_safe_frame(&safe);
     pending_frame = safe;
-    write_frame_locked(&safe);
+    return write_frame_locked(&safe);
 }
 
 static void output_watchdog_task(__attribute__((unused)) void *argument)
@@ -104,7 +131,7 @@ static void output_watchdog_task(__attribute__((unused)) void *argument)
 int32_t PIOS_LiteWing_BrushedPWM_Init(void)
 {
     if (output_ready) {
-        return 0;
+        return output_state.hardware_ready && !output_state.shutdown ? 0 : -5;
     }
 
     output_lock = xSemaphoreCreateMutex();
@@ -114,7 +141,7 @@ int32_t PIOS_LiteWing_BrushedPWM_Init(void)
 
     const ledc_timer_config_t timer_config = {
         .speed_mode = LEDC_LOW_SPEED_MODE,
-        .duty_resolution = LEDC_TIMER_12_BIT,
+        .duty_resolution = LEDC_TIMER_11_BIT,
         .timer_num = LEDC_TIMER_0,
         .freq_hz = LITEWING_PWM_HZ,
         .clk_cfg = LEDC_AUTO_CLK,
@@ -155,9 +182,14 @@ int32_t PIOS_LiteWing_BrushedPWM_Init(void)
     output_ready = true;
     last_update_us = 0;
 
+    bool zero_written = false;
     if (xSemaphoreTake(output_lock, portMAX_DELAY) == pdTRUE) {
-        force_zero_locked();
+        zero_written = force_zero_locked();
         xSemaphoreGive(output_lock);
+    }
+    if (!zero_written) {
+        output_state.hardware_ready = false;
+        return -5;
     }
 
     if (xTaskCreate(output_watchdog_task, "LWOutWdog",
