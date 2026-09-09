@@ -138,9 +138,11 @@ interpret those raw-object zeros as measured motion or temperature. Thermal
 calibration support remains incomplete.
 
 The critical Receiver/Actuator alarms were not cleared. No receiver inputs
-were sent. The pinned Actuator module sets its critical alarm and safe channel
-values on missing desired updates; the observations are consistent with that
-path but are not a validated human-control/failsafe test. BootFault reported
+were sent. A subsequent read-only configuration capture and artifact analysis
+identified invalid receiver mappings, disabled mixers and a settings-persistence
+linking defect. That evidence supersedes the initial missing-desired-update
+hypothesis; see [the configuration diagnosis](settings-persistence-2026-09-09.md).
+This is not a validated human-control/failsafe test. BootFault reported
 Uninitialised, not an explicit OK. Telemetry and Attitude reported OK in the
 last alarm sample. No claim is made that all alarms or all physical gates pass.
 

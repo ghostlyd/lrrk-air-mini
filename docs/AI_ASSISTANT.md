@@ -8,12 +8,29 @@ review. It has no tool for raw motor values or direct flight commands.
 
 ## Offline first
 
-Preflight analyzer `litewing-safety-2` counts elapsed wall-clock time since
+Preflight analyzer `litewing-safety-3` counts elapsed wall-clock time since
 capture against the 500 ms default freshness budget. Effective link age is
 the recorded link age plus that elapsed time. Old replay fixtures therefore
 produce blocked readiness reports when evaluated today, while remaining useful
 for inspection. An unchanged snapshot can expire before a proposal does;
 approval rechecks freshness. Capture timestamps must come from trusted metadata.
+An already approved proposal also rechecks preflight whenever its currentness
+is queried; an unchanged snapshot hash cannot extend telemetry freshness.
+
+Normalized snapshot schema **2** distinguishes unknown alarm state (`null`)
+from a complete report with no alarms (`[]`). JSONL schema 1 remains readable,
+but omitted/null alarms now stay unknown rather than silently becoming clear.
+Alarms, actuators and capabilities accept arrays or null, never strings,
+booleans or objects (for example, `{"gps": false}` is not a declared GPS).
+Attitude, battery and sensors accept objects or null, not falsy scalar/array
+substitutes. Consumers must accept schema 2 output; normalization changes the
+snapshot hash, so old proposal bindings are not reusable.
+
+Missing flight mode is unknown. Motor evidence must contain exactly four
+finite numeric observations under the LiteWing mapping; a partial vector does
+not pass merely because its available values are in range. Reported unsafe
+values still block even when the vector is incomplete. Unknown state cannot
+produce an approval through the normal proposal state machine.
 
 The deterministic path requires only Python and the standard library. The
 current workstation has Python 3.9.6, while the package metadata requires
@@ -86,9 +103,10 @@ opened and no acknowledgment, object request, or flight command is sent.
 
 ### Capture observations in the assistant
 
-The assistant CLI can now decode `AttitudeState`, `FlightStatus`, and
-`FlightBatteryState` into partial normalized snapshots using the pinned
-generated object IDs and layouts (28, 8, and 30 payload bytes respectively):
+The assistant CLI decodes `AttitudeState`, `FlightStatus`, `FlightBatteryState`,
+`SystemAlarms`, and `ActuatorCommand` into partial normalized snapshots using
+the pinned generated object IDs and layouts (28, 8, 30, 25 and 29 payload bytes
+respectively):
 
 ```sh
 PYTHONPATH=ai_assistant/src python3 -m lrrk_litewing_ai.cli \
@@ -104,9 +122,24 @@ An arming transition is treated as armed for preflight purposes. Unknown
 object IDs and control frames are skipped; invalid selected-object lengths,
 nonzero instances, enum values, and non-finite numbers reject the capture.
 
+`SystemAlarms` preserves every non-OK state by its pinned field name, including
+Uninitialised states, extended statuses and nonzero substatus bytes. Only a
+complete all-OK alarm object with clear extended fields produces `alarms=[]`.
+Uninitialised-only reports are unknown, not healthy; warning/critical/error or
+other reported alarm evidence blocks. Optional subsystem states must not be
+silently cleared merely to achieve a passing report.
+
+`ActuatorCommand` maps channels 1–4 to LiteWing's `0..1000` brushed-duty
+observations, despite the inherited XML's servo-pulse unit label. Negative or
+over-range values are retained for blocking findings, not clamped. Nonzero
+channels outside that mapping and the reported failed-update counter become
+blocking evidence. A zero failure counter does not establish a clear global
+alarm state or prove physical gate-pin timing.
+
 The snapshot's source identifies the decoder schema, not the aircraft's actual
-firmware. IMU identity/health, actuator outputs, battery percentage, and board
+firmware. IMU identity/health, physical actuator outputs, battery percentage, and board
 identity remain unknown. Battery voltage/current are received observations;
 the current target wrapper has no verified battery measurement producer.
-Live transport, per-object freshness, supported-object aggregation, and target
-captures remain required before declaring telemetry integration complete.
+Live transport and per-object freshness/aggregation remain required before
+declaring telemetry integration complete. Physical target captures now exist,
+but are replay evidence, not current flight readiness or an active AI link.

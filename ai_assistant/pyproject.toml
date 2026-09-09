@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "lrrk-litewing-ai"
-version = "0.1.0"
+version = "0.2.0"
 description = "Offline-first, host-only advisory assistant for LiteWing telemetry"
 requires-python = ">=3.11"
 dependencies = []

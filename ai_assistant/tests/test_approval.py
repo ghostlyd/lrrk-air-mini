@@ -25,10 +25,39 @@ def snapshot(snapshot_id="approval-1", complete=True):
         battery=BatteryState(voltage_v=3.9, percent=80),
         sensors=SensorHealth(imu_present=True, imu_identity="MPU6050", imu_healthy=True) if complete else SensorHealth(),
         actuators=(0, 0, 0, 0),
+        alarms=(),
     )
 
 
 class ApprovalTests(unittest.TestCase):
+    def test_missing_evidence_cannot_authorize_a_proposal(self):
+        for changed in ({"alarms": None}, {"flight_mode": None}, {"actuators": [0]}):
+            with self.subTest(changed=changed):
+                state = TelemetrySnapshot.from_dict(dict(snapshot().to_dict(), **changed))
+                machine = ApprovalStateMachine("operator-1")
+                proposal = machine.create_proposal(state, "inspect_telemetry", "inspect", "show report", now=NOW)
+                with self.assertRaises(ApprovalError):
+                    machine.approve(proposal.proposal_id, "human-confirmation", state, now=NOW)
+                self.assertEqual(machine.state, ABORTED)
+
+    def test_negative_capability_mapping_cannot_reach_approval(self):
+        for version in (1, 2):
+            with self.subTest(version=version), self.assertRaises(ValueError):
+                state = TelemetrySnapshot.from_dict(dict(snapshot().to_dict(),
+                    schema_version=version, flight_mode="position_hold", capabilities={"gps": False}))
+                machine = ApprovalStateMachine("operator-1")
+                proposal = machine.create_proposal(state, "inspect_telemetry", "inspect", "show report", now=NOW)
+                machine.approve(proposal.proposal_id, "human-confirmation", state, now=NOW)
+
+    def test_existing_approval_is_invalidated_when_snapshot_ages(self):
+        machine = ApprovalStateMachine("operator-1")
+        state = snapshot()
+        proposal = machine.create_proposal(state, "inspect_telemetry", "inspect", "show report", now=NOW)
+        machine.approve(proposal.proposal_id, "human-confirmation", state, now=NOW)
+        self.assertTrue(machine.approval_is_current(state, now=NOW + timedelta(milliseconds=480)))
+        self.assertFalse(machine.approval_is_current(state, now=NOW + timedelta(milliseconds=481)))
+        self.assertEqual(machine.state, ABORTED)
+
     def test_unchanged_snapshot_becomes_stale_before_proposal_expires(self):
         machine = ApprovalStateMachine("operator-1")
         proposal = machine.create_proposal(snapshot(), "review_orientation", "verify frame", "show checklist", now=NOW)

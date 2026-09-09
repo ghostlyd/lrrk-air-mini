@@ -18,6 +18,8 @@ sys.path.insert(0, str(ROOT / "src"))
 from lrrk_litewing_ai.models import BatteryState, SourceIdentity, TelemetrySnapshot
 from lrrk_litewing_ai.providers import create_openai_agent
 from lrrk_litewing_ai.tools import AssistantRuntime
+from lrrk_litewing_ai.uavobjects import snapshot_from_frame
+from lrrk_litewing_ai.uavtalk import UAVTalkFrame
 
 
 @unittest.skipUnless(importlib.util.find_spec("agents"), "install the optional openai extra")
@@ -108,6 +110,20 @@ class SdkToolTests(unittest.TestCase):
             self.assertEqual(self.invoke(agent, "preflight_tool")["overall"], "BLOCKED")
             finding = self.invoke(agent, "finding_tool", {"finding_id": "link.freshness"})
         self.assertEqual(finding["status"], "BLOCK")
+
+    def test_decoded_alarm_reaches_real_sdk_tools_without_model_or_network(self):
+        payload = bytes([1] * 7 + [3, 1, 3] + [1] * 11 + [0] * 4)
+        state = snapshot_from_frame(UAVTalkFrame(0x20, 0x6B7639EC, 0, None, payload),
+                                    datetime(2026, 9, 9, 12, tzinfo=timezone.utc))
+        self.runtime.ingest(state)
+        agent = self.agent()
+        finding = self.invoke(agent, "finding_tool", {"finding_id": "flight.alarms"})
+        self.assertEqual(finding["status"], "BLOCK")
+        self.assertIn("Receiver:Critical", finding["evidence"])
+        self.assertIn("Actuator:Critical", finding["evidence"])
+        observed = self.invoke(agent, "telemetry_tool")["snapshot"]
+        self.assertIsNone(observed["link_age_ms"])
+        self.assertIsNone(observed["battery"]["voltage_v"])
 
     def test_allowed_proposal_remains_unapproved_and_bound_to_snapshot(self):
         snapshot = self.snapshot()
