@@ -1,7 +1,8 @@
 import sys
 import unittest
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from unittest.mock import patch
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -50,6 +51,23 @@ class ToolTests(unittest.TestCase):
         result = propose_action(runtime, "review_orientation", "verify orientation", "show bench checklist")
         self.assertEqual(result["state"], "PROPOSAL_READY")
         self.assertNotIn("execute", result)
+
+    def test_explanation_rechecks_elapsed_link_freshness(self):
+        runtime = AssistantRuntime()
+        snapshot = make_snapshot()
+        runtime.ingest(snapshot)
+        with patch("lrrk_litewing_ai.safety._now", return_value=snapshot.captured_at):
+            self.assertEqual(run_preflight_tool(runtime)["overall"], "PASS")
+        later = snapshot.captured_at + timedelta(seconds=2)
+        with patch("lrrk_litewing_ai.safety._now", return_value=later):
+            finding = explain_finding(runtime, "link.freshness")
+        self.assertEqual(finding["status"], "BLOCK")
+        self.assertEqual(runtime.last_report.overall, "BLOCKED")
+        self.assertEqual(runtime.last_report.generated_at, later)
+
+    def test_explanation_without_telemetry_is_explicitly_rejected(self):
+        with self.assertRaisesRegex(ValueError, "telemetry snapshot is required"):
+            explain_finding(AssistantRuntime(), "link.freshness")
 
     def test_snapshot_compare_preserves_unknown_delta(self):
         before = make_snapshot()
