@@ -29,15 +29,18 @@ pending.
 
 The NinjaPilot target's [settings-persistence correction and USB reset
 verification](docs/verification/settings-recovery-2026-09-09.md) are also complete
-for the documented bench candidate. This is not flight clearance; receiver-loss
-supervision and physical output validation remain outstanding.
+for the documented bench candidate. This is not flight clearance; physical
+output validation remains outstanding.
 
 The [GCS receiver freshness work](docs/verification/gcs-receiver-freshness-2026-09-09.md)
-records source, protocol-integration and remaining physical receiver-loss gates.
+records the source and protocol-integration checks.
 
 The reviewed receiver/thrust fixes are now [installed and checked over USB](docs/verification/control-fixes-usb-install-2026-09-09.md),
 with preserved settings and disarmed telemetry across a reset. Arming is still
-disabled; receiver-loss acceptance and the other physical gates remain open.
+disabled. A [separate bounded USB trial](docs/verification/disarmed-receiver-completion-2026-09-09.md)
+now passes the sampled disarmed receiver-loss/recovery checks with a complete
+capture. Exact timeout latency, electrical output, powered operation and flight
+remain unverified; this does not enable arming.
 
 ## Firmware build
 
