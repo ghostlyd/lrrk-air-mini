@@ -57,6 +57,16 @@ def validate_manifest(value: Dict[str, Any]) -> None:
     if not isinstance(paths, list) or not paths or not all(isinstance(item, str) and item for item in paths):
         raise ValueError("flight_tree.required_paths must be a non-empty string list")
 
+    toolchain = value.get("toolchain")
+    if not isinstance(toolchain, dict):
+        raise ValueError("toolchain is required")
+    if toolchain.get("target") != "esp32s3":
+        raise ValueError("toolchain.target must be esp32s3")
+    if toolchain.get("esp_idf") != "5.3.2":
+        raise ValueError("toolchain.esp_idf must be 5.3.2")
+    if toolchain.get("generated_uavobjects") != "make uavobjects_flight":
+        raise ValueError("toolchain.generated_uavobjects must record the generator command")
+
     patches = value.get("patches")
     if not isinstance(patches, list) or not patches:
         raise ValueError("patches must be a non-empty list")

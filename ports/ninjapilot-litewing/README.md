@@ -12,8 +12,9 @@ work therefore proceeds in gates:
 2. preserve the POSIX simulation path;
 3. add the LiteWing board contract;
 4. implement and review the MPU6050 I2C and brushed-duty HAL pieces;
-5. build with the recorded ESP-IDF toolchain; and
-6. complete separate prop-off bench and human-orientation checks.
+5. compose the no-flash ESP-IDF wrapper against exact external commits;
+6. build with the recorded ESP-IDF toolchain; and
+7. complete separate prop-off bench and human-orientation checks.
 
 The existing ESP-Drone firmware is the recovery baseline. No script in this
 directory flashes a device, starts a motor, or changes the physical board.
@@ -48,6 +49,29 @@ props removed.
 
 Optional VL53L1X and PMW3901 modules are not enabled by this first target.
 
+## ESP-IDF wrapper
+
+The checked-in project under [`esp-idf/`](esp-idf/) targets ESP32-S3 and
+requires ESP-IDF 5.3.2, the pinned NinjaPilot checkout, the pinned
+OpenPilotESP32 backend checkout, and generated flight UAVObjects:
+
+```sh
+(cd /path/to/NinjaPilot && make uavobjects_flight)
+. /path/to/esp-idf/export.sh
+ports/ninjapilot-litewing/build.sh \
+  --flight-checkout /path/to/NinjaPilot \
+  --reference-checkout /path/to/OpenPilotESP32-WROOM-32E
+```
+
+The command is intentionally build-only. It never calls `flash`, `monitor`,
+`esptool`, or any motor-output test. On a host without `idf.py`, it reports
+the ESP-IDF gate as unavailable while still running the host and source gates.
+
+The wrapper consumes the reference architecture, UART, I2C, watchdog, NVS,
+and task-runtime sources, but excludes the reference ICM-20602 and servo-pulse
+drivers. LiteWing supplies those two seams through its MPU6050 I2C queue driver
+and fixed 20 kHz brushed LEDC backend.
+
 ## Target adapter status
 
 The repository-owned adapter under [`target/`](target/) now supplies the two
@@ -57,8 +81,8 @@ and fails the output gate on stale data; and a four-channel LEDC backend that
 maps `0..1000` to 20 kHz duty, stages frames, and zeroes on disarm, sensor
 fault, failsafe, shutdown, or a 100 ms controller-update timeout.
 
-The `target/sources.cmake` fragment is consumed by the eventual ESP-IDF
-wrapper. It must be linked with the pinned reference ESP32 PiOS support while
-excluding the reference servo-pulse and ICM-20602 sources. This workstation
-does not have `idf.py`, so the ESP-IDF compile and all hardware behavior remain
-unverified; no firmware is flashed by these sources.
+The `target/sources.cmake` fragment is consumed by the ESP-IDF wrapper and is
+linked with the pinned reference ESP32 PiOS support while excluding the
+reference servo-pulse and ICM-20602 sources. This workstation does not have
+`idf.py`, so the ESP-IDF compile and all hardware behavior remain unverified;
+no firmware is flashed by these sources.

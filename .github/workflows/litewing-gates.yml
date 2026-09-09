@@ -1,0 +1,58 @@
+name: LiteWing gates
+
+on:
+  push:
+    paths:
+      - "ports/ninjapilot-litewing/**"
+      - "ai_assistant/**"
+      - "docs/PORT_AND_DEPENDENCIES.md"
+      - ".github/workflows/litewing-gates.yml"
+  pull_request:
+    paths:
+      - "ports/ninjapilot-litewing/**"
+      - "ai_assistant/**"
+      - "docs/PORT_AND_DEPENDENCIES.md"
+      - ".github/workflows/litewing-gates.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  host-gates:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Run host and static gates
+        run: ports/ninjapilot-litewing/build.sh --host-only
+
+  source-gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Fetch exact external inputs
+        shell: bash
+        env:
+          NINJAPILOT_COMMIT: ac77304a58de6c8bd552f94668b46903adb71cb2
+          ESP32_REFERENCE_COMMIT: 7233c97f844c0377930bcdf22998e289638b64c6
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/litewing-external"
+          git clone --filter=blob:none https://github.com/MAVProxyUser/NinjaPilot-15.02.ninja.git "$RUNNER_TEMP/litewing-external/NinjaPilot"
+          git -C "$RUNNER_TEMP/litewing-external/NinjaPilot" fetch --depth 1 origin "$NINJAPILOT_COMMIT"
+          git -C "$RUNNER_TEMP/litewing-external/NinjaPilot" checkout --detach "$NINJAPILOT_COMMIT"
+          git clone --filter=blob:none https://github.com/MAVProxyUser/OpenPilotESP32-WROOM-32E.git "$RUNNER_TEMP/litewing-external/OpenPilotESP32-WROOM-32E"
+          git -C "$RUNNER_TEMP/litewing-external/OpenPilotESP32-WROOM-32E" fetch --depth 1 origin "$ESP32_REFERENCE_COMMIT"
+          git -C "$RUNNER_TEMP/litewing-external/OpenPilotESP32-WROOM-32E" checkout --detach "$ESP32_REFERENCE_COMMIT"
+      - name: Verify pinned source gate
+        run: |
+          python3 ports/ninjapilot-litewing/verify_external_sources.py \
+            --manifest ports/ninjapilot-litewing/SOURCE_MANIFEST.json \
+            --flight "$RUNNER_TEMP/litewing-external/NinjaPilot" \
+            --reference "$RUNNER_TEMP/litewing-external/OpenPilotESP32-WROOM-32E"

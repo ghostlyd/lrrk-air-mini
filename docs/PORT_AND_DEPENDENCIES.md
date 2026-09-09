@@ -1,6 +1,6 @@
 # LiteWing port and dependency inventory
 
-Status: implementation baseline. This document records what is evidenced in
+Status: wrapper implementation baseline. This document records what is evidenced in
 this repository and on the connected development host. The approved
 NinjaPilot/OpenPilot LiteWing target is pinned, but the flashable ESP32-S3
 target and all hardware gates remain incomplete. It does not claim that a
@@ -147,12 +147,13 @@ or a passing host-only test.
 
 ## Selected target implementation
 
-The source/provenance record and reproducible bootstrap are maintained in
+The source/provenance record, reproducible bootstrap, and no-flash ESP-IDF
+wrapper are maintained in
 [`ports/ninjapilot-litewing/`](../ports/ninjapilot-litewing/). The upstream
 `litewing` branch currently contains a POSIX/Gazebo twin rather than a
 flashable LiteWing ESP32-S3 board target. The repository-owned target adapter
-now contains the MPU6050 I2C and brushed-duty HAL seams; the ESP-IDF wrapper,
-toolchain build, and physical gates remain open.
+and ESP-IDF board glue now contain the MPU6050 I2C and brushed-duty HAL seams;
+the toolchain build and physical gates remain open.
 
 The adapter depends on the pinned reference ESP32 PiOS support for the
 architecture header, IDF I2C transaction backend, and common ESP32 services.
@@ -163,3 +164,22 @@ and `target/sources.cmake` for the source boundary.
 The implemented host AI layer is documented in
 [`docs/AI_ASSISTANT.md`](AI_ASSISTANT.md). It is advisory, offline-capable,
 and cannot write flight-control outputs.
+
+## Required software dependencies
+
+The selected wrapper needs these dependencies before its build gate can pass:
+
+- ESP-IDF 5.3.2 with the ESP32-S3 toolchain and `idf.py` in the environment.
+- Python 3 for manifest/source checks and NinjaPilot's version-info script.
+- Git, with clean checkouts at the exact commits in `SOURCE_MANIFEST.json`.
+- NinjaPilot's generated flight UAVObjects (`make uavobjects_flight`), which
+  in turn requires the upstream Qt/qmake generator toolchain.
+- No OpenAI package or API key on the flight controller. The optional OpenAI
+  Agents SDK is host-only and remains behind the advisory/approval boundary.
+
+The board-level parts evidenced by the V2.6.C production BOM are the ESP32-S3-
+WROOM-1 (U8), MPU-6050 (U7), CH340K (U5), TP4056 (IC1), SPX3819M5-L-3-3/TR
+(U2), AO3401A (U1), four IRLML6344TRPBF motor MOSFETs (T1-T4), 2N27002DW
+(U6), SS34/1N4148W protection diodes, USB-C (J1), and JST XH 2P battery
+connector (J2). The fitted motor, propeller, guard, and battery SKUs are not
+established by the BOM and must be recorded before any powered test.

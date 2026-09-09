@@ -2,7 +2,7 @@
   "schema_version": 1,
   "target": {
     "name": "ninjapilot-litewing",
-    "status": "hal-adapter-implemented-under-construction",
+    "status": "esp-idf-wrapper-implemented-under-construction",
     "board": "LiteWing V2.6.C",
     "board_type": "0x13",
     "board_rev": "0x02",
@@ -23,6 +23,11 @@
       "repository": "https://github.com/MAVProxyUser/OpenPilotESP32-WROOM-32E.git",
       "commit": "7233c97f844c0377930bcdf22998e289638b64c6"
     }
+  },
+  "toolchain": {
+    "target": "esp32s3",
+    "esp_idf": "5.3.2",
+    "generated_uavobjects": "make uavobjects_flight"
   },
   "patches": [
     {
@@ -74,7 +79,7 @@
   },
   "target_adapter": {
     "source": "repository-owned",
-    "status": "implemented-but-not-ESP-IDF-built-on-this-host",
+    "status": "wrapper-implemented-but-not-ESP-IDF-built-on-this-host",
     "source_fragment": "ports/ninjapilot-litewing/target/sources.cmake",
     "required_files": [
       "ports/ninjapilot-litewing/target/sources.cmake",
@@ -86,12 +91,33 @@
       "ports/ninjapilot-litewing/target/pios_litewing_board.c",
       "ports/ninjapilot-litewing/target/pios_litewing_mpu6050.c",
       "ports/ninjapilot-litewing/target/pios_litewing_brushed_pwm.c",
-      "ports/ninjapilot-litewing/target/litewing_mpu6050_protocol.c"
+      "ports/ninjapilot-litewing/target/litewing_mpu6050_protocol.c",
+      "ports/ninjapilot-litewing/target/firmware/inc/openpilot.h",
+      "ports/ninjapilot-litewing/target/firmware/inc/pios_config.h",
+      "ports/ninjapilot-litewing/target/firmware/pios_board.h",
+      "ports/ninjapilot-litewing/target/firmware/InitMods.c",
+      "ports/ninjapilot-litewing/target/firmware/litewing.c",
+      "ports/ninjapilot-litewing/target/firmware/pios_board.c",
+      "ports/ninjapilot-litewing/esp-idf/CMakeLists.txt",
+      "ports/ninjapilot-litewing/esp-idf/main/CMakeLists.txt",
+      "ports/ninjapilot-litewing/esp-idf/main/fw_version_info.tpl",
+      "ports/ninjapilot-litewing/esp-idf/main/uavo_handles.ld",
+      "ports/ninjapilot-litewing/esp-idf/sdkconfig.defaults",
+      "ports/ninjapilot-litewing/esp-idf/partitions.csv"
     ],
     "reference_backend_files": [
       "pios/esp32/pios_esp32.h",
       "pios/esp32/inc/pios_esp32_priv.h",
-      "pios/esp32/pios_i2c.c"
+      "pios/esp32/pios_i2c.c",
+      "pios/esp32/pios_sys.c",
+      "pios/esp32/pios_delay.c",
+      "pios/esp32/pios_irq.c",
+      "pios/esp32/pios_led.c",
+      "pios/esp32/pios_debug.c",
+      "pios/esp32/pios_wdg.c",
+      "pios/esp32/pios_usart.c",
+      "pios/esp32/pios_flashfs_nvs.c",
+      "pios/esp32/pios_task_runtime.c"
     ],
     "excluded_reference_files": [
       "pios/esp32/pios_servo.c",
