@@ -22,7 +22,7 @@ from lrrk_litewing_ai.tools import (  # noqa: E402
 def make_snapshot(snapshot_id="tools-1"):
     return TelemetrySnapshot(
         snapshot_id=snapshot_id,
-        captured_at=datetime(2026, 9, 8, 12, 0, tzinfo=timezone.utc),
+        captured_at=datetime.now(timezone.utc),
         source=SourceIdentity("test", board="LiteWing V2.6.C"),
         link_age_ms=20,
         armed=False,

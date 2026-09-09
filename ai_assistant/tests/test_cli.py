@@ -4,6 +4,8 @@ import os
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
+from datetime import datetime, timezone
 from pathlib import Path
 
 
@@ -20,7 +22,7 @@ FIXTURE = ROOT / "tests" / "fixtures" / "telemetry.jsonl"
 class CliTests(unittest.TestCase):
     def test_offline_fixture_runs_without_credentials(self):
         output = io.StringIO()
-        with contextlib.redirect_stdout(output):
+        with contextlib.redirect_stdout(output), patch("lrrk_litewing_ai.safety._now", return_value=datetime(2026, 9, 8, 12, tzinfo=timezone.utc)):
             result = main(["--input", str(FIXTURE), "--json", "--prompt", "run preflight"])
         self.assertEqual(result, 0)
         self.assertIn('"overall": "PASS"', output.getvalue())

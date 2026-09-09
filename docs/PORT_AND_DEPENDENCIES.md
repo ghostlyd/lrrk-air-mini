@@ -31,6 +31,13 @@ LiteWing contract patch.
 
 ## LiteWing hardware baseline
 
+Owner inventory update (2026-09-09): no battery is currently available.
+Motor-powered bench checks and flight verification therefore remain pending.
+Source work, host simulation, and AI development can continue. A battery is a
+required outstanding purchase; verify cell count, voltage, current capability,
+mass, fit, and the physical connector/polarity before selecting a SKU. The BOM's
+connector designation alone is not proof of the assembled board's wiring.
+
 The primary hardware evidence is the KiCad design and production BOM in
 `hardware/LieWingV2.6.C/` (the directory name preserves the upstream `LieWing`
 spelling). V2.6 is the revision to use for port planning unless the physical

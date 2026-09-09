@@ -41,6 +41,16 @@ class SafetyTests(unittest.TestCase):
         self.assertEqual(report.overall, "BLOCKED")
         self.assertEqual(next(item for item in report.findings if item.finding_id == "link.freshness").status, "BLOCK")
 
+    def test_old_snapshot_cannot_reuse_a_fresh_recorded_link_age(self):
+        report = run_preflight(snapshot(captured_at=NOW - timedelta(days=1)), now=NOW)
+        self.assertEqual(report.overall, "BLOCKED")
+        self.assertEqual(next(item for item in report.findings if item.finding_id == "time.freshness").status, "BLOCK")
+
+    def test_elapsed_time_consumes_remaining_link_budget(self):
+        for elapsed, expected in ((480, "PASS"), (481, "BLOCKED")):
+            report = run_preflight(snapshot(), now=NOW + timedelta(milliseconds=elapsed))
+            self.assertEqual(report.overall, expected)
+
     def test_unknown_link_is_incomplete_not_safe(self):
         report = run_preflight(snapshot(link_age_ms=None), now=NOW)
         self.assertEqual(report.overall, "INCOMPLETE")
