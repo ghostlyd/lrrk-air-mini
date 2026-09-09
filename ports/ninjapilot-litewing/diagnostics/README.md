@@ -53,7 +53,9 @@ ACK or receiver packet is sent in completion. The completed bytes still undergo
 CRC, schema, settings and safety validation. Missing/late/corrupt bytes or a
 contrary final receiver state fail; nothing is discarded to manufacture PASS.
 The report's `completion` records host-relative start/end, additional bytes and
-whether a pending frame was completed. This finite capture does not assert
+whether a pending frame was completed and validated. Failed attempts also retain
+these metrics; `end_s` is the last checked host time before port closure, not an
+electrical timestamp. This finite capture does not assert
 anything about later unread telemetry or continuous electrical safety.
 
 Preflight waits up to15s for fresh safe settings/status and actual no-input

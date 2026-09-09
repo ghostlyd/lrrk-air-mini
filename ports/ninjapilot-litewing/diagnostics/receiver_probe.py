@@ -186,6 +186,8 @@ def run_trial(wire, link, capture, clock=time.monotonic, sleep=time.sleep):
     digest = hashlib.sha256()
     counts = {}
     last_clock = started
+    completion_started = None
+    completion_confirmed = False
     def bounded_now():
         nonlocal last_clock
         now = clock()
@@ -274,15 +276,18 @@ def run_trial(wire, link, capture, clock=time.monotonic, sleep=time.sleep):
                 sleep(.005)
         wire.decoder.finish()
         result = evidence.result(bounded_now())
-        result['completion'] = {'start_s':completion_started-started,
-            'end_s':last_clock-started, 'additional_bytes':total-completion_bytes,
-            'completed_pending_frame':had_pending}
+        completion_confirmed = had_pending
     except (Exception, KeyboardInterrupt) as exc:
         result = {'status':'FAIL', 'failure':type(exc).__name__+': '+str(exc),
                   'phase':evidence.phase, 'phases':evidence.phases,
                   'neutral_packets':evidence.sent, 'flight_ready':False}
     finally:
+        completion_ended = last_clock
         link.port.close()
+    if completion_started is not None:
+        result['completion'] = {'start_s':completion_started-started,
+            'end_s':completion_ended-started, 'additional_bytes':total-completion_bytes,
+            'completed_pending_frame':completion_confirmed}
     try:
         now = bounded_now()
         if result['status'] == 'PASS_DISARMED_RECEIVER_OBSERVATIONS_ONLY':

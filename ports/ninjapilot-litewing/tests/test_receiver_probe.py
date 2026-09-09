@@ -449,6 +449,19 @@ class ProtocolTests(unittest.TestCase):
         self.assertIn('final receiver',result['failure'])
         self.assertTrue(port.closed)
 
+    def test_failed_completion_preserves_byte_and_time_evidence(self):
+        for mode,kwargs,expected_bytes in (('bad_crc',{},14),
+                    ('safe',{'tail_delay':.3},0),('safe',{'completion_capture_delay':.3},14)):
+            with self.subTest(mode=mode,kwargs=kwargs):
+                self.wire=probe.Wire(self.codec,self.db)
+                result,port=self.trial(tail_mode=mode,**kwargs)
+                self.assertEqual(result['status'],'FAIL')
+                self.assertIn('completion',result)
+                completion=result['completion']
+                self.assertEqual(completion['additional_bytes'],expected_bytes)
+                self.assertGreater(completion['end_s'],completion['start_s'])
+                self.assertFalse(completion['completed_pending_frame'])
+
     def test_slow_port_close_cannot_publish_pass_beyond_total_deadline(self):
         result,port=self.trial(close_delay=22.)
         self.assertEqual(result['status'],'FAIL')
