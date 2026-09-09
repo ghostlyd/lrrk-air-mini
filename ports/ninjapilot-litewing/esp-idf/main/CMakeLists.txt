@@ -176,11 +176,22 @@ execute_process(COMMAND python3 "${PORT_ROOT}/prepare_control.py"
 if(NOT LITEWING_CONTROL_RC EQUAL 0)
     message(FATAL_ERROR "Pinned control consumer adaptation failed")
 endif()
+set(LITEWING_STABILIZATION_DIR "${CMAKE_CURRENT_BINARY_DIR}/litewing_stabilization")
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+    "${PORT_ROOT}/prepare_stabilization.py"
+    "${PORT_ROOT}/prepare_startup.py"
+    "${FLIGHT}/modules/Stabilization/outerloop.c")
+execute_process(COMMAND python3 "${PORT_ROOT}/prepare_stabilization.py"
+    --source "${FLIGHT}/modules" --output "${LITEWING_STABILIZATION_DIR}"
+    RESULT_VARIABLE LITEWING_STABILIZATION_RC)
+if(NOT LITEWING_STABILIZATION_RC EQUAL 0)
+    message(FATAL_ERROR "Pinned stabilization bounds adaptation failed")
+endif()
 set(NINJA_MODULE_SRCS
     "${LITEWING_CONTROL_DIR}/attitude.c"
     "${FLIGHT}/modules/Stabilization/stabilization.c"
     "${FLIGHT}/modules/Stabilization/innerloop.c"
-    "${FLIGHT}/modules/Stabilization/outerloop.c"
+    "${LITEWING_STABILIZATION_DIR}/outerloop.c"
     "${FLIGHT}/modules/Stabilization/cruisecontrol.c"
     "${FLIGHT}/modules/Stabilization/virtualflybar.c"
     "${FLIGHT}/modules/Stabilization/relay_tuning.c"

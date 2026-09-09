@@ -57,6 +57,11 @@ checks their required resources, task/monitor ownership and initial sensor/state
 failures. It is not installed and does not establish full asynchronous readiness,
 runtime sample validity, or arming clearance.
 
+The [Stabilization storage correction](../../docs/verification/stabilization-storage-2026-09-09.md)
+fixes the four-axis outer-loop buffers and packed quaternion inputs using a
+hash-checked target copy. Sanitizer and real SDK checks are distinct from the
+still-open startup, physical cutoff and flight acceptance gates.
+
 The [checked module startup correction](../../docs/verification/checked-module-startup-2026-09-09.md)
 consumes reported module errors and checks ManualControl's required objects and
 scheduler allocation through the actual entry point. Other module internals and
