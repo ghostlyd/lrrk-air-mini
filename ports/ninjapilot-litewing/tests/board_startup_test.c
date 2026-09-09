@@ -215,7 +215,7 @@ int32_t PIOS_LiteWing_Board_Init(void)
 }
 void PIOS_LiteWing_BrushedPWM_Shutdown(void) { shutdown_requests++; }
 void PIOS_SYS_Init(void) {}
-void InitModules(void) { modules++; (void)step("modules"); }
+int32_t PIOS_LiteWing_ModulesInitialize(void) { modules++; return step("modules"); }
 int32_t SystemModInitialize(void) { system_inits++; return step("system"); }
 unsigned xPortGetFreeHeapSize(void) { (void)step("heap"); return 10000; }
 

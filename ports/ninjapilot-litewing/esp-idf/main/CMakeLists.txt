@@ -86,7 +86,8 @@ set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
     "${PORT_ROOT}/target/startup/scheduler_create.inc"
     "${PORT_ROOT}/target/startup/system_start.inc"
     "${FLIGHT}/pios/common/pios_callbackscheduler.c"
-    "${FLIGHT}/modules/System/systemmod.c")
+    "${FLIGHT}/modules/System/systemmod.c"
+    "${FLIGHT}/modules/ManualControl/manualcontrol.c")
 execute_process(COMMAND python3 "${PORT_ROOT}/prepare_scheduler.py"
     --source "${FLIGHT}" --output "${LITEWING_SCHEDULER_DIR}"
     RESULT_VARIABLE LITEWING_SCHEDULER_RC)
@@ -181,7 +182,7 @@ set(NINJA_MODULE_SRCS
     "${FLIGHT}/modules/Stabilization/relay_tuning.c"
     "${LITEWING_CONTROL_DIR}/actuator.c"
     "${LITEWING_CONTROL_DIR}/receiver.c"
-    "${FLIGHT}/modules/ManualControl/manualcontrol.c"
+    "${LITEWING_SCHEDULER_DIR}/manualcontrol.c"
     "${FLIGHT}/modules/ManualControl/armhandler.c"
     "${FLIGHT}/modules/ManualControl/manualhandler.c"
     "${FLIGHT}/modules/ManualControl/stabilizedhandler.c"

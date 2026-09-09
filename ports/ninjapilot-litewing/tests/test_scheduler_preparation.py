@@ -1,6 +1,7 @@
 """Scheduler generation must preserve pinned sources and reject unsafe paths."""
 import os
 import json
+from itertools import product
 from pathlib import Path
 import shutil
 import subprocess
@@ -9,8 +10,9 @@ import tempfile
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
-INPUTS = ("pios/common/pios_callbackscheduler.c", "modules/System/systemmod.c")
-OUTPUTS = ("pios_callbackscheduler.c", "systemmod.c")
+INPUTS = ("pios/common/pios_callbackscheduler.c", "modules/System/systemmod.c",
+          "modules/ManualControl/manualcontrol.c")
+OUTPUTS = ("pios_callbackscheduler.c", "systemmod.c", "manualcontrol.c")
 
 
 class SchedulerPreparationTests(unittest.TestCase):
@@ -43,7 +45,7 @@ class SchedulerPreparationTests(unittest.TestCase):
         self.assertEqual(before, {n: (self.source / n).read_bytes() for n in INPUTS})
         self.assertEqual(times, {n: (self.output / n).stat().st_mtime_ns for n in OUTPUTS})
 
-    def test_either_drifted_source_prevents_all_writes(self):
+    def test_any_drifted_source_prevents_all_writes(self):
         for name in INPUTS:
             with self.subTest(name=name):
                 path = self.source / name
@@ -58,15 +60,15 @@ class SchedulerPreparationTests(unittest.TestCase):
             with self.subTest(path=path): self.assertEqual(self.invoke(path).returncode, 1)
 
     def test_input_and_output_aliases_rejected_before_writes(self):
-        for direction in ("input-file", "input-directory", "output-symlink", "output-hardlink"):
-            with self.subTest(direction=direction), tempfile.TemporaryDirectory() as directory:
+        for direction, name in product(("input-file", "input-directory", "output-symlink", "output-hardlink"), INPUTS):
+            with self.subTest(direction=direction, source=name), tempfile.TemporaryDirectory() as directory:
                 source, output = Path(directory) / "source", Path(directory) / "build"
                 shutil.copytree(self.source, source)
                 output.mkdir()
-                for name in INPUTS: shutil.copyfile(source / name, output / Path(name).name)
+                for item in INPUTS: shutil.copyfile(source / item, output / Path(item).name)
                 original = {n: (source / n).read_bytes() for n in INPUTS}
-                target = source / INPUTS[1]
-                out = output / OUTPUTS[1]
+                target = source / name
+                out = output / Path(name).name
                 if direction == "input-file":
                     target.unlink()
                     target.symlink_to(out)

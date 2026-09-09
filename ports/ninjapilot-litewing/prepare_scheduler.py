@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate target-only checked scheduler lifecycle/System sources; never flash."""
+"""Generate checked scheduler, System and ManualControl startup copies; never flash."""
 import argparse
 import hashlib
 from pathlib import Path
@@ -9,6 +9,7 @@ ROOT = Path(__file__).resolve().parent
 PINS = {
     "pios/common/pios_callbackscheduler.c": "db96ab58cee5988f405980570de631da5626cd8df71654fb4aabc754cb87c01b",
     "modules/System/systemmod.c": "9ec818dcdf55e33d99e005ca618b07abdd365e9e5bcb280cabbeb45f16d2a150",
+    "modules/ManualControl/manualcontrol.c": "9526b9c0058b3727b8e268791cb0049dd7b830ec7d967ee6703fab67b80dc31f",
 }
 
 
@@ -45,7 +46,7 @@ def prepare(source, output):
         scheduler = replace_function(scheduler, signature, (ROOT / "target/startup" / fragment).read_text())
     codes["pios_callbackscheduler.c"] = scheduler
     system = replace_exact(codes["systemmod.c"], "#include <openpilot.h>",
-        "#include <openpilot.h>\n#include <pios_litewing_brushed_pwm.h>")
+        "#include <openpilot.h>\n#include <pios_litewing_brushed_pwm.h>\n#include <pios_litewing_modules.h>")
     # The copy lives in the build directory; retain the pinned public header
     # through the existing System/inc include path, not a copied header.
     system = replace_exact(system, '#include "inc/systemmod.h"', '#include <systemmod.h>')
@@ -75,10 +76,23 @@ static bool systemResourcesReady;""")
         return;
     }
     /* create all modules thread */""")
+    system = replace_exact(system, "    MODULE_TASKCREATE_ALL;", """    if (PIOS_LiteWing_ModulesStart() != 0) {
+        stopSystemBeforeConnections(true);
+        return;
+    }""")
     codes["systemmod.c"] = replace_exact(system, "    PIOS_CALLBACKSCHEDULER_Start();", """    if (PIOS_CALLBACKSCHEDULER_Start() != 0) {
         stopSystemBeforeConnections(true);
         return;
     }""")
+    manual = replace_exact(codes["manualcontrol.c"], '#include "inc/manualcontrol.h"',
+        '#include <manualcontrol.h>')
+    for name in ("ManualControlCommand", "FlightStatus", "ManualControlSettings",
+                 "FlightModeSettings", "SystemSettings", "StabilizationSettings"):
+        manual = replace_exact(manual, "    " + name + "Initialize();",
+            "    if (!" + name + "Handle() && (" + name + "Initialize() != 0 || !" + name + "Handle())) {\n"
+            "        return -1;\n    }")
+    anchor = "    callbackHandle = PIOS_CALLBACKSCHEDULER_Create(&manualControlTask, CALLBACK_PRIORITY, CBTASK_PRIORITY, CALLBACKINFO_RUNNING_MANUALCONTROL, STACK_SIZE_BYTES);"
+    codes["manualcontrol.c"] = replace_exact(manual, anchor, anchor + "\n    if (!callbackHandle) return -1;")
     for name in codes:
         path = output / name
         if path.is_symlink() or (path.exists() and (not path.is_file() or path.stat().st_nlink != 1)):
