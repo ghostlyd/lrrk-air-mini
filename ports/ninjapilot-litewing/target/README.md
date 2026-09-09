@@ -4,7 +4,7 @@ This directory contains the repository-owned hardware seams for the selected
 NinjaPilot/OpenPilot flight tree. It is intentionally kept outside the pinned
 checkout so the upstream source remains clean and reproducible.
 
-`sources.cmake` is included by the future ESP-IDF wrapper after it sets the
+`sources.cmake` is included by the ESP-IDF wrapper after it sets the
 following inputs:
 
 - the selected NinjaPilot checkout from `SOURCE_MANIFEST.json`;
@@ -31,5 +31,6 @@ The adapter uses the selected tree's existing sensor queue record and actuator
 entry points. It does not expose an AI or host-control path to the motor
 backend. The host AI layer remains advisory and outside the flight controller.
 
-The ESP-IDF wrapper and hardware build are still open gates: this workstation
-does not have `idf.py`, and the adapter has not been flashed or run on a board.
+The ESP-IDF 5.3.2 wrapper build passed compile, link, image generation, and
+partition sizing on 2026-09-09. The adapter has not been flashed or run on a
+board; runtime and physical verification remain open.
