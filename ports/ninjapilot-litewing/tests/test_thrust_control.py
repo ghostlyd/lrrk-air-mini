@@ -22,6 +22,9 @@ class ThrustControlTests(unittest.TestCase):
         cls.directory = tempfile.TemporaryDirectory()
         cls.addClassCleanup(cls.directory.cleanup)
         cls.output = Path(cls.directory.name)
+        startup = cls.output / "startup"
+        subprocess.run([sys.executable, str(ROOT / "prepare_startup.py"),
+            "--source", str(cls.flight / "flight"), "--output", str(startup)], check=True)
         source = cls.flight / "flight/modules"
         if os.environ.get("LRRK_TEST_ORIGINAL_THRUST") != "1":
             subprocess.run([sys.executable, str(ROOT / "prepare_control.py"),
@@ -67,7 +70,7 @@ class ThrustControlTests(unittest.TestCase):
                 args += ["-Wno-error=incompatible-pointer-types"]
             if name == "Receiver": args += ["-DTEST_RECEIVER"]
             if name == "ActuatorStartup":
-                args += ["-DTEST_STARTUP", str(cls.flight / "flight/libraries/alarms.c")]
+                args += ["-DTEST_STARTUP", str(startup / "alarms.c")]
                 if os.environ.get("LRRK_TEST_ALARM_MUTANT") == "1":
                     args += ["-DPIOS_ALARM_GRACETIME=0"]
                 objects += " systemalarms"

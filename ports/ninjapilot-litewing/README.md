@@ -32,6 +32,12 @@ now stops module initialization after reported synchronous board errors and
 prevents same-boot reinitialization. It is tested and built, not installed;
 complete BootFault success and asynchronous startup validation remain open.
 
+The [event/alarm service correction](../../docs/verification/startup-service-failures-2026-09-09.md)
+extends that gate into the real service implementations: allocation failures
+now return errors, existing alarms are preserved, and a failed periodic-event
+allocation releases its mutex. These changes are source-tested and built only;
+the installed firmware and Always Disarmed setting are unchanged.
+
 The selected upstream `litewing` branch currently includes a POSIX/Gazebo
 LiteWing twin, not a flashable ESP32-S3 target. The repository-owned target
 work therefore proceeds in gates:

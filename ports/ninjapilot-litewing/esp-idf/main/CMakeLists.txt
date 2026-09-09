@@ -105,16 +105,30 @@ execute_process(COMMAND python3 "${PORT_ROOT}/prepare_uavtalk.py"
 if(NOT LITEWING_UAVTALK_RC EQUAL 0)
     message(FATAL_ERROR "Pinned UAVTalk freshness adaptation failed")
 endif()
+# Selected startup services must report allocation/registration failures to
+# the board gate. Adapt only hash-checked build copies, never the pinned tree.
+set(LITEWING_STARTUP_DIR "${CMAKE_CURRENT_BINARY_DIR}/litewing_startup")
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+    "${PORT_ROOT}/prepare_startup.py"
+    "${FLIGHT}/uavobjects/eventdispatcher.c"
+    "${FLIGHT}/libraries/alarms.c")
+execute_process(COMMAND python3 "${PORT_ROOT}/prepare_startup.py"
+    --source "${FLIGHT}" --output "${LITEWING_STARTUP_DIR}"
+    RESULT_VARIABLE LITEWING_STARTUP_RC)
+if(NOT LITEWING_STARTUP_RC EQUAL 0)
+    message(FATAL_ERROR "Pinned startup service adaptation failed")
+endif()
+
 set(UAVO_CORE_SRCS
     "${FLIGHT}/uavobjects/uavobjectmanager.c"
     "${FLIGHT}/uavobjects/uavobjectpersistence.c"
-    "${FLIGHT}/uavobjects/eventdispatcher.c"
+    "${LITEWING_STARTUP_DIR}/eventdispatcher.c"
     "${LITEWING_UAVTALK_DIR}/uavtalk.c"
 )
 
 # --- Flight libraries -------------------------------------------------
 set(LIB_SRCS
-    "${FLIGHT}/libraries/alarms.c"
+    "${LITEWING_STARTUP_DIR}/alarms.c"
     "${FLIGHT}/libraries/CoordinateConversions.c"
     "${FLIGHT}/libraries/sanitycheck.c"
     "${FLIGHT}/libraries/notification.c"
