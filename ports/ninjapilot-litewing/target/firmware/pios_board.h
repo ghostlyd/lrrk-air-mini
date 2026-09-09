@@ -3,6 +3,7 @@
 #define LRRK_LITEWING_PIOS_BOARD_H
 
 #include <stdint.h>
+#include <stdbool.h>
 
 #define PIOS_LED_HEARTBEAT             0
 #define PIOS_LED_ALARM                 1
@@ -40,5 +41,9 @@
 
 extern uint32_t pios_com_telem_rf_id;
 extern uint32_t pios_com_aux_id;
+
+/* One-shot synchronous sequence status, for app_main only. False before or
+ * after a reported startup failure; not whole-boot or arming readiness. */
+bool PIOS_LiteWing_BoardServicesInitialized(void);
 
 #endif

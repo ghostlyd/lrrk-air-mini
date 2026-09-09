@@ -100,3 +100,7 @@ jobs:
         run: |
           LRRK_TEST_FLIGHT_ROOT="$RUNNER_TEMP/litewing-external/NinjaPilot" \
             python3 -m unittest discover -s ports/ninjapilot-litewing/tests -p 'test_thrust_*.py' -v
+      - name: Test board startup failure propagation with generated declarations
+        run: |
+          LRRK_TEST_FLIGHT_ROOT="$RUNNER_TEMP/litewing-external/NinjaPilot" \
+            python3 -m unittest discover -s ports/ninjapilot-litewing/tests -p test_board_startup.py -v
