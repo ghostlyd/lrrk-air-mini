@@ -87,10 +87,14 @@ static bool systemResourcesReady;""")
     manual = replace_exact(codes["manualcontrol.c"], '#include "inc/manualcontrol.h"',
         '#include <manualcontrol.h>')
     for name in ("ManualControlCommand", "FlightStatus", "ManualControlSettings",
-                 "FlightModeSettings", "SystemSettings", "StabilizationSettings"):
+                 "FlightModeSettings", "SystemSettings", "StabilizationSettings",
+                 "VtolSelfTuningStats", "VtolPathFollowerSettings"):
         manual = replace_exact(manual, "    " + name + "Initialize();",
             "    if (!" + name + "Handle() && (" + name + "Initialize() != 0 || !" + name + "Handle())) {\n"
             "        return -1;\n    }")
+    for name in ("VtolPathFollowerSettings", "SystemSettings"):
+        manual = replace_exact(manual, "    " + name + "ConnectCallback(&SettingsUpdatedCb);",
+            "    if (" + name + "ConnectCallback(&SettingsUpdatedCb) != 0) return -1;")
     anchor = "    callbackHandle = PIOS_CALLBACKSCHEDULER_Create(&manualControlTask, CALLBACK_PRIORITY, CBTASK_PRIORITY, CALLBACKINFO_RUNNING_MANUALCONTROL, STACK_SIZE_BYTES);"
     codes["manualcontrol.c"] = replace_exact(manual, anchor, anchor + "\n    if (!callbackHandle) return -1;")
     for name in codes:

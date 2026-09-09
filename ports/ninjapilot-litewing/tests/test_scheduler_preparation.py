@@ -4,6 +4,7 @@ import json
 from itertools import product
 from pathlib import Path
 import shutil
+import shlex
 import subprocess
 import sys
 import tempfile
@@ -88,6 +89,23 @@ class SchedulerPreparationTests(unittest.TestCase):
 
 
 class SchedulerBuildSelectionTests(unittest.TestCase):
+    def test_real_manualcontrol_feature_selection_matches_initializer_fixture(self):
+        build = os.environ.get("LRRK_IDF_BUILD_DIR")
+        if not build:
+            self.skipTest("real generated IDF compile command not supplied")
+        commands = json.loads((Path(build) / "compile_commands.json").read_text())
+        command = next(entry for entry in commands if Path(entry["file"]).name == "manualcontrol.c")
+        args = shlex.split(command["command"])
+        output_index = args.index("-o")
+        del args[output_index:output_index + 2]
+        args.remove("-c")
+        result = subprocess.run(args + ["-dM", "-E"], cwd=command["directory"],
+            capture_output=True, text=True, check=True, timeout=30)
+        macros = {line.split()[1] for line in result.stdout.splitlines() if line.startswith("#define ")}
+        self.assertIn("USE_ESP32", macros)
+        self.assertNotIn("PIOS_EXCLUDE_ADVANCED_FEATURES", macros,
+            "ManualControl initializer fixture must match the firmware feature selection")
+
     def test_real_firmware_graph_selects_and_watches_adapted_scheduler(self):
         build = os.environ.get("LRRK_IDF_BUILD_DIR")
         if not build:

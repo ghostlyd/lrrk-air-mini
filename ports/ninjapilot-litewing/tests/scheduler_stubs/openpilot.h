@@ -1,6 +1,7 @@
 #pragma once
 #include "pios.h"
 #include <stdio.h>
+#include <math.h>
 #include <uavobjectmanager.h>
 #include <eventdispatcher.h>
 #include <alarms.h>

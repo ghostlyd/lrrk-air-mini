@@ -123,7 +123,7 @@ class SystemSchedulerTests(unittest.TestCase):
             '#include "' + str(manual_source) + '"\n')
         cls.manual_binary = output / "manual-module"
         result = subprocess.run(args[:-2] + ["-DTEST_MODULE_TABLE", "-DTEST_MANUAL_MODULE",
-            "-DPIOS_EXCLUDE_ADVANCED_FEATURES", "-Wno-unused-parameter", "-Wno-switch",
+            "-Wno-unused-parameter", "-Wno-switch",
             "-I", str(flight / "flight/modules/ManualControl/inc"),
             str(output / "InitMods.c"), str(output / "manual_module.c"),
             "-o", str(cls.manual_binary)], capture_output=True, text=True, timeout=30)
@@ -132,8 +132,10 @@ class SystemSchedulerTests(unittest.TestCase):
 
     def test_manual_control_resource_errors_reach_entry_output_shutdown(self):
         objects = ("ManualControlCommand", "FlightStatus", "ManualControlSettings",
-                   "FlightModeSettings", "SystemSettings", "StabilizationSettings")
-        for case in ("malloc1", "malloc2", "signal", "shared-malloc", *(prefix + obj
+                   "FlightModeSettings", "SystemSettings", "StabilizationSettings",
+                   "VtolSelfTuningStats", "VtolPathFollowerSettings")
+        for case in ("malloc1", "malloc2", "signal", "shared-malloc",
+            "connect-VtolPathFollowerSettings", "connect-SystemSettings", *(prefix + obj
             for prefix in ("object-", "handle-") for obj in objects)):
             with self.subTest(case=case):
                 result = subprocess.run([str(self.manual_binary), "manual-" + case],
@@ -174,7 +176,7 @@ class SystemSchedulerTests(unittest.TestCase):
             cwd=ROOT / "tests", env=dict(os.environ, LRRK_TEST_ORIGINAL_MANUAL="1"),
             capture_output=True, text=True, timeout=30)
         self.assertNotEqual(result.returncode, 0)
-        self.assertIn("FAILED (failures=16)", result.stderr)
+        self.assertIn("FAILED (failures=22)", result.stderr)
         self.assertIn("init_calls == 5 && start_calls == 0 && system_creates == 0", result.stderr)
 
     def test_module_table_negative_controls_reject_lost_errors_and_retries(self):

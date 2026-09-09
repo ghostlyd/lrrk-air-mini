@@ -167,14 +167,31 @@ OBJECT(HwSettings)
 #include <manualcontrolsettings.h>
 #include <flightmodesettings.h>
 #include <stabilizationsettings.h>
+#include <vtolselftuningstats.h>
+#include <vtolpathfollowersettings.h>
 OBJECT(ManualControlCommand)
 OBJECT(ManualControlSettings)
 OBJECT(FlightModeSettings)
 OBJECT(StabilizationSettings)
+OBJECT(VtolSelfTuningStats)
+OBJECT(VtolPathFollowerSettings)
+static unsigned manual_connections;
 void armHandler(bool init, FrameType_t frame)
 { (void)init; (void)frame; CHECK(!"unexpected arming handler"); }
 void manualHandler(bool init) { (void)init; CHECK(!"unexpected manual handler"); }
 void stabilizedHandler(bool init) { (void)init; CHECK(!"unexpected stabilized handler"); }
+void pathFollowerHandler(bool init) { (void)init; CHECK(!"unexpected path follower handler"); }
+void pathPlannerHandler(bool init) { (void)init; CHECK(!"unexpected path planner handler"); }
+void takeOffLocationHandler(void) { CHECK(!"unexpected takeoff location handler"); }
+void takeOffLocationHandlerInit(void) { CHECK(!"unexpected takeoff location initializer"); }
+void StabilizationSettingsFlightModeAssistMapGet(uint8_t *out)
+{ (void)out; CHECK(!"unexpected runtime field read"); }
+void VtolPathFollowerSettingsThrustLimitsGet(VtolPathFollowerSettingsThrustLimitsData *out)
+{ (void)out; CHECK(!"unexpected runtime field read"); }
+void VtolPathFollowerSettingsTreatCustomCraftAsGet(uint8_t *out)
+{ (void)out; CHECK(!"unexpected runtime field read"); }
+void VtolSelfTuningStatsNeutralThrustOffsetGet(float *out)
+{ (void)out; CHECK(!"unexpected runtime field read"); }
 int32_t configuration_check(void) { CHECK(!"unexpected configuration check"); return -1; }
 #endif
 
@@ -185,7 +202,21 @@ int32_t UAVObjSetData(UAVObjHandle handle, const void *in)
 int32_t UAVObjConnectQueue(UAVObjHandle obj, xQueueHandle queue, uint8_t mask)
 { (void)mask; CHECK(obj == ObjectPersistenceHandle() && queue == &persistence_queue); after_scheduler++; return 0; }
 int32_t UAVObjConnectCallback(UAVObjHandle obj, UAVObjEventCallback cb, uint8_t mask)
-{ (void)obj; (void)cb; (void)mask; after_scheduler++; return 0; }
+{
+    (void)obj; (void)cb; (void)mask;
+#ifdef TEST_MANUAL_MODULE
+    if (!executing_system) {
+        CHECK(cb && mask == EV_MASK_ALL_UPDATES);
+        CHECK(obj == (manual_connections == 0 ? VtolPathFollowerSettingsHandle() : SystemSettingsHandle()));
+        CHECK(manual_connections++ < 2);
+        if ((!strcmp(scenario, "connect-VtolPathFollowerSettings") && obj == VtolPathFollowerSettingsHandle()) ||
+            (!strcmp(scenario, "connect-SystemSettings") && obj == SystemSettingsHandle())) return -1;
+        return 0;
+    }
+#endif
+    after_scheduler++;
+    return 0;
+}
 UAVObjHandle UAVObjGetByID(uint32_t id) { (void)id; CHECK(!"unexpected lookup"); return NULL; }
 #define PERSIST_ONE(Name) int32_t Name(UAVObjHandle obj, uint16_t inst) { (void)obj; (void)inst; CHECK(!"unexpected persistence"); return -1; }
 #define PERSIST_ALL(Name) int32_t Name(void) { CHECK(!"unexpected persistence"); return -1; }
@@ -339,11 +370,16 @@ int main(int argc, char **argv)
             obj_ManualControlCommand.present = obj_FlightStatus.present = false;
             obj_ManualControlSettings.present = obj_FlightModeSettings.present = false;
             obj_SystemSettings.present = obj_StabilizationSettings.present = false;
+            obj_VtolSelfTuningStats.present = obj_VtolPathFollowerSettings.present = false;
         }
         app_main();
         if (!nominal) {
             CHECK(init_calls == 5 && start_calls == 0 && system_creates == 0);
             CHECK(shutdowns == 1 && fault_alarms == 1 && after_scheduler == 0);
+            unsigned connections_before_failure = 0;
+            if (fail_malloc || fail_signal || !strcmp(scenario, "connect-SystemSettings")) connections_before_failure = 2;
+            if (!strcmp(scenario, "connect-VtolPathFollowerSettings")) connections_before_failure = 1;
+            CHECK(manual_connections == connections_before_failure);
             if (!strcmp(scenario, "shared-malloc")) {
                 CHECK(live_allocations == 2 && live_signals == 1 && !queue_live);
             } else {
@@ -351,7 +387,8 @@ int main(int argc, char **argv)
             }
         } else {
             CHECK(init_calls == 6 && system_live && shutdowns == 0);
-            CHECK(object_inits == (!strcmp(scenario, "fresh") ? 6u : 0u));
+            CHECK(object_inits == (!strcmp(scenario, "fresh") ? 8u : 0u));
+            CHECK(manual_connections == 2);
             run_system();
             CHECK(start_calls == 6 && after_scheduler == 3 && system_monitored);
             execute_until_block(0);
