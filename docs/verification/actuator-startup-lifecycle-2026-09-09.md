@@ -81,6 +81,25 @@ and the prior thrust/failsafe adaptations. External source checkouts and GPL
 notices remain unchanged. ESP-IDF 5.3.2 incremental build, persistence linkage
 and partition sizing passed; this is not a clean-from-scratch build.
 
+## Retained private build — NOT INSTALLED
+
+Production/test commit: `aad9403e503dae760eef211f002ed8430d8bbad2`.
+The incremental build reports version `aad9403`. Persistence linkage passes
+with UAVObjSave at `0x4200c9d0`, UAVObjLoad at `0x4200ca54`, and UAVObjDelete
+at `0x4200a83c`. The application fits the existing 1 MiB partition with 66%
+free. Existing upstream and CMake deprecation warnings remain; no production
+warning suppression was added.
+
+| Artifact | Bytes | SHA-256 |
+| --- | ---: | --- |
+| Application | 357664 | `6fa18e51ae430b511cab58da7dea0879cf66df348cddc34d05cf78bf495ba146` |
+| ELF | 6661504 | `5d667bf402fd92b45e8e9109178276bf81c26b526df1e098cefdaf33243e346a` |
+
+Generated Actuator SHA-256:
+`ee153e215b6441827fd70e3e31399e155001ab4c8a3cb3e844d4cc3edf2c2520`.
+Later report changes do not alter these retained bytes. Independent review
+and exact final-revision CI results are recorded in the PR.
+
 ## Remaining gates
 
 Attitude, Stabilization, Receiver and Telemetry internals, ManualControl's
