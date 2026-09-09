@@ -22,11 +22,20 @@ or object loading. This file is not relicensed under a different project license
 The new `target/litewing_settings_recovery.c`,
 `target/include/litewing_settings_recovery.h`,
 `target/include/pios_litewing_flashfs.h`, and
-`target/litewing_uavobject_delete.c` are explicitly GPL-3.0-or-later, as their
+`target/litewing_uavobject_delete.c` and `target/pios_litewing_gcsrcvr.c`
+are explicitly GPL-3.0-or-later, as their
 SPDX notices state. This does not change the upstream hardware license or
 relicense other existing files. Assembled firmware distribution still requires
 an inventory of the complete linked code and its source/notice obligations;
 this local bench build is not a public binary release.
+
+`target/include/pios_litewing_gcsrcvr.h` is also GPL-3.0-or-later.
+`prepare_uavtalk.py` produces target-only copies of the pinned NinjaPilot
+UAVTalk C source/private header in the build directory. Those generated files
+retain their original OpenPilot GPL notices; source hashes and exact replacement
+anchors reject unreviewed inputs. The adaptation adds a local packet-completion
+timestamp and passes it to the target receiver. It does not relicense UAVTalk
+or edit the external checkout.
 
 The KiCad and BOM evidence under `hardware/LieWingV2.6.C/` remains upstream
 hardware attribution. This directory records the evidence used for the target

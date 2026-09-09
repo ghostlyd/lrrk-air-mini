@@ -81,7 +81,6 @@ set(PIOS_ESP32_SRCS
 set(PIOS_COMMON_SRCS
     "${FLIGHT}/pios/common/pios_com.c"
     "${FLIGHT}/pios/common/pios_rcvr.c"
-    "${FLIGHT}/pios/common/pios_gcsrcvr.c"
     "${FLIGHT}/pios/common/pios_mem.c"
     "${FLIGHT}/pios/common/pios_crc.c"
     "${FLIGHT}/pios/common/pios_deltatime.c"
@@ -93,11 +92,24 @@ set(PIOS_COMMON_SRCS
 )
 
 # --- UAVObject / UAVTalk machinery -----------------------------------
+# Generate a hash-checked target-only parser adaptation. Keep the pinned
+# external files unchanged and capture packet age before receive-path locks.
+set(LITEWING_UAVTALK_DIR "${CMAKE_CURRENT_BINARY_DIR}/litewing_uavtalk")
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+    "${PORT_ROOT}/prepare_uavtalk.py"
+    "${FLIGHT}/uavtalk/uavtalk.c"
+    "${FLIGHT}/uavtalk/inc/uavtalk_priv.h")
+execute_process(COMMAND python3 "${PORT_ROOT}/prepare_uavtalk.py"
+    --source "${FLIGHT}/uavtalk" --output "${LITEWING_UAVTALK_DIR}"
+    RESULT_VARIABLE LITEWING_UAVTALK_RC)
+if(NOT LITEWING_UAVTALK_RC EQUAL 0)
+    message(FATAL_ERROR "Pinned UAVTalk freshness adaptation failed")
+endif()
 set(UAVO_CORE_SRCS
     "${FLIGHT}/uavobjects/uavobjectmanager.c"
     "${FLIGHT}/uavobjects/uavobjectpersistence.c"
     "${FLIGHT}/uavobjects/eventdispatcher.c"
-    "${FLIGHT}/uavtalk/uavtalk.c"
+    "${LITEWING_UAVTALK_DIR}/uavtalk.c"
 )
 
 # --- Flight libraries -------------------------------------------------
@@ -212,6 +224,7 @@ idf_component_register(
     SRCS ${ALL_PORT_SRCS}
     INCLUDE_DIRS
         "${CMAKE_CURRENT_BINARY_DIR}"
+        "${LITEWING_UAVTALK_DIR}"
         "${BOARD_ROOT}"
         "${BOARD_ROOT}/inc"
         "${TARGET_ROOT}/include"

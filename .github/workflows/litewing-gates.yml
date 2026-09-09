@@ -78,3 +78,7 @@ jobs:
           git -C "$RUNNER_TEMP/litewing-external/NinjaPilot" apply --check \
             "$GITHUB_WORKSPACE/ports/ninjapilot-litewing/patches/litewing-target.patch" \
             "$GITHUB_WORKSPACE/ports/ninjapilot-litewing/patches/simlitewing-loopback.patch"
+      - name: Test receiver freshness through the real pinned UAVTalk parser
+        run: |
+          LRRK_TEST_FLIGHT_ROOT="$RUNNER_TEMP/litewing-external/NinjaPilot" \
+            python3 -m unittest discover -s ports/ninjapilot-litewing/tests -p 'test_gcs_*.py' -v
