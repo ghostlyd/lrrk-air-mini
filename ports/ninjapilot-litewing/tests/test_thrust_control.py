@@ -37,14 +37,19 @@ class ThrustControlTests(unittest.TestCase):
                 for name in ("lastResult", "filterAccumulator", "lastFilteredResult")
             }
             resets["lastThrottleDesired"] = "    lastThrottleDesired = 0.0f;"
+            resets["startup-failsafe"] = (
+                "    // Go to the neutral (failsafe) values until an ActuatorDesired update is received\n"
+                "    setFailsafe();"
+            )
             old = resets[mutant]
             file = source / "actuator.c"
             code = file.read_text()
             assert code.count(old) == 1
             file.write_text(code.replace(old, "    /* mutation: omitted reset */"))
         cls.binaries = {}
-        for name in ("Receiver", "Actuator"):
-            module = source / name / (name.lower() + ".c") if source != cls.output else source / (name.lower() + ".c")
+        for name in ("Receiver", "Actuator", "ActuatorStartup"):
+            module_name = "Actuator" if name == "ActuatorStartup" else name
+            module = source / module_name / (module_name.lower() + ".c") if source != cls.output else source / (module_name.lower() + ".c")
             binary = cls.output / name
             includes = [ROOT / "tests/thrust_stubs", ROOT / "target/include", synth,
                 cls.flight / "flight/uavobjects/inc", cls.flight / "flight/libraries/inc",
@@ -57,6 +62,11 @@ class ThrustControlTests(unittest.TestCase):
             if os.environ.get("LRRK_TEST_ORIGINAL_THRUST") == "1":
                 args += ["-Wno-error=incompatible-pointer-types"]
             if name == "Receiver": args += ["-DTEST_RECEIVER"]
+            if name == "ActuatorStartup":
+                args += ["-DTEST_STARTUP", str(cls.flight / "flight/libraries/alarms.c")]
+                if os.environ.get("LRRK_TEST_ALARM_MUTANT") == "1":
+                    args += ["-DPIOS_ALARM_GRACETIME=0"]
+                objects += " systemalarms"
             for path in includes: args += ["-I", str(path)]
             args += [str(ROOT / "tests/thrust_module_test.c")]
             args += [str(synth / (obj + ".c")) for obj in objects.split()]
@@ -100,3 +110,15 @@ class ThrustControlTests(unittest.TestCase):
 
     def test_actuator_fault_recovery_clears_feedforward_history(self):
         self.run_case("Actuator", "feedforward-recovery")
+
+    def test_actuator_startup_without_events_keeps_critical_and_zero(self):
+        self.run_case("ActuatorStartup", "startup-absent")
+
+    def test_actuator_startup_valid_events_recover_after_alarm_grace(self):
+        self.run_case("ActuatorStartup", "startup-recovery")
+
+    def test_actuator_event_loss_after_recovery_reasserts_critical(self):
+        self.run_case("ActuatorStartup", "startup-relapse")
+
+    def test_real_alarm_downgrade_waits_grace_but_escalation_does_not(self):
+        self.run_case("ActuatorStartup", "alarm-grace")

@@ -86,6 +86,11 @@ jobs:
         run: |
           LRRK_TEST_FLIGHT_ROOT="$RUNNER_TEMP/litewing-external/NinjaPilot" \
             python3 -m unittest discover -s ports/ninjapilot-litewing/tests -p test_receiver_probe.py -v
+      - name: Characterize startup counter and monitor integration
+        run: |
+          LRRK_TEST_FLIGHT_ROOT="$RUNNER_TEMP/litewing-external/NinjaPilot" \
+          LRRK_TEST_REFERENCE_ROOT="$RUNNER_TEMP/litewing-external/OpenPilotESP32-WROOM-32E" \
+            python3 -m unittest discover -s ports/ninjapilot-litewing/tests -p test_startup_runtime.py -v
       - name: Generate real flight objects for control-consumer integration tests
         run: |
           sudo apt-get update

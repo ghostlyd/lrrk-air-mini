@@ -22,6 +22,11 @@ observed loss/recovery/loss with a complete validated capture. This narrow
 physical receiver-observation pass does not establish electrical cutoff timing,
 powered tests or flight readiness, and does not enable arming.
 
+The [startup-alarm investigation](../../docs/verification/startup-alarm-diagnosis-2026-09-09.md)
+adds real-code host reproductions of counter warm-up, initial actuator failsafe
+and alarm grace behavior. Boot-success failure propagation remains incomplete;
+this investigation does not clear alarms or change installed firmware.
+
 The selected upstream `litewing` branch currently includes a POSIX/Gazebo
 LiteWing twin, not a flashable ESP32-S3 target. The repository-owned target
 work therefore proceeds in gates:
