@@ -74,7 +74,32 @@ records may already have been printed when a later frame fails, so consumers
 must check the command exit status. CRC provides corruption detection, not
 authentication. Timestamp ticks are not wall-clock freshness evidence.
 
-This supplies framing, not normalized `TelemetrySnapshot` values. Schema-bound
-field decoding, timestamp/freshness handling, and actual target captures are
-still required before enabling the live UAVTalk adapter. No serial port is
+The framing command above emits raw frames. No serial port is
 opened and no acknowledgment, object request, or flight command is sent.
+
+### Capture observations in the assistant
+
+The assistant CLI can now decode `AttitudeState`, `FlightStatus`, and
+`FlightBatteryState` into partial normalized snapshots using the pinned
+generated object IDs and layouts (28, 8, and 30 payload bytes respectively):
+
+```sh
+PYTHONPATH=ai_assistant/src python3 -m lrrk_litewing_ai.cli \
+  --input capture.bin --input-format uavtalk \
+  --captured-at 2026-09-09T10:00:00Z --prompt status --json
+```
+
+Replace the example timestamp with the capture's recorded UTC time. Replay
+never assigns today's time to an old capture, and link age stays unknown.
+Each supported frame is a separate partial snapshot; this avoids combining
+older battery/status data with a newer attitude into apparently current state.
+An arming transition is treated as armed for preflight purposes. Unknown
+object IDs and control frames are skipped; invalid selected-object lengths,
+nonzero instances, enum values, and non-finite numbers reject the capture.
+
+The snapshot's source identifies the decoder schema, not the aircraft's actual
+firmware. IMU identity/health, actuator outputs, battery percentage, and board
+identity remain unknown. Battery voltage/current are received observations;
+the current target wrapper has no verified battery measurement producer.
+Live transport, per-object freshness, supported-object aggregation, and target
+captures remain required before declaring telemetry integration complete.
