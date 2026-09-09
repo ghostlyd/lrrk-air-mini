@@ -72,7 +72,6 @@ set(PIOS_ESP32_SRCS
     "${ESP32PORT}/pios/esp32/pios_wdg.c"
     "${ESP32PORT}/pios/esp32/pios_usart.c"
     "${ESP32PORT}/pios/esp32/pios_i2c.c"
-    "${ESP32PORT}/pios/esp32/pios_flashfs_nvs.c"
     "${ESP32PORT}/pios/esp32/pios_task_runtime.c"
 )
 
@@ -244,6 +243,12 @@ idf_component_register(
 )
 
 target_linker_script(${COMPONENT_LIB} INTERFACE "uavo_handles.ld")
+
+# The pinned delete implementation discards erase/commit failures. Keep the
+# upstream file untouched, rename only its unchecked entry point, and bind
+# callers to the checked repository-owned UAVObjDelete implementation.
+set_source_files_properties("${FLIGHT}/uavobjects/uavobjectpersistence.c"
+    PROPERTIES COMPILE_DEFINITIONS "UAVObjDelete=UAVObjDelete_unchecked")
 
 target_compile_definitions(${COMPONENT_LIB} PRIVATE
     USE_ESP32=1

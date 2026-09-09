@@ -31,6 +31,9 @@
 
 #include "fw_version_info.h"
 #include "pios_litewing_board.h"
+#include "pios_litewing_brushed_pwm.h"
+#include "pios_litewing_flashfs.h"
+#include "litewing_settings_recovery.h"
 
 uint32_t pios_com_telem_rf_id;
 uint32_t pios_com_aux_id;
@@ -101,81 +104,122 @@ static int board_com_init(uint32_t *com_id,
                          tx_buffer, PIOS_COM_TELEM_RF_TX_BUF_LEN);
 }
 
-static void board_apply_safe_defaults(void)
+static UAVObjHandle board_setting_handle(unsigned index)
 {
+    switch (index) {
+    case 0: return MixerSettingsHandle();
+    case 1: return ActuatorSettingsHandle();
+    case 2: return ManualControlSettingsHandle();
+    default: return NULL;
+    }
+}
+
+static int board_settings_inspect(void *context, unsigned index)
+{
+    (void)context;
+    UAVObjHandle handle = board_setting_handle(index);
+    if (!handle) return -1;
+    return PIOS_LiteWing_FLASHFS_ObjectState(pios_uavo_settings_fs_id,
+        UAVObjGetID(handle), 0, UAVObjGetNumBytes(handle));
+}
+
+static int board_settings_load(void *context, unsigned index)
+{
+    (void)context;
+    UAVObjHandle handle = board_setting_handle(index);
+    return handle ? UAVObjLoad(handle, 0) : -1;
+}
+
+static int board_defaults_and_save(void *context, unsigned index)
+{
+    (void)context;
     MixerSettingsData mixer;
     ActuatorSettingsData actuator;
     ManualControlSettingsData manual;
 
-    if (PIOS_ESP32_FLASHFS_IsProvisioned()) {
-        return;
+    /* Called only for a confirmed absent object. Valid stored settings are
+     * loaded unchanged even when another required object is absent. */
+    if (index == 0) {
+        if (MixerSettingsGet(&mixer) != 0) return -1;
+        mixer.ThrottleCurve1[0] = 0.0f;
+        mixer.ThrottleCurve1[1] = 0.25f;
+        mixer.ThrottleCurve1[2] = 0.5f;
+        mixer.ThrottleCurve1[3] = 0.75f;
+        mixer.ThrottleCurve1[4] = 1.0f;
+
+        mixer.Mixer1Type = MIXERSETTINGS_MIXER1TYPE_MOTOR;
+        mixer.Mixer1Vector.ThrottleCurve1 = 127;
+        mixer.Mixer1Vector.Roll = 127;
+        mixer.Mixer1Vector.Pitch = 127;
+        mixer.Mixer1Vector.Yaw = -127;
+        mixer.Mixer2Type = MIXERSETTINGS_MIXER2TYPE_MOTOR;
+        mixer.Mixer2Vector.ThrottleCurve1 = 127;
+        mixer.Mixer2Vector.Roll = -127;
+        mixer.Mixer2Vector.Pitch = 127;
+        mixer.Mixer2Vector.Yaw = 127;
+        mixer.Mixer3Type = MIXERSETTINGS_MIXER3TYPE_MOTOR;
+        mixer.Mixer3Vector.ThrottleCurve1 = 127;
+        mixer.Mixer3Vector.Roll = -127;
+        mixer.Mixer3Vector.Pitch = -127;
+        mixer.Mixer3Vector.Yaw = -127;
+        mixer.Mixer4Type = MIXERSETTINGS_MIXER4TYPE_MOTOR;
+        mixer.Mixer4Vector.ThrottleCurve1 = 127;
+        mixer.Mixer4Vector.Roll = 127;
+        mixer.Mixer4Vector.Pitch = -127;
+        mixer.Mixer4Vector.Yaw = 127;
+        if (MixerSettingsSet(&mixer) != 0) return -1;
+    } else if (index == 1) {
+
+        /* LiteWing uses brushed duty, not 1000-2000us ESC pulses. */
+        if (ActuatorSettingsGet(&actuator) != 0) return -1;
+        for (uint8_t index = 0; index < 4; ++index) {
+            actuator.ChannelType[index] = ACTUATORSETTINGS_CHANNELTYPE_PWM;
+            actuator.ChannelAddr[index] = index;
+            actuator.ChannelMin[index] = 0;
+            actuator.ChannelNeutral[index] = 0;
+            actuator.ChannelMax[index] = 1000;
+        }
+        actuator.MotorsSpinWhileArmed =
+            ACTUATORSETTINGS_MOTORSSPINWHILEARMED_FALSE;
+        if (ActuatorSettingsSet(&actuator) != 0) return -1;
+    } else if (index == 2) {
+
+        /* GCS is a configuration/bench input only. The ordinary controller and
+         * explicit human arm path remain authoritative; no AI path is connected
+         * to this receiver. */
+        if (ManualControlSettingsGet(&manual) != 0) return -1;
+        manual.ChannelGroups.Throttle = MANUALCONTROLSETTINGS_CHANNELGROUPS_GCS;
+        manual.ChannelGroups.Roll = MANUALCONTROLSETTINGS_CHANNELGROUPS_GCS;
+        manual.ChannelGroups.Pitch = MANUALCONTROLSETTINGS_CHANNELGROUPS_GCS;
+        manual.ChannelGroups.Yaw = MANUALCONTROLSETTINGS_CHANNELGROUPS_GCS;
+        manual.ChannelGroups.FlightMode = MANUALCONTROLSETTINGS_CHANNELGROUPS_GCS;
+        manual.ChannelNumber.Throttle = 1;
+        manual.ChannelNumber.Roll = 2;
+        manual.ChannelNumber.Pitch = 3;
+        manual.ChannelNumber.Yaw = 4;
+        manual.ChannelNumber.FlightMode = 5;
+        if (ManualControlSettingsSet(&manual) != 0) return -1;
+    } else {
+        return -1;
     }
 
-    /* Quad-X mixing is only a first-boot configuration. Stored settings win
-     * after the marker is written, and the output backend still requires a
-     * healthy IMU, fresh control link, and explicit arm state. */
-    MixerSettingsGet(&mixer);
-    mixer.ThrottleCurve1[0] = 0.0f;
-    mixer.ThrottleCurve1[1] = 0.25f;
-    mixer.ThrottleCurve1[2] = 0.5f;
-    mixer.ThrottleCurve1[3] = 0.75f;
-    mixer.ThrottleCurve1[4] = 1.0f;
+    return UAVObjSave(board_setting_handle(index), 0);
+}
 
-    mixer.Mixer1Type = MIXERSETTINGS_MIXER1TYPE_MOTOR;
-    mixer.Mixer1Vector.ThrottleCurve1 = 127;
-    mixer.Mixer1Vector.Roll = 127;
-    mixer.Mixer1Vector.Pitch = 127;
-    mixer.Mixer1Vector.Yaw = -127;
-    mixer.Mixer2Type = MIXERSETTINGS_MIXER2TYPE_MOTOR;
-    mixer.Mixer2Vector.ThrottleCurve1 = 127;
-    mixer.Mixer2Vector.Roll = -127;
-    mixer.Mixer2Vector.Pitch = 127;
-    mixer.Mixer2Vector.Yaw = 127;
-    mixer.Mixer3Type = MIXERSETTINGS_MIXER3TYPE_MOTOR;
-    mixer.Mixer3Vector.ThrottleCurve1 = 127;
-    mixer.Mixer3Vector.Roll = -127;
-    mixer.Mixer3Vector.Pitch = -127;
-    mixer.Mixer3Vector.Yaw = -127;
-    mixer.Mixer4Type = MIXERSETTINGS_MIXER4TYPE_MOTOR;
-    mixer.Mixer4Vector.ThrottleCurve1 = 127;
-    mixer.Mixer4Vector.Roll = 127;
-    mixer.Mixer4Vector.Pitch = -127;
-    mixer.Mixer4Vector.Yaw = 127;
-    MixerSettingsSet(&mixer);
+static int board_settings_mark(void *context)
+{
+    (void)context;
+    return PIOS_LiteWing_FLASHFS_MarkProvisioned();
+}
 
-    /* LiteWing uses brushed duty, not 1000-2000us ESC pulses. */
-    ActuatorSettingsGet(&actuator);
-    for (uint8_t index = 0; index < 4; ++index) {
-        actuator.ChannelType[index] = ACTUATORSETTINGS_CHANNELTYPE_PWM;
-        actuator.ChannelAddr[index] = index;
-        actuator.ChannelMin[index] = 0;
-        actuator.ChannelNeutral[index] = 0;
-        actuator.ChannelMax[index] = 1000;
-    }
-    actuator.MotorsSpinWhileArmed =
-        ACTUATORSETTINGS_MOTORSSPINWHILEARMED_FALSE;
-    ActuatorSettingsSet(&actuator);
-
-    /* GCS is a configuration/bench input only. The ordinary controller and
-     * explicit human arm path remain authoritative; no AI path is connected
-     * to this receiver. */
-    ManualControlSettingsGet(&manual);
-    manual.ChannelGroups.Throttle = MANUALCONTROLSETTINGS_CHANNELGROUPS_GCS;
-    manual.ChannelGroups.Roll = MANUALCONTROLSETTINGS_CHANNELGROUPS_GCS;
-    manual.ChannelGroups.Pitch = MANUALCONTROLSETTINGS_CHANNELGROUPS_GCS;
-    manual.ChannelGroups.Yaw = MANUALCONTROLSETTINGS_CHANNELGROUPS_GCS;
-    manual.ChannelGroups.FlightMode = MANUALCONTROLSETTINGS_CHANNELGROUPS_GCS;
-    manual.ChannelNumber.Throttle = 1;
-    manual.ChannelNumber.Roll = 2;
-    manual.ChannelNumber.Pitch = 3;
-    manual.ChannelNumber.Yaw = 4;
-    manual.ChannelNumber.FlightMode = 5;
-    ManualControlSettingsSet(&manual);
-
-    (void)UAVObjSave(MixerSettingsHandle(), 0);
-    (void)UAVObjSave(ActuatorSettingsHandle(), 0);
-    (void)UAVObjSave(ManualControlSettingsHandle(), 0);
-    PIOS_ESP32_FLASHFS_MarkProvisioned();
+static int board_apply_safe_defaults(void)
+{
+    static const struct litewing_settings_ops ops = {
+        board_settings_inspect, board_settings_load,
+        board_defaults_and_save, board_settings_mark
+    };
+    if (!PIOS_LiteWing_FLASHFS_Healthy()) return -1;
+    return litewing_settings_recover(&ops, NULL);
 }
 
 static void board_set_boot_fault(void)
@@ -231,14 +275,17 @@ void PIOS_Board_Init(void)
      * persistence implementation loads settings during object registration. */
     if (PIOS_ESP32_FLASHFS_Init(&pios_uavo_settings_fs_id) != 0) {
         pios_uavo_settings_fs_id = 0;
-        printf("[LiteWing] settings storage unavailable; using volatile settings\n");
+        board_set_boot_fault();
+        printf("[LiteWing] settings storage unavailable; outputs blocked\n");
     }
     pios_user_fs_id = 0;
 
     UAVObjInitialize();
     UAVObjectsInitializeAll();
     board_set_firmware_identity();
-    board_apply_safe_defaults();
+    if (board_apply_safe_defaults() != 0) {
+        board_set_boot_fault();
+    }
     PIOS_DEBUGLOG_Initialize();
     AlarmsInitialize();
     board_alarms_ready = true;
@@ -266,5 +313,10 @@ void PIOS_Board_Init(void)
     if (PIOS_LiteWing_Board_Init() != 0) {
         /* The target adapter has already forced zero duty before returning. */
         board_set_boot_fault();
+    }
+    if (board_boot_fault) {
+        /* Settings failure must not leave a usable motor backend, even when
+         * sensor initialization succeeds. Shutdown latches until reboot. */
+        PIOS_LiteWing_BrushedPWM_Shutdown();
     }
 }
