@@ -52,14 +52,15 @@ Paths below are relative to NinjaPilot's `flight/` directory.
 | `libraries/alarms.c` | `85a4828d601673db7964dbf13600ee93687821a0818c5bd4a479f4ed42560fdd` |
 | `uavobjects/eventdispatcher.c` | `5778e5de80793601bc53ccdecd80865eaaa38d806eb032de297576a9c6e84ddb` |
 
-The generator rejects output within or above the source directory, and
+The generator rejects inputs whose resolved file or directory symlinks escape
+the source subtree, output within or above the source directory, and
 symlink/hardlink output files, before modifying either output. Repeat generation
 preserves unchanged output modification times. These are trusted-build-workspace
 checks, not an atomic filesystem transaction or a concurrent-adversary sandbox.
 
 ## Executed evidence
 
-The eight-test `test_startup_services.py` suite compiles the complete real
+The nine-test `test_startup_services.py` suite compiles the complete real
 EventDispatcher and Alarms implementations alongside the actual board
 initializer, ESP-IDF entry function and settings-recovery algorithm. It uses
 generated object declarations. Lower-level RTOS resources, callback registration,
@@ -79,15 +80,25 @@ asynchronous module startup, NVS, or physical hardware.
   assertions. A permanent negative control recompiles original services and
   requires their specific queue, callback, board-status and lock assertions;
   a compiler error alone cannot satisfy that control.
-- Four preparation tests reject drift/unsafe outputs and verify unchanged
-  source bytes and no-op output timestamps. A fifth test reads the actual
+- Five preparation tests reject drift/unsafe inputs and outputs and verify
+  unchanged source bytes and no-op output timestamps. A sixth test reads the actual
   generated firmware compile graph and requires exactly one adapted source
   for each service. That graph test failed against both old source selections
   before reconfiguration and passed against the new graph.
 - The existing 20 thrust-control tests now link the adapted alarm source for
   their startup/alarm regressions. Full local host gates passed with both pinned
   checkouts, generated objects, the optional SDK, real ELF and build graph:
-  **83 assistant + 181 port = 264 tests, no skips**.
+  **83 assistant + 183 port = 266 tests, no skips**, after review corrections.
+
+Independent review found an input-side alias could bypass the original
+output-only alias check. Four new regression cases (either input, file or
+directory symlink) reproduced success when rejection was required, then passed
+with exit `1` and both outputs unchanged after input containment was added.
+Review also identified that the pinned binary semaphore starts full. The
+fixture now separates signal fullness from callback pending state, covers zero
+on the first dispatch, consumes the signal, and delivers again. A permanent
+negative control that wrongly treats the first zero dispatch as an error was
+missed by the old fixture and is rejected by the corrected nominal-board test.
 
 CI's source job supplies pinned generated objects for the service/preparation
 tests. Its compile-graph test intentionally skips without an SDK build graph;
@@ -110,9 +121,14 @@ No new warning suppression was added to production compilation.
 | ELF | 6651720 | `5e3838353d08d11c4000bc353a5f5fc478580819ea5717d30ef45a191597dd2b` |
 
 The application fits the existing 1 MiB partition. Both artifacts are retained
-privately and are **not installed**. Documentation-only follow-ups do not change
-these artifact bytes. No bootloader, partition, NVS or application device bytes
-were changed.
+privately and are **not installed**. Review correction commit
+`b2dd92fb8947d42c12a8858e494fd9239c4a7bdc` changes generator input validation and
+host fixtures, not the emitted C. Before/after regeneration produced identical
+SHA-256 values: alarms `361a4c5202c474071758f6e1ebbe503dc9e3b42267e9ee59828926b706d44e66`,
+events `94a65215426f5d7c5c4d1869b89a5c480b8166c613ae30125a78a6ed3647e277`.
+The retained artifacts remain from `67e5681`; later graph reconfiguration is
+not a new firmware build. No bootloader, partition, NVS or application device
+bytes were changed.
 
 ## Remaining readiness gates
 
