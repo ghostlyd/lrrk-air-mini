@@ -97,7 +97,7 @@
 - [x] Map the shared actuator range `0..1000` to duty, clamp before hardware writes, and stage all four channels as one validated frame before the LEDC updates.
 - [x] Force all outputs to zero on initialization, disarm, failsafe, sensor fault, stale telemetry/transport, and target shutdown.
 - [x] Do not expose ESC calibration or servo-pulse assumptions in the LiteWing backend.
-- [x] Add host tests that prove clamping, zeroing, frame atomicity, and no output on fault.
+- [x] Add host tests for clamping, zeroing, validated staging, and output fault gates. LEDC updates are not an atomic cross-channel electrical commit; real-driver host tests now cover injected write failures separately from the pure helper contract.
 - [x] Commit as `feat: add LiteWing MPU6050 and brushed HAL` (combined sensor/output adapter slice).
 
 ### Task 6: Add build gates and bench evidence templates
@@ -112,7 +112,7 @@
 - [x] Return a distinct unavailable result for missing ESP-IDF rather than a false pass.
 - [x] Add CI for JSON/shell/host tests and source-integrity checks without requiring hardware or secrets.
 - [x] Add a bench checklist covering USB identity, IMU `WHO_AM_I`, watchdog, zero output, disarm/failsafe, and physical motor/IMU orientation.
-- [x] Record current toolchain availability as evidence; the current workstation lacks `idf.py`, so no ESP32 build claim is allowed until that changes.
+- [x] Record toolchain availability as evidence. ESP-IDF 5.3.2 is now installed and the no-flash ESP32-S3 build is verified; see `docs/verification/brushed-pwm-driver-2026-09-09.md`. Physical validation remains open.
 - [x] Commit as `feat: establish LiteWing NinjaPilot and AI foundation` (merged in PR #4).
 
 ### Task 7: Review and integration gate
