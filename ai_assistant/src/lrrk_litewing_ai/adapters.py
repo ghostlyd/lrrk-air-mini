@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from datetime import datetime
 from typing import Iterable, Iterator, Protocol, Union
 
 from .jsonl import iter_records
@@ -44,3 +45,28 @@ class UAVTalkAdapter:
 
     def snapshots(self) -> Iterator[TelemetrySnapshot]:
         raise AdapterError("UAVTalk adapter is not enabled in the offline build")
+
+
+class UAVTalkCaptureAdapter:
+    """Partial snapshots from a saved capture with explicit capture metadata."""
+
+    def __init__(self, path: Union[str, Path], captured_at: datetime):
+        if not isinstance(captured_at, datetime) or captured_at.tzinfo is None or captured_at.utcoffset() is None:
+            raise AdapterError("capture time must be timezone-aware")
+        self.path = Path(path)
+        self.captured_at = captured_at
+
+    def snapshots(self) -> Iterator[TelemetrySnapshot]:
+        from .uavtalk import UAVTalkError, read_frames
+        from .uavobjects import snapshot_from_frame
+
+        if not self.path.is_file():
+            raise AdapterError("capture must be a regular file")
+        try:
+            with self.path.open("rb") as stream:
+                for frame in read_frames(stream):
+                    snapshot = snapshot_from_frame(frame, self.captured_at)
+                    if snapshot is not None:
+                        yield snapshot
+        except UAVTalkError as exc:
+            raise AdapterError(str(exc)) from exc

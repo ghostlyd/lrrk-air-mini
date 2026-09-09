@@ -7,9 +7,10 @@ import asyncio
 import json
 import sys
 from pathlib import Path
+from datetime import datetime
 from typing import Iterable, Optional, Sequence
 
-from .adapters import AdapterError, JsonlTelemetryAdapter
+from .adapters import AdapterError, JsonlTelemetryAdapter, UAVTalkCaptureAdapter
 from .agent import create_assistant
 from .audit import AuditLog
 from .tools import AssistantRuntime, run_preflight_tool
@@ -18,6 +19,8 @@ from .tools import AssistantRuntime, run_preflight_tool
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Offline-first LiteWing telemetry assistant")
     parser.add_argument("--input", type=Path, required=True, help="JSONL telemetry input")
+    parser.add_argument("--input-format", choices=("jsonl", "uavtalk"), default="jsonl")
+    parser.add_argument("--captured-at", help="timezone-aware capture time, required for UAVTalk replay")
     parser.add_argument("--audit-log", type=Path, help="append-only JSONL audit destination")
     parser.add_argument("--session", default="cli-session", help="operator session identifier")
     parser.add_argument("--prompt", help="optional offline prompt or live-agent prompt")
@@ -49,7 +52,19 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     runtime = AssistantRuntime(operator_session=args.session)
     audit = AuditLog(args.audit_log, args.session) if args.audit_log else None
     try:
-        snapshots = list(JsonlTelemetryAdapter(args.input).snapshots())
+        if args.input_format == "uavtalk":
+            if not args.captured_at:
+                raise AdapterError("--captured-at is required for UAVTalk replay")
+            try:
+                captured_at = datetime.fromisoformat(args.captured_at.replace("Z", "+00:00"))
+            except ValueError as exc:
+                raise AdapterError("invalid --captured-at timestamp") from exc
+            adapter = UAVTalkCaptureAdapter(args.input, captured_at)
+        else:
+            if args.captured_at:
+                raise AdapterError("--captured-at applies only to UAVTalk replay")
+            adapter = JsonlTelemetryAdapter(args.input)
+        snapshots = list(adapter.snapshots())
     except (AdapterError, OSError) as exc:
         print("telemetry input blocked: %s" % exc, file=sys.stderr)
         return 2
