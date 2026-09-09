@@ -8,6 +8,7 @@ PINS = {
     "Receiver/receiver.c": "0a9395a6335524700ec7ded9993fb256e1058471b62ef71246a50b98dcee82f9",
     "Actuator/actuator.c": "4c5d155937f4f61e482cad7e7121d417574aba8d3f360994d763f061e497b9e7",
 }
+ROOT = Path(__file__).resolve().parent
 
 
 def replace_exact(text, old, new):
@@ -43,7 +44,31 @@ def prepare(source, output):
             continue;
         }""")
     actuator = replace_exact(inputs["Actuator/actuator.c"], "#include <systemsettings.h>",
-        '#include <systemsettings.h>\n#include "litewing_thrust_control.h"')
+        '#include <systemsettings.h>\n#include "litewing_thrust_control.h"\n#include "pios_litewing_brushed_pwm.h"')
+    actuator = replace_exact(actuator, "static xTaskHandle taskHandle;", """static bool actuatorInitAttempted;
+static bool actuatorResourcesReady;
+static bool actuatorStartAttempted;""")
+    start = actuator.index("int32_t ActuatorStart()")
+    end = actuator.index("MODULE_INITCALL(ActuatorInitialize, ActuatorStart);")
+    actuator = replace_exact(actuator, actuator[start:end],
+        (ROOT / "target/startup/actuator_start.inc").read_text().rstrip() + "\n")
+    actuator = replace_exact(actuator,
+        "static void actuatorTask(__attribute__((unused)) void *parameters)\n{",
+        """static void actuatorTask(__attribute__((unused)) void *parameters)
+{
+    /* The task owns its monitor handle. It may execute and retire before
+     * xTaskCreate returns; the creator must never republish its handle. */
+    if (PIOS_TASK_MONITOR_RegisterTask(TASKINFO_RUNNING_ACTUATOR, xTaskGetCurrentTaskHandle()) != 0) {
+        PIOS_LiteWing_BrushedPWM_Shutdown();
+        AlarmsSet(SYSTEMALARMS_ALARM_BOOTFAULT, SYSTEMALARMS_ALARM_CRITICAL);
+        /* Failed monitor registration publishes no handle. The connected
+         * object queue stays allocated; callbacks may still refer to it. */
+        vTaskDelete(NULL);
+        return;
+    }
+    SettingsUpdatedCb(NULL);
+    MixerSettingsUpdatedCb(NULL);
+    ActuatorSettingsUpdatedCb(NULL);""")
     actuator = replace_exact(actuator,
         "static SystemSettingsThrustControlOptions thrustType = SYSTEMSETTINGS_THRUSTCONTROL_THROTTLE;\n", "")
     actuator = replace_exact(actuator, "    SystemSettingsThrustControlGet(&thrustType);\n", "")

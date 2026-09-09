@@ -164,6 +164,7 @@ set(LIB_SRCS
 set(LITEWING_CONTROL_DIR "${CMAKE_CURRENT_BINARY_DIR}/litewing_control")
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
     "${PORT_ROOT}/prepare_control.py"
+    "${PORT_ROOT}/target/startup/actuator_start.inc"
     "${FLIGHT}/modules/Receiver/receiver.c"
     "${FLIGHT}/modules/Actuator/actuator.c")
 execute_process(COMMAND python3 "${PORT_ROOT}/prepare_control.py"
