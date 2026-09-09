@@ -123,8 +123,29 @@ target-only adapter consumes complete SHA-256-checked source files:
 Receiver's prior thrust/failsafe adaptations and the existing Actuator adapter
 are preserved. The full local suite passes **83 assistant + 239 port = 322
 tests**, without skips, with pinned sources and SDK graph supplied. The
-ESP-IDF 5.3.2 incremental build also passes. Retained artifact identities will
-be recorded after the exact committed-source build is verified.
+ESP-IDF 5.3.2 incremental build also passes.
+
+## Retained private build — NOT INSTALLED
+
+Production/test commit: `d0c15008aa7bd01274f0838035d42c24c692a26b`.
+The clean-worktree incremental build reports version `d0c1500`; this is not
+a clean-from-scratch build. Persistence linkage passes with UAVObjSave at
+`0x4200c9e0`, UAVObjLoad at `0x4200ca64`, and UAVObjDelete at `0x4200a84c`.
+The application fits the existing 1 MiB partition with 66% free. Existing
+upstream unused-variable and CMake deprecation warnings remain; no production
+warning suppression was added.
+
+| Artifact | Bytes | SHA-256 |
+| --- | ---: | --- |
+| Application | 358384 | `3c31fc39b529303063f3e40ca865f91bfde55224f7ec53070cbe99e1e7119d71` |
+| ELF | 6666936 | `b3cff9671a9dd5de189d5a3c49f41144073d487f845185ab2fd91d75805baae9` |
+
+Generated Attitude SHA-256:
+`52fe8228107c53b509914d530dc6c723fe65dd38c89d546e7e5c26b2db733f97`.
+Generated Receiver SHA-256:
+`f76bcc891a4ea4963d7d4021175c8af6eb9b3a565e2af36c82e0164d715f79b6`.
+Later report-only changes do not alter these retained bytes. Independent review
+and exact final-revision CI results are recorded in the PR.
 
 ## Remaining gates
 
