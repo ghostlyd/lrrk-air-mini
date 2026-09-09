@@ -35,7 +35,7 @@ ESP-IDF 5.3.2 / ESP32-S3.
 - Produces `bool PIOS_LiteWing_BoardServicesInitialized(void)`, false unless the
   one-shot synchronous sequence completed with no reported error.
 
-- [ ] Write a host test compiling unchanged production board/entry source and
+- [x] Write a host test compiling unchanged production board/entry source and
   actual settings recovery. Supply generated object headers from the pinned
   flight tree, minimal hardware/RTOS/object service boundaries, and an ordered
   trace. Each failure process must assert:
@@ -53,11 +53,11 @@ ESP-IDF 5.3.2 / ESP32-S3.
   UART/buffer/COM, GCS receiver, receiver mapping and board-adapter failures.
   Observe GPIO/alarm readiness and repeat calls. Nominal and watchdog-reset
   flags cases must still reach modules exactly once per initial app entry.
-- [ ] Run `LRRK_TEST_FLIGHT_ROOT=/path/to/pinned/NinjaPilot python3 -m unittest
+- [x] Run `LRRK_TEST_FLIGHT_ROOT=/path/to/pinned/NinjaPilot python3 -m unittest
   discover -s ports/ninjapilot-litewing/tests -p test_board_startup.py -v`.
   Confirm failures are assertions showing later services/modules ran, not a
   fixture compile error.
-- [ ] Implement one-shot state and checked early returns. The entry gate is:
+- [x] Implement one-shot state and checked early returns. The entry gate is:
 
   ```c
   PIOS_Board_Init();
@@ -72,11 +72,11 @@ ESP-IDF 5.3.2 / ESP32-S3.
   latch. Check identity getters/setters before proceeding. Use initialized
   flags to guard alarm/LED failure reporting. Failure requests PWM Shutdown
   and returns before the next dependent service.
-- [ ] Re-run focused tests. In disposable copies remove the app gate and bypass
+- [x] Re-run focused tests. In disposable copies remove the app gate and bypass
   one board return, and verify the test rejects both mutations. Run the full
   host command `ports/ninjapilot-litewing/build.sh --host-only` with both pinned
   source paths, generated objects, SDK Python and linked-ELF test prerequisites.
-- [ ] Build via `idf.py -C ports/ninjapilot-litewing/esp-idf build` with IDF 5.3.2
+- [x] Build via `idf.py -C ports/ninjapilot-litewing/esp-idf build` with IDF 5.3.2
   and the two pinned source roots. Re-run link/build-graph tests on this ELF.
 - [ ] Commit exact changed source/tests/docs, request review, inspect CI on the
   exact head, then publish/merge only if accepted. Record limitations and build
