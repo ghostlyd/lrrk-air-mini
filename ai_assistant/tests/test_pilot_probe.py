@@ -2,6 +2,15 @@ import socket
 import unittest
 import threading
 import time
+import os
+import tempfile
+from pathlib import Path
+import io
+import contextlib
+from unittest.mock import patch
+from lrrk_litewing_ai import pilot_probe
+from lrrk_litewing_ai.provisioning_bundle import save_pending
+from lrrk_litewing_ai.usb_provisioning_wire import encode_config
 from lrrk_litewing_ai.pilot_probe import probe_udp
 from lrrk_litewing_ai.pilot_wire import Envelope, encode, decode
 
@@ -24,6 +33,26 @@ class Socket:
 
 
 class ProbeTests(unittest.TestCase):
+    @unittest.skipUnless(os.name=='posix','POSIX private bundle')
+    def test_command_loads_private_bundle_and_reports_only_key_reachability(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path=save_pending(Path(directory),b't'*16,encode_config('test','p'*24,b'r'*32))
+            sock=Socket(b'r'*32)
+            destinations=[]
+            sock.connect=lambda peer:destinations.append(peer)
+            output=io.StringIO()
+            with patch.object(pilot_probe.socket,'socket',return_value=sock), contextlib.redirect_stdout(output):
+                result=pilot_probe.main(['--bundle',str(path),'--host','127.0.0.1'])
+            self.assertEqual(result,0)
+            self.assertEqual(destinations,[('127.0.0.1',2390)])
+            self.assertEqual(output.getvalue(),'application key reachable; ownership and flight not verified\n')
+            self.assertTrue(path.exists())
+
+    def test_bad_bundle_prevents_socket_creation(self):
+        with patch.object(pilot_probe.socket,'socket') as factory, contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(pilot_probe.main(['--bundle','/nonexistent/probe.pending','--host','127.0.0.1']),2)
+        factory.assert_not_called()
+
     def test_authenticated_loopback_exchange_emits_hello_only(self):
         root=b'r'*32
         seen=[]
@@ -84,3 +113,25 @@ class ProbeTests(unittest.TestCase):
         self.assertEqual(len(calls),64)
         self.assertEqual(len(sock.sent),1)
         self.assertTrue(sock.closed)
+
+    def test_late_proof_short_send_and_close_failure_never_succeed(self):
+        for case in ('late','short','send-fail','close-fail'):
+            sock=Socket(b'r'*32)
+            clock=lambda:100
+            if case=='late':
+                ticks=iter((100,100,1_000_100))
+                clock=lambda:next(ticks)
+            if case in ('short','send-fail'):
+                def send(data):
+                    sock.sent.append(data)
+                    if case=='send-fail': raise OSError('synthetic')
+                    return len(data)-1
+                sock.send=send
+            if case=='close-fail':
+                def close():
+                    sock.closed=True
+                    raise OSError('synthetic')
+                sock.close=close
+            self.assertFalse(probe_udp(sock,b'r'*32,clock))
+            self.assertTrue(sock.closed)
+            self.assertEqual(len(sock.sent),1)
