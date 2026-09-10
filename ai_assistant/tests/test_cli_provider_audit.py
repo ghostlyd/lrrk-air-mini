@@ -23,6 +23,8 @@ FIXTURE = ROOT / "tests" / "fixtures" / "telemetry.jsonl"
 PROMPT = "private-prompt-7c91 café 🚁"
 RESPONSE = "private-response-2a83 naïve 🛑"
 EXCEPTION_SECRET = "private-exception-f19e sk-test-secret-only bearer synthetic-secret"
+SURROGATE_SECRET = "private-surrogate-response-5d72"
+SURROGATE_RESPONSE = SURROGATE_SECRET + "\ud800"
 
 
 class CliProviderAuditTests(unittest.TestCase):
@@ -122,6 +124,29 @@ class CliProviderAuditTests(unittest.TestCase):
             "outcome": "blocked", "snapshot_hash": snapshot_hash,
             "error_class": "RuntimeError",
         })
+
+    def test_unencodable_response_records_one_blocked_result_without_content(self):
+        with patch("lrrk_litewing_ai.cli._live_prompt", return_value=SURROGATE_RESPONSE):
+            status, stdout, stderr = self.run_cli("--live-agent", "--prompt", PROMPT)
+
+        self.assertEqual(status, 3)
+        self.assertEqual(stderr, "assistant request blocked\n")
+        records = validate_replay(self.audit_path)
+        self.assertEqual(len(records), 6)
+        snapshot_hash = self.assert_request(records[:-1])
+        self.assertEqual([record["event_type"] for record in records[-2:]], [
+            "provider_request", "provider_result",
+        ])
+        self.assertEqual(sum(
+            record["event_type"] == "provider_result" for record in records
+        ), 1)
+        self.assertEqual(records[-1]["payload"], {
+            "outcome": "blocked", "snapshot_hash": snapshot_hash,
+            "error_class": "UnicodeEncodeError",
+        })
+        emitted = stdout + stderr + self.audit_path.read_text(encoding="utf-8")
+        self.assertNotIn(SURROGATE_SECRET, emitted)
+        self.assertNotIn(SURROGATE_RESPONSE, emitted)
 
     def test_missing_key_attempt_is_audited_without_importing_sdk(self):
         status, _, stderr = self.run_cli("--live-agent", "--prompt", PROMPT)

@@ -148,6 +148,14 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                     })
                 try:
                     answer = _live_prompt(runtime, args.prompt)
+                    if audit:
+                        response_bytes = answer.encode("utf-8")
+                        result_payload = {
+                            "outcome": "completed",
+                            "snapshot_hash": runtime.latest.snapshot_hash(),
+                            "response_bytes": len(response_bytes),
+                            "response_sha256": hashlib.sha256(response_bytes).hexdigest(),
+                        }
                 except Exception as exc:
                     if audit:
                         audit.append("provider_result", {
@@ -157,13 +165,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                         })
                     raise
                 if audit:
-                    response_bytes = answer.encode("utf-8")
-                    audit.append("provider_result", {
-                        "outcome": "completed",
-                        "snapshot_hash": runtime.latest.snapshot_hash(),
-                        "response_bytes": len(response_bytes),
-                        "response_sha256": hashlib.sha256(response_bytes).hexdigest(),
-                    })
+                    audit.append("provider_result", result_payload)
             else:
                 assistant = create_assistant(runtime)
                 answer = assistant.respond(args.prompt)
