@@ -2,6 +2,7 @@
 #include "litewing_pilot_controller.h"
 #include "pios.h"
 #include <freertos/FreeRTOS.h>
+#include <esp_timer.h>
 #include "pios_litewing_gcsrcvr.h"
 #include <string.h>
 
@@ -48,6 +49,16 @@ enum lw_session_result lw_controller_receive(struct lw_pilot_controller *c,
 {
     if (written) *written = 0;
     if (!c || !written) return LW_REJECT;
+    const int64_t processing_us = esp_timer_get_time();
+    if (now_us < 0 || now_us > processing_us) {
+        lw_controller_fault(c);
+        return LW_RETIRED;
+    }
+    /* Session time is the processing clock, shared with receiver commit/tick.
+     * A queued packet's earlier receive time is not a clock rollback. Freshness
+     * remains measured from its authenticated challenge, never from either read
+     * time; processing delay can only shorten the acceptance window. */
+    now_us = processing_us;
     if (c->owned) {
         enum lw_session_result r = lw_session_prepare_control(&c->session, wire, size, now_us);
         if (r == LW_PILOT_CANDIDATE) {

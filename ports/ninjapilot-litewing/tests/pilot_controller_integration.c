@@ -69,6 +69,32 @@ int main(int argc, char **argv)
     assert(lw_controller_receive(&controller,wire,size,root.bytes,clock_us,0,0,
         random_bytes,&counter,reply,sizeof(reply),&written)==LW_PILOT_CANDIDATE);
     assert(written==0 && pios_gcsrcvr_rcvr_driver.read(receiver_id,0)==1500);
+    if (!strcmp(argv[1],"queued") || !strcmp(argv[1],"tick-queued") ||
+        !strcmp(argv[1],"stale-queue") || !strcmp(argv[1],"future-receive") ||
+        !strcmp(argv[1],"clock-rollback")) {
+        clock_us=50000;
+        if (!strcmp(argv[1],"tick-queued"))
+            assert(lw_controller_tick(&controller,clock_us)==0);
+        frame.sequence=3;
+        assert(lw_wire_encode(&frame,lw_pilot_mac,&key,wire,sizeof(wire),&size)==0);
+        assert(lw_controller_receive(&controller,wire,size,root.bytes,22000,0,0,
+            random_bytes,&counter,reply,sizeof(reply),&written)==LW_PILOT_CANDIDATE);
+        frame.sequence=4;
+        assert(lw_wire_encode(&frame,lw_pilot_mac,&key,wire,sizeof(wire),&size)==0);
+        clock_us=51000;
+        if (!strcmp(argv[1],"stale-queue")) clock_us=76001;
+        if (!strcmp(argv[1],"clock-rollback")) clock_us=49000;
+        int64_t received=!strcmp(argv[1],"future-receive") ? 52000 : 23000;
+        result=lw_controller_receive(&controller,wire,size,root.bytes,received,0,0,
+            random_bytes,&counter,reply,sizeof(reply),&written);
+        if (!strcmp(argv[1],"queued") || !strcmp(argv[1],"tick-queued")) {
+            assert(result==LW_PILOT_CANDIDATE);
+            assert(pios_gcsrcvr_rcvr_driver.read(receiver_id,0)==1500);
+        } else {
+            assert(result!=LW_PILOT_CANDIDATE);
+        }
+        return 0;
+    }
     if (!strcmp(argv[1],"publish")) return 0;
     if (!strcmp(argv[1],"stop")) {
         frame.kind=6; frame.sequence=3; frame.payload_len=0;

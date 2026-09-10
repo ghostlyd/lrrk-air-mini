@@ -7,6 +7,8 @@
  * disarmed/neutral are current validated flight/settings observations, not wire
  * fields. The platform adapter must supply them; this module does not invent
  * channel mapping. now_us is receive-completion time before queue/lock delay.
+ * The controller uses current platform time for session monotonicity/expiry;
+ * an earlier queued receive time never replaces the challenge age origin.
  * PublishWireless independently checks current platform time at commit.
  * Buffers/state must not overlap. Initialize once before receiver ownership.
  */
