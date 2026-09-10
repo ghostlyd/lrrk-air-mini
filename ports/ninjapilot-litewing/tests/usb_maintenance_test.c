@@ -146,6 +146,11 @@ int main(int argc,char **argv) {
     request[0]=1; memcpy(request+16,"LWCF",4);
     request[20]=1; request[21]=1; request[22]=16; request[24]=42;
     request[56]='x'; memset(request+88,'p',16); memcpy(expected,request+16,136);
+#ifdef TEST_HOST_PAYLOAD
+    assert(fread(request,1,sizeof(request),stdin)==sizeof(request));
+    assert(fgetc(stdin)==EOF);
+    memcpy(expected,request+16,sizeof(expected));
+#endif
     assert(lw_usb_maintenance_submit(request,sizeof(request))==-1);
     assert(lw_usb_maintenance_status(NULL,24)==-1);
     uint8_t short_out[23]; memset(short_out,0xA5,sizeof(short_out));
@@ -183,6 +188,11 @@ int main(int argc,char **argv) {
     uint8_t result= !stored ? 0 : CASE("uncertain") ? 3 : CASE("not-written") ? 2 :
                     CASE("invalid-store") ? 1 : 4;
     status(6,result);
+#ifdef TEST_HOST_PAYLOAD
+    uint8_t host_status[24];
+    assert(lw_usb_maintenance_status(host_status,sizeof(host_status))==24);
+    assert(fwrite(host_status,1,sizeof(host_status),stdout)==sizeof(host_status));
+#endif
     memcpy(request+16,expected,136);
     assert(lw_usb_maintenance_submit(request,152)==-1); /* retained transaction ID */
     request[56]='z';
