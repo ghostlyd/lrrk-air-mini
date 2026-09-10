@@ -33,7 +33,19 @@ Ownership is retained after failure/STOP, excluding automatic USB takeover.
   unused-path stubs for USB-only tests. All 26 GCS tests and all six real session
   integration scenarios pass after correction. The earlier full regression run
   encountered the old linkage errors; it is not evidence for this correction.
-- Scoped re-review and corrected full regression remain pending in this record.
+- Scoped re-review accepted both fixes with no new Critical/Important findings.
+  The corrected full run completed: 361 tests, 349 passed, 12 skipped
+  (130.381 seconds). It began at `e293ec3`, before the later UART write expansion.
+
+## UART object-write exclusion
+
+`87f4da0` extends the ownership/fence/in-flight transaction guard to every UART
+object unpack, not only receiver packets. Settings and persistence writes cannot
+bypass ownership via other object handles. Only receiver packets can update
+private receiver channels. `3f35656` fixes the new request fixture's header.
+Current focused checks: 29 GCS tests and six real SDK publication scenarios pass.
+The real pinned parser answers telemetry requests with wireless ownership held
+and without invoking object unpack. Review of this expansion is pending.
 
 No application controller, AP/socket lifecycle, provisioning, flash, or live
 hardware test is included in this slice. The next integration must serialize
