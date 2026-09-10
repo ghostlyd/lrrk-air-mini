@@ -100,6 +100,22 @@ class CliTests(unittest.TestCase):
             with self.subTest(argv=argv), contextlib.redirect_stderr(io.StringIO()):
                 self.assertEqual(main(argv), 2)
 
+    def test_live_capture_and_audit_paths_must_be_distinct(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "shared-output"
+            with patch("lrrk_litewing_ai.cli.UAVTalkAdapter", autospec=True) as adapter:
+                with contextlib.redirect_stderr(io.StringIO()):
+                    result = main([
+                        "--input-format", "uavtalk-live",
+                        "--device", "/dev/cu.wchusbserial410",
+                        "--usb-location", "4-1",
+                        "--private-capture", str(path),
+                        "--audit-log", str(path.parent / "." / path.name),
+                    ])
+
+        self.assertEqual(result, 2)
+        adapter.assert_not_called()
+
 
 if __name__ == "__main__":
     unittest.main()

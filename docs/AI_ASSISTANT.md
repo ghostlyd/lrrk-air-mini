@@ -95,7 +95,8 @@ PYTHONPATH=ai_assistant/src python3 -m lrrk_litewing_ai.cli \
   --duration 2 --json
 ```
 
-Live and replay arguments are mutually exclusive. The live path requires an
+Live and replay arguments are mutually exclusive, and private capture and
+audit paths must be distinct. The live path requires an
 exact `1A86:7522` identity/location match before opening, deasserts DTR/RTS
 before the open, and uses exclusive 57600-baud access. It creates the inbound
 capture with exclusive-create semantics and mode `0600`, caps it at 1 MiB,

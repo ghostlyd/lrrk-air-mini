@@ -58,8 +58,8 @@ PYTHONPATH=ai_assistant/src python3 -m lrrk_litewing_ai.cli \
   --duration 2 --json
 ```
 
-The destination must not already exist. It is created mode `0600`, capped at
-1 MiB, and never committed automatically. Live transport deasserts DTR/RTS
+The destination must not already exist or alias `--audit-log`. It is created
+mode `0600`, capped at 1 MiB, and never committed automatically. Live transport deasserts DTR/RTS
 before opening the port, uses exclusive 57600-baud access, and matches USB
 `1A86:7522` plus the exact topology location before opening. Its outbound
 allowlist contains only telemetry handshake states, five selected object-read

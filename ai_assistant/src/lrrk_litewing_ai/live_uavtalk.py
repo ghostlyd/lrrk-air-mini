@@ -242,15 +242,18 @@ class _Synchronizer:
         self.initial = bytearray()
         self.synchronized = False
         self.discarded = 0
+        self.received_before_sync = 0
 
     def feed(self, data: bytes) -> list[UAVTalkFrame]:
         if len(data) > 4096:
             raise UAVTalkLiveError("serial read exceeds 4096 bytes")
         if not self.synchronized:
+            self.received_before_sync += len(data)
+            if self.received_before_sync > 4096:
+                self.initial.clear()
+                raise UAVTalkLiveError("initial synchronization bound exceeded")
             self.initial.extend(data)
             while self.initial:
-                if self.discarded + len(self.initial) > 4352:
-                    raise UAVTalkLiveError("initial synchronization bound exceeded")
                 if len(self.initial) < 4:
                     return []
                 message_type = self.initial[1]
@@ -319,6 +322,8 @@ class LiveUAVTalkCollector:
         self.initial_discarded_bytes = 0
         self._latest: Dict[int, Tuple[TelemetrySnapshot, float, datetime]] = {}
         self._last_clock: Optional[float] = None
+        self._handshake_status = 1
+        self._connected = False
 
     def _now(self) -> float:
         value = self._monotonic()
@@ -347,7 +352,15 @@ class LiveUAVTalkCollector:
             if status_value not in (0, 1, 2, 3):
                 raise UAVTalkLiveError("invalid FlightTelemetryStats status")
             if status_value == 2:
+                self._handshake_status = 3
+                self._connected = True
                 self.transport.handshake(3)
+            elif status_value == 3:
+                self._handshake_status = 3
+                self._connected = True
+            else:
+                self._handshake_status = 1
+                self._connected = False
             return
         if frame.object_id not in SELECTED_OBJECT_IDS:
             return
@@ -360,6 +373,8 @@ class LiveUAVTalkCollector:
         self._latest[frame.object_id] = (snapshot, received_mono, received_wall)
 
     def _aggregate(self) -> TelemetrySnapshot:
+        if not self._connected:
+            raise UAVTalkLiveError("live telemetry handshake is incomplete")
         missing = SELECTED_OBJECT_IDS.difference(self._latest)
         if missing:
             names = ["0x%08x" % value for value in sorted(missing)]
@@ -401,7 +416,7 @@ class LiveUAVTalkCollector:
             while self._now() - started < self.duration_s:
                 now = self._now()
                 if now >= next_handshake:
-                    self.transport.handshake(1)
+                    self.transport.handshake(self._handshake_status)
                     next_handshake = now + 1.0
                 if now >= next_request:
                     for object_id in sorted(SELECTED_OBJECT_IDS):
@@ -418,7 +433,8 @@ class LiveUAVTalkCollector:
                         if frame.message_type in (0x22, 0xA2) and frame.object_id in _ACK_OBJECT_IDS:
                             self.transport.ack(frame.object_id, frame.instance_id)
                         self._observe(frame, received_mono, received_wall)
-                    if (not SELECTED_OBJECT_IDS.difference(self._latest)
+                    if (self._connected
+                            and not SELECTED_OBJECT_IDS.difference(self._latest)
                             and synchronizer.bytes_to_frame_boundary == 0):
                         return self._aggregate()
                 self._sleep(0.005)

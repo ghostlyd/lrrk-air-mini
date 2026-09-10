@@ -67,7 +67,7 @@ class UAVTalkAdapter:
 
         try:
             transport = SerialTelemetryTransport(self.device, self.location)
-        except UAVTalkLiveError as exc:
+        except (UAVTalkLiveError, OSError) as exc:
             raise AdapterError(str(exc)) from exc
         try:
             collector = LiveUAVTalkCollector(
@@ -75,12 +75,15 @@ class UAVTalkAdapter:
                 self.capture_path,
                 duration_s=self.duration_s,
             )
-        except UAVTalkLiveError as exc:
-            transport.close()
+        except (UAVTalkLiveError, OSError) as exc:
+            try:
+                transport.close()
+            except Exception:
+                pass
             raise AdapterError(str(exc)) from exc
         try:
             yield collector.collect()
-        except UAVTalkLiveError as exc:
+        except (UAVTalkLiveError, OSError) as exc:
             raise AdapterError(str(exc)) from exc
 
 

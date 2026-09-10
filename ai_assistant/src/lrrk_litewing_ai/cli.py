@@ -63,7 +63,7 @@ def _live_prompt(agent: object, prompt: str) -> str:
 def main(argv: Optional[Sequence[str]] = None) -> int:
     args = build_parser().parse_args(argv)
     runtime = AssistantRuntime(operator_session=args.session)
-    audit = AuditLog(args.audit_log, args.session) if args.audit_log else None
+    audit = None
     try:
         live_values = (args.device, args.usb_location, args.private_capture, args.duration)
         if args.input_format == "uavtalk-live":
@@ -78,6 +78,10 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             ]
             if missing:
                 raise AdapterError("live UAVTalk requires %s" % ", ".join(missing))
+            if (args.audit_log is not None
+                    and args.private_capture.resolve(strict=False)
+                    == args.audit_log.resolve(strict=False)):
+                raise AdapterError("--private-capture and --audit-log must be distinct paths")
             adapter = UAVTalkAdapter(
                 device=args.device,
                 location=args.usb_location,
@@ -104,8 +108,9 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             if args.captured_at:
                 raise AdapterError("--captured-at applies only to UAVTalk replay")
             adapter = JsonlTelemetryAdapter(args.input)
+        audit = AuditLog(args.audit_log, args.session) if args.audit_log else None
         snapshots = list(adapter.snapshots())
-    except (AdapterError, OSError) as exc:
+    except (AdapterError, OSError, ValueError) as exc:
         print("telemetry input blocked: %s" % exc, file=sys.stderr)
         return 2
     if not snapshots:

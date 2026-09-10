@@ -8,7 +8,7 @@ import unittest
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -22,7 +22,11 @@ from lrrk_litewing_ai.live_uavtalk import (  # noqa: E402
     OutboundProtocol,
     SerialTelemetryTransport,
     UAVTalkLiveError,
+    _CAPTURE_LIMIT,
+    _PrivateCapture,
+    _Synchronizer,
 )
+from lrrk_litewing_ai.adapters import AdapterError, UAVTalkAdapter  # noqa: E402
 from lrrk_litewing_ai.uavobjects import (  # noqa: E402
     ACTUATOR_COMMAND,
     ATTITUDE_STATE,
@@ -217,6 +221,50 @@ class LiveUAVTalkTests(unittest.TestCase):
                     self.collector(transport, capture).collect()
                 self.assertTrue(transport.closed)
 
+    def test_selected_objects_without_completed_handshake_fail_closed(self):
+        flight_stats = packet(
+            0x20, FLIGHT_TELEMETRY_STATS, bytes(36) + bytes([2])
+        )
+        transport = FakeTransport([complete_stream()[len(flight_stats):]])
+        with tempfile.TemporaryDirectory() as directory:
+            with self.assertRaises(UAVTalkLiveError):
+                self.collector(
+                    transport, Path(directory) / "live.uavtalk"
+                ).collect()
+        self.assertTrue(transport.closed)
+
+    def test_connected_heartbeat_never_reverts_to_handshake_request(self):
+        flight_stats = packet(
+            0x20, FLIGHT_TELEMETRY_STATS, bytes(36) + bytes([2])
+        )
+        transport = FakeTransport([flight_stats])
+        clock = FakeClock()
+        with tempfile.TemporaryDirectory() as directory:
+            collector = LiveUAVTalkCollector(
+                transport,
+                Path(directory) / "live.uavtalk",
+                duration_s=2.2,
+                monotonic=clock.monotonic,
+                wall_clock=clock.wall,
+                sleep=clock.sleep,
+            )
+            with self.assertRaises(UAVTalkLiveError):
+                collector.collect()
+
+        statuses = [item[1] for item in transport.operations if item[0] == "handshake"]
+        first_connected = statuses.index(3)
+        self.assertGreaterEqual(statuses.count(3), 2)
+        self.assertNotIn(1, statuses[first_connected + 1:])
+
+    def test_initial_synchronization_reads_at_most_4096_bytes(self):
+        synchronizer = _Synchronizer()
+        self.assertEqual(synchronizer.feed(bytes(4095)), [])
+        flight_stats = packet(
+            0x20, FLIGHT_TELEMETRY_STATS, bytes(36) + bytes([2])
+        )
+        with self.assertRaises(UAVTalkLiveError):
+            synchronizer.feed(flight_stats)
+
     def test_private_capture_must_not_exist(self):
         with tempfile.TemporaryDirectory() as directory:
             capture = Path(directory) / "live.uavtalk"
@@ -229,6 +277,21 @@ class LiveUAVTalkTests(unittest.TestCase):
             self.assertEqual(capture.read_bytes(), b"owner data")
             self.assertTrue(transport.closed)
             self.assertFalse(any(item[0] == "handshake" for item in transport.operations))
+
+    def test_private_capture_enforces_exact_one_megabyte_limit(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "live.uavtalk"
+            capture = _PrivateCapture(path)
+            capture.open()
+            try:
+                capture.write(bytes(_CAPTURE_LIMIT))
+                with self.assertRaises(UAVTalkLiveError):
+                    capture.write(b"x")
+            finally:
+                capture.close()
+
+            self.assertEqual(path.stat().st_size, _CAPTURE_LIMIT)
+            self.assertEqual(stat.S_IMODE(path.stat().st_mode), 0o600)
 
     def test_serial_identity_is_checked_before_port_open(self):
         serial_factory = Mock()
@@ -294,6 +357,23 @@ class LiveUAVTalkTests(unittest.TestCase):
             )
 
         port.close.assert_called_once_with()
+
+    def test_public_adapter_normalizes_transport_io_failures(self):
+        transport = Mock()
+        collector = Mock()
+        collector.collect.side_effect = OSError("link lost")
+        with patch(
+            "lrrk_litewing_ai.live_uavtalk.SerialTelemetryTransport",
+            return_value=transport,
+        ), patch(
+            "lrrk_litewing_ai.live_uavtalk.LiveUAVTalkCollector",
+            return_value=collector,
+        ):
+            adapter = UAVTalkAdapter(
+                "/dev/cu.wchusbserial410", "4-1", Path("capture.uavtalk")
+            )
+            with self.assertRaises(AdapterError):
+                list(adapter.snapshots())
 
 
 if __name__ == "__main__":
