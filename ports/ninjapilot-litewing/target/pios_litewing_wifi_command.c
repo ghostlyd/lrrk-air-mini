@@ -221,7 +221,10 @@ end:
          * Keep ownership for retry; EBADF establishes it is already absent. */
         if (socket_fd >= 0 && (close(socket_fd) == 0 || errno == EBADF)) socket_fd = -1;
         if (!ap_stopped) ap_stopped = lw_wifi_ap_stop(s->root) == 0;
-        if (socket_fd < 0 && ap_stopped) break;
+        /* A rolled-back clock can prevent EndAdmission even after all radio
+         * resources are gone. Retain the token/context and retry fault after
+         * yielding; wiping it here would strand the receiver's UART guard. */
+        if (socket_fd < 0 && ap_stopped && !s->controller.admission_guard) break;
         vTaskDelay(cleanup_delay());
         lw_controller_fault(&s->controller);
     }

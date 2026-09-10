@@ -36,6 +36,8 @@ static TaskFunction_t task_body;
 static void *task_arg;
 static int creates, ap_starts, ap_stops, radio, socket_open, closed, deleted;
 static int close_attempts;
+static unsigned admission_parks;
+static uint64_t parked_guard;
 static int stage, malformed, peer_attacks, published, fault, rng_calls, reads;
 static int turns, turn_reads, max_reads, setup_calls, proofs, accepts, nonblocking;
 static int64_t now = 1000, first_setup;
@@ -84,6 +86,9 @@ int32_t UAVObjUnpack(UAVObjHandle h, uint16_t instance, const uint8_t *data) {
 }
 int PIOS_LiteWing_PilotReadAdmissionMapping(struct lw_pilot_channel out[5]) {
     ++reads;
+    /* Second read is inside the real admission exclusion. Roll back below its
+     * USB fence so controller_fault cannot end admission until clock recovery. */
+    if (is("admission-rollback") && reads == 2) now = 500;
     for (unsigned i = 0; i < 5; ++i) out[i] = (struct lw_pilot_channel){i+1,1000,1500,2000};
     return 0;
 }
@@ -104,9 +109,28 @@ void vTaskDelay(TickType_t ticks) {
     assert(turns < 3000);
     if ((is("flood") || is("time-budget")) && turns == 150) fault = 1;
     if (is("clock-rollback") && published) now = 500;
+    if (is("admission-rollback")) {
+        assert(ticks >= pdMS_TO_TICKS(100));
+        assert(!socket_open && !radio && closed == 1 && ap_stops == 1 && !deleted);
+        assert(observed && observed->admission_guard && !observed->owned);
+        assert(observed->session.phase == LW_CLOSED);
+        zeros(&observed->session.keys, sizeof(observed->session.keys));
+        if (!admission_parks) parked_guard = observed->admission_guard;
+        assert(observed->admission_guard == parked_guard);
+        now = 500;
+        assert(PIOS_LiteWing_GCSReceiver_Unpack(&object, 0, (uint8_t *)&object, now) == -1);
+        /* Repeated failure must retain context and yield, even with all radio
+         * resources gone. Ordinary clock recovery then permits EndAdmission. */
+        if (++admission_parks == 3) now = 5000;
+    }
 }
 void vTaskDelete(TaskHandle_t handle) {
     assert(handle == NULL && !socket_open && !radio);
+    if (is("admission-rollback")) {
+        assert(admission_parks == 3 && reads == 2 && !accepts);
+        ++now; /* Fresh UART arrival must be strictly after the cleanup fence. */
+        assert(PIOS_LiteWing_GCSReceiver_Unpack(&object, 0, (uint8_t *)&object, now) == 0);
+    }
     if (observed) zeros(observed, sizeof(*observed));
     ++deleted;
 }

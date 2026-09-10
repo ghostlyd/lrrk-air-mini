@@ -103,3 +103,23 @@ limitations remain as documented by the AP boundary. Cleanup retries have
 bounded work/yield but no claim of eventual success. Wipes are best effort.
 Telemetry export, provisioning/rotation and physical qualification remain
 pending; this increment is not a flight-verification result.
+
+## Admission-guard cleanup correction
+
+Review found that clock rollback during guarded admission can make
+`EndAdmission` fail. Socket/AP cleanup success must not permit controller wipe
+or task deletion while `admission_guard` remains nonzero. Cleanup now retains
+that token/context and retries controller fault after the existing bounded
+100ms/minimum-one-tick delay. Clock recovery clears the unowned admission guard;
+permanent failure keeps the task parked. This does not release a retired
+wireless ownership reservation or restart sessions.
+
+TDD regression injects rollback on the real guarded second mapping read. With
+socket close and AP stop both successful, the old task deleted prematurely
+(observed RED). The corrected task retains its guard and retired session over
+three cleanup delays, then ordinary clock recovery allows admission cleanup
+and USB writes before task deletion (GREEN). Existing STOP/expiry ownership
+retention and active-clock-rollback cases remain unchanged and pass.
+`test_wifi_command.py` passed **30 deterministic scenarios plus 2 C/Python UDP
+loopback cases** using Python 3.14, the actual pinned SDK mbedTLS checkout and
+fatal ASan/UBSan. No full suite, target build, hardware or workflow changes.

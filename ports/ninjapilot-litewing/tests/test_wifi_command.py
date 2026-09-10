@@ -46,7 +46,8 @@ class WifiCommandTests(unittest.TestCase):
                      'wrong-bind', 'hello-send', 'accept-send', 'challenge-send',
                      'recv-error', 'ap-fault', 'rng-fault', 'stop', 'loss',
                      'peer-replay', 'pending-peer', 'malformed', 'flood', 'time-budget',
-                     'pending-expiry', 'cleanup', 'close-error', 'clock-rollback')
+                     'pending-expiry', 'cleanup', 'close-error', 'clock-rollback',
+                     'admission-rollback')
             for case in cases:
                 with self.subTest(case=case):
                     result = subprocess.run([str(binary), case], capture_output=True,
