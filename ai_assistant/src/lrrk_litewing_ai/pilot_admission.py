@@ -22,6 +22,7 @@ class PilotAdmission:
         self._keys = None
         self._session = self._challenge = None
         self._phase = "new"
+        self._sampled_claim = False
         self._started = self._last = None
 
     @property
@@ -32,6 +33,7 @@ class PilotAdmission:
         self._root = self._host = self._keys = None
         self._session = self._challenge = None
         self._phase = "closed"
+        self._sampled_claim = False
 
     def _time(self, now: int) -> None:
         if type(now) is not int or not 0 <= now < 2**63:
@@ -75,6 +77,7 @@ class PilotAdmission:
         self._session, self._challenge = frame.session, frame.challenge
         self._root = self._host = None
         self._phase = "accept"
+        self._sampled_claim = samples is not None
         return claim
 
     def receive_accept(self, datagram: bytes, now_us: int) -> None:
@@ -86,3 +89,13 @@ class PilotAdmission:
                 or frame.session != self._session or frame.challenge != self._challenge):
             raise ValueError("invalid board acceptance")
         self._phase = "established"
+
+    def take_operator_session(self, now_us: int):
+        """Transfer accepted sampled admission once; never expose to AI tools."""
+        if self._phase != "established" or not self._sampled_claim:
+            raise ValueError("sampled admission not established")
+        self._time(now_us)
+        from .pilot_operator import OperatorSession
+        operator = OperatorSession(self._session, self._keys, now_us)
+        self.close()
+        return operator

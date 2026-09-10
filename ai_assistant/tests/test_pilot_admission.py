@@ -50,6 +50,19 @@ class AdmissionTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             client.receive_accept(accept, 301)
 
+    def test_operator_handoff_requires_accept_and_is_single_use(self):
+        client=self.make()
+        with self.assertRaises(ValueError): client.take_operator_session(150)
+        keys=derive_keys(self.root,self.host,self.board,self.session)
+        client.receive_challenge(self.challenge_wire(),200,(1500,)*8)
+        accept=encode(Envelope(1,4,self.session,1,self.challenge,b""),keys.b2c)
+        client.receive_accept(accept,300)
+        operator=client.take_operator_session(301)
+        self.assertFalse(operator.closed)
+        self.assertFalse(client.established)
+        self.assertIsNone(client._keys)
+        with self.assertRaises(ValueError): client.take_operator_session(302)
+
     def test_bad_board_proofs_cannot_advance(self):
         for changes in (dict(payload=b"x" * 64), dict(payload=self.host),
                         dict(sequence=1), dict(kind=7)):
