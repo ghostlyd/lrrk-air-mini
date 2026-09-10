@@ -24,6 +24,15 @@ class PilotWireTests(unittest.TestCase):
         self.assertEqual(packet[48:52], b"\x00\x02\x01\x02")
         self.assertEqual(len(packet), 84)
 
+    def test_frozen_synthetic_packet(self):
+        packet = bytes.fromhex(
+            "4c57504c01000500737373737373737373737373737373730000000000000009"
+            "6363636363636363636363636363636300026162"
+            "d30dfa9f0d0637cdf7dfc393c62f8630e567f3cf62fd5382741c7e236a76e70e")
+        expected = self.envelope(payload=b"ab")
+        self.assertEqual(encode(expected, self.key), packet)
+        self.assertEqual(decode(packet, self.key, 0), expected)
+
     def test_decodes_independently_constructed_packet(self):
         unsigned = (b"LWPL\x01\x01\x07\x00" + b"S"*16
                     + b"\0"*7 + b"\x03" + b"C"*16 + b"\x00\x01z")
