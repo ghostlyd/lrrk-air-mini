@@ -9,6 +9,9 @@ for observations and the remaining electrical/connector checks. USB-C has
 since supported a [bounded Armed/nonzero-command bench proof](verification/armed-nonzero-motor-proof-2026-09-09.md),
 but that does not remove the flight-battery requirement or resolve battery
 connector, polarity, fit, mass, charge-current, or discharge-current selection.
+The later [final configuration record](verification/final-flight-configuration-2026-09-10.md)
+confirms the installed motor directions and normal arming/IMU configuration,
+but likewise does not validate a battery or propeller SKU.
 
 ## Required versus optional
 

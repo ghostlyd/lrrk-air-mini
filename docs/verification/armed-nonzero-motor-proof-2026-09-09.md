@@ -2,6 +2,14 @@
 
 ## Result
 
+Later state: the temporary RAM-only `Always Armed` proof below has been
+superseded by the persisted normal-arming transaction in the
+[final flight-configuration record](final-flight-configuration-2026-09-10.md).
+That later transaction uses `Yaw Right`, verifies persistence after reset,
+reaches Armed with bounded nonzero commands, and closes on a reset-neutral
+Disarmed/zero-output snapshot. The record below remains the earlier historical
+command-path evidence.
+
 The installed NinjaPilot LiteWing application reached `FlightStatus=Armed`
 and emitted six checksum-valid, nonzero `ActuatorCommand` observations while
 running from USB-C. The largest observed command was `128/1000`; the peak four
