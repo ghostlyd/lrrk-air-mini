@@ -152,9 +152,9 @@ for the remaining credential lifecycle.
 
 #### Crash-dump and storage confidentiality prerequisite
 
-The current wrapper defaults enable ELF core dumps to flash. The inspected
-generated build configuration also has NVS encryption and flash encryption
-disabled. `pios_litewing_wifi_command.c` keeps its root and controller state in
+At the PR #62 baseline, wrapper defaults enabled ELF core dumps to flash. The
+then-inspected generated build configuration also had NVS encryption and flash
+encryption disabled. `pios_litewing_wifi_command.c` keeps its root and controller state in
 the owning task's stack frame. ESP-IDF 5.3.2's local core-dump documentation
 states that dumps include task stacks. Therefore crash dumps may contain
 credential/session material, even though routine logs do not print it and
@@ -167,6 +167,13 @@ backup or raw provisioning capture as potentially secret-bearing; do not commit
 or upload it. This audit has not read device storage, changed eFuses, erased
 dumps, or established encrypted storage. Disabling future dumps alone would
 not remove an old dump or encrypt the credential NVS record.
+
+Source update `6120324` now disables future core dumps and rejects unsafe
+effective configurations. A fresh pinned IDF build passed and a separate
+dump-enabled configuration was rejected by the real build. See the
+[credential-retention verification](verification/pilot-credential-retention-2026-09-10.md).
+This change is not an installed-image claim; historical dumps and plaintext
+NVS retain the limitations above.
 
 ### Firmware baseline
 
