@@ -55,6 +55,10 @@ _Static_assert(STABILIZATIONSTATUS_OUTERLOOP_THRUST == 3, "review thrust axis ma
     destination = output / "outerloop.c"
     if destination.is_symlink():
         raise ValueError("output file must not be a symlink")
+    if destination.exists() and not destination.is_file():
+        raise ValueError("output file must be a regular file")
+    if destination.exists() and destination.stat().st_nlink != 1:
+        raise ValueError("output file must not be a hardlink")
     output.mkdir(parents=True, exist_ok=True)
     if not destination.exists() or destination.read_text() != code:
         destination.write_text(code)

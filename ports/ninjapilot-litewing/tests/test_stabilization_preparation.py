@@ -85,3 +85,19 @@ class StabilizationPreparationTests(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("must not be a symlink", result.stderr)
         self.assertEqual(self.input.read_bytes(), before)
+
+    def test_output_hardlink_cannot_overwrite_input(self):
+        before = self.input.read_bytes()
+        self.output.mkdir(); os.link(self.input, self.output / "outerloop.c")
+        result = self.prepare()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("must not be a hardlink", result.stderr)
+        self.assertEqual(self.input.read_bytes(), before)
+
+    def test_nonregular_output_is_rejected(self):
+        before = self.input.read_bytes()
+        self.output.mkdir(); (self.output / "outerloop.c").mkdir()
+        result = self.prepare()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("must be a regular file", result.stderr)
+        self.assertEqual(self.input.read_bytes(), before)

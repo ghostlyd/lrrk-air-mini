@@ -44,7 +44,7 @@ a89228f3c6a3700cccb41b35bcf886672e901c6b18c6c851f11fcbeeaa9bb314
   No altitude controller or new thrust mode is introduced.
 - Compile guards reject `SIMPOSIX` and `REVOLUTION`; static assertions check
   four axes and the Thrust index. Simulator behavior is not globally enabled.
-- Input/output separation, input identity and output-symlink checks precede
+- Input/output separation, input identity and output-symlink/hardlink checks precede
   generation. Repeating unchanged generation preserves the output timestamp.
 - Original GPL notices and the external checkout are preserved.
 
@@ -60,7 +60,8 @@ generated object accessors, PID, coordinate conversion and delta-time code.
 The object store, clock, scheduler and cruise-control handoff are controlled
 host boundaries. This is not a FreeRTOS timing or hardware test.
 
-Direct mode and independent roll/pitch/yaw attitude cases publish all four
+Direct mode, independent roll/pitch/yaw attitude cases, and mixed cases with
+one direct current-attitude component publish all four
 RateDesired fields over thrust inputs `0.375`, `0`, `-1` and `1`. Attitude cases
 use a non-identity quaternion and a known single-axis five-degree error with
 gain two. Each callback cycle must publish once, replacing distinguishable
@@ -68,11 +69,21 @@ stale outputs; cruise-control receives the same attitude and published thrust.
 Neither cruise-control internals nor downstream electrical output are verified.
 
 Tests deliberately revert either corrected buffer to three entries, omit each
-output field, and omit each current-quaternion component. Two bounds mutations
-must produce the sanitizer diagnostic; eight value mutations must fail explicit
+output field, and omit each current RPY/quaternion component. Two bounds mutations
+must produce the sanitizer diagnostic; eleven value mutations must fail explicit
 behavior assertions. Four original-module executions retain the bounds red
 control. Adapted host builds retain `-Werror`; only the original GCC control
 permits its known string-overread warning so it can reach the runtime defect.
+
+Independent review reproduced an output-hardlink path that could mutate the
+pinned input. A permanent regression now requires rejection and byte preservation;
+the generator rejects non-regular or multiply linked existing outputs before
+reading or writing them. Review also showed that zeroing all copied current RPY
+values escaped the initial single-axis cases. Three mixed-mode cases plus the
+original all-zero and individual Pitch/Yaw mutations now cover the observable
+behavior. Changing only the copied Roll value when Roll is direct changes only
+the ignored direct-axis error; the exact initializer remains source-checked,
+without claiming an output distinction that the algorithm does not expose.
 
 Three optional real SDK checks verify the selected source/build dependencies,
 quaternion/non-simulator feature selection and 4096-byte stack parity, and

@@ -96,14 +96,39 @@ int main(int argc, char **argv) {
         state.Roll = axis == 0 ? 5 : 0;
         state.Pitch = axis == 1 ? -5 : 0;
         state.Yaw = axis == 2 ? 5 : 0;
-        float rpy[3] = {state.Roll, state.Pitch, state.Yaw}, q[4];
-        RPY2Quaternion(rpy, q);
-        state.q1 = q[0]; state.q2 = q[1]; state.q3 = q[2]; state.q4 = q[3];
         stabSettings.outerPids[axis].p = 2;
         want_roll = axis == 0 ? 10 : 0;
         want_pitch = axis == 1 ? -10 : 0;
         want_yaw = axis == 2 ? 10 : 0;
+    } else if (!strncmp(argv[1], "mixed-current-", 14)) {
+        unsigned direct = !strcmp(argv[1], "mixed-current-roll") ? 0 :
+                          !strcmp(argv[1], "mixed-current-pitch") ? 1 : 2;
+        CHECK(direct != 2 || !strcmp(argv[1], "mixed-current-yaw"));
+        const float current_rpy[3] = { 13, -17, 23 };
+        const float desired_rpy[3] = { 25, -29, 37 };
+        state.Roll = current_rpy[0]; state.Pitch = current_rpy[1]; state.Yaw = current_rpy[2];
+        desired.Roll = desired_rpy[0]; desired.Pitch = desired_rpy[1]; desired.Yaw = desired_rpy[2];
+        for (unsigned axis = 0; axis < 3; ++axis) {
+            StabilizationStatusOuterLoopToArray(modes.OuterLoop)[axis] =
+                axis == direct ? STABILIZATIONSTATUS_OUTERLOOP_DIRECT : STABILIZATIONSTATUS_OUTERLOOP_ATTITUDE;
+            stabSettings.outerPids[axis].p = 2;
+        }
+        float effective_rpy[3], desired_q[4], current_q[4], error_q[4], error_rpy[3];
+        for (unsigned axis = 0; axis < 3; ++axis)
+            effective_rpy[axis] = axis == direct ? current_rpy[axis] : desired_rpy[axis];
+        RPY2Quaternion(current_rpy, current_q);
+        RPY2Quaternion(effective_rpy, desired_q);
+        quat_inverse(desired_q);
+        quat_mult(desired_q, current_q, error_q);
+        quat_inverse(error_q);
+        Quaternion2RPY(error_q, error_rpy);
+        want_roll = direct == 0 ? desired_rpy[0] : 2 * error_rpy[0];
+        want_pitch = direct == 1 ? desired_rpy[1] : 2 * error_rpy[1];
+        want_yaw = direct == 2 ? desired_rpy[2] : 2 * error_rpy[2];
     } else CHECK(!strcmp(argv[1], "direct"));
+    float state_rpy[3] = {state.Roll, state.Pitch, state.Yaw}, state_q[4];
+    RPY2Quaternion(state_rpy, state_q);
+    state.q1 = state_q[0]; state.q2 = state_q[1]; state.q3 = state_q[2]; state.q4 = state_q[3];
     expected_state = state; CHECK(AttitudeStateSet(&state) == 0);
     CHECK(StabilizationStatusSet(&modes) == 0);
     /* Multiple values include zero and the negative disarmed-input sentinel;

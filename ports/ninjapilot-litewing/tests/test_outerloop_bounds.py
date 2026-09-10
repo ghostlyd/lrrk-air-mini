@@ -114,6 +114,28 @@ class OuterloopBoundsTests(unittest.TestCase):
                 self.assertNotEqual(result.returncode, 0)
                 self.assertIn("FAIL:", result.stderr)
 
+    def test_mixed_modes_use_current_rpy_for_the_direct_axis(self):
+        for axis in ("roll", "pitch", "yaw"):
+            with self.subTest(axis=axis): self.run_case("mixed-current-" + axis)
+
+    def test_current_rpy_all_zero_and_observable_components_are_detected(self):
+        code = self.source.read_text()
+        old = "const float rpy_current[3] = {attitudeState.Roll, attitudeState.Pitch, attitudeState.Yaw};"
+        self.assertEqual(code.count(old), 1)
+        mutations = {
+            "all-zero": ("const float rpy_current[3] = {0, 0, 0};", "mixed-current-pitch"),
+            "pitch-zero": (old.replace("attitudeState.Pitch", "0.0f"), "mixed-current-pitch"),
+            "yaw-zero": (old.replace("attitudeState.Yaw", "0.0f"), "mixed-current-yaw"),
+        }
+        for name, (replacement, case) in mutations.items():
+            with self.subTest(mutation=name):
+                source = self.output / (name + ".c")
+                source.write_text(code.replace(old, replacement))
+                binary = self.compile(source, name)
+                result = subprocess.run([str(binary), case], capture_output=True, text=True, timeout=10)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn("FAIL:", result.stderr)
+
     def test_real_sdk_selects_generated_source_and_watches_inputs(self):
         build = os.environ.get("LRRK_IDF_BUILD_DIR")
         if not build: self.skipTest("real IDF graph not supplied")
