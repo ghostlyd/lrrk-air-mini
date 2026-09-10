@@ -85,7 +85,7 @@ class TransportTests(unittest.TestCase):
             port = Port(chunks)
             result = save_and_submit(directory, self.tx, self.blob, port, clock=port.clock)
             self.assertFalse(result.verified)
-            self.assertLessEqual(len(port.writes), 27)
+            self.assertLessEqual(len(port.writes), 26)
             self.assertEqual(port.writes.count(submission(self.tx, self.blob)), 1)
 
     def test_invalid_timeout_sends_nothing(self):
@@ -94,6 +94,18 @@ class TransportTests(unittest.TestCase):
         result = save_and_submit(self.directory, self.tx, self.blob, port, clock=port.clock)
         self.assertFalse(result.verified)
         self.assertEqual(port.writes, [])
+
+    def test_interleaved_telemetry_and_receipts_are_not_acknowledged(self):
+        def frame(kind, identifier):
+            body = struct.pack('<BBHIH', 0x3c, kind, 10, identifier, 0)
+            return body + bytes([crc8(body)])
+        for kind in (0x23, 0x24):
+            directory = self.directory / str(kind)
+            directory.mkdir(mode=0o700)
+            port = Port([frame(0x22, 1234), frame(kind, 0x4C575046), status(self.tx)])
+            result = save_and_submit(directory, self.tx, self.blob, port, clock=port.clock)
+            self.assertTrue(result.verified)
+            self.assertEqual(port.writes, [submission(self.tx, self.blob), status_request()])
 
     def test_read_disconnect_is_unknown_and_preserves_bundle(self):
         class Disconnected(Port):
