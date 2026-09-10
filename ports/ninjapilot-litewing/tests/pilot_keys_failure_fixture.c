@@ -3,6 +3,16 @@
 #include <string.h>
 static int failure_call, calls;
 void lw_test_fail_at(int call) { failure_call = call; calls = 0; }
+int lw_test_rfc5869(unsigned char out[42])
+{
+    unsigned char ikm[22], salt[13], info[10];
+    memset(ikm, 0x0b, sizeof(ikm));
+    for (unsigned i = 0; i < sizeof(salt); ++i) salt[i] = (unsigned char)i;
+    for (unsigned i = 0; i < sizeof(info); ++i) info[i] = (unsigned char)(0xf0 + i);
+    return mbedtls_hkdf(mbedtls_md_info_from_type(MBEDTLS_MD_SHA256),
+                        salt, sizeof(salt), ikm, sizeof(ikm),
+                        info, sizeof(info), out, 42);
+}
 static int checked_hkdf(const mbedtls_md_info_t *md,
     const unsigned char *salt, size_t salt_len,
     const unsigned char *ikm, size_t ikm_len,

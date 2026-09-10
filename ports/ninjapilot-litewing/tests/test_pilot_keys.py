@@ -38,6 +38,13 @@ class PilotKeyTests(unittest.TestCase):
             result = subprocess.run(command, capture_output=True, text=True, timeout=60)
             self.assertEqual(result.returncode, 0, result.stderr)
             sdk = ctypes.CDLL(str(library))
+            # RFC5869 A.1, also in the pinned SDK's test_suite_hkdf.data.
+            kat = ctypes.create_string_buffer(42)
+            sdk.lw_test_rfc5869.argtypes = [ctypes.c_void_p]
+            sdk.lw_test_rfc5869.restype = ctypes.c_int
+            self.assertEqual(sdk.lw_test_rfc5869(kat), 0)
+            self.assertEqual(kat.raw.hex(),
+                "3cb25f25faacd57a90434f64d0362f2a2d2d0a90cf1a5a4c5db02d56ecc4c5bf34007208d5b887185865")
             derive = sdk.lw_pilot_derive_keys
             derive.argtypes = [ctypes.c_void_p] * 5
             derive.restype = ctypes.c_int
