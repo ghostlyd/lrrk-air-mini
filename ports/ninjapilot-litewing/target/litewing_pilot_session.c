@@ -46,6 +46,49 @@ static int write_frame(const struct lw_wire_frame *frame, const uint8_t key[32],
     return rc;
 }
 
+enum lw_session_result lw_session_issue_challenge(struct lw_pilot_session *s,
+    const uint8_t root[32], int64_t now, lw_session_rng random, void *random_ctx,
+    uint8_t *reply, size_t capacity, size_t *written)
+{
+    struct lw_wire_frame response = {0};
+    enum lw_session_result result = LW_REJECT;
+    if (written) *written = 0;
+    if (!s || !written) return LW_REJECT;
+    if (lw_session_tick(s, now) != 0) return LW_RETIRED;
+    if (s->phase == LW_CLOSED || now - s->last_issue_us < 20000) return LW_REJECT;
+    if (!reply || !random || (s->phase == LW_PENDING && !root)) goto failed;
+    if (s->phase == LW_ACTIVE && s->board_sequence == UINT64_MAX) goto failed;
+    if (random(random_ctx, response.challenge, 16) != 0) goto failed;
+    for (unsigned i = 0; i < 4; ++i)
+        if (s->slots[i].valid && !memcmp(response.challenge, s->slots[i].id, 16)) goto failed;
+    response.direction = 1;
+    response.kind = 2;
+    memcpy(response.session, s->session, 16);
+    const uint8_t *key = s->keys.b2c;
+    if (s->phase == LW_PENDING) {
+        memcpy(response.payload, s->nonces, 64);
+        response.payload_len = 64;
+        key = root;
+    } else response.sequence = s->board_sequence + 1;
+    if (write_frame(&response, key, reply, capacity, written) != 0) goto failed;
+    unsigned slot = s->next_slot;
+    memcpy(s->slots[slot].id, response.challenge, 16);
+    s->slots[slot].issued_us = now;
+    s->slots[slot].valid = 1;
+    s->next_slot = (slot + 1) % 4;
+    s->last_issue_us = now;
+    if (s->phase == LW_ACTIVE) s->board_sequence = response.sequence;
+    result = LW_HANDSHAKE_REPLY;
+    goto done;
+failed:
+    lw_session_retire(s);
+    *written = 0;
+    result = LW_RETIRED;
+done:
+    mbedtls_platform_zeroize(&response, sizeof(response));
+    return result;
+}
+
 enum lw_session_result lw_session_receive(struct lw_pilot_session *s,
     const uint8_t *wire, size_t size, const uint8_t root[32], int64_t now,
     int disarmed, int owner_free, lw_session_rng random, void *random_ctx,
@@ -80,20 +123,33 @@ enum lw_session_result lw_session_receive(struct lw_pilot_session *s,
         if (write_frame(&response, root, reply, capacity, written) != 0) goto failed;
         pending.phase = LW_PENDING;
         pending.last_us = pending.started_us = pending.challenge_us = now;
+        pending.last_issue_us = now;
+        memcpy(pending.nonces, response.payload, 64);
+        memcpy(pending.slots[0].id, pending.challenge, 16);
+        pending.slots[0].issued_us = now;
+        pending.slots[0].valid = 1;
+        pending.next_slot = 1;
         *s = pending;
         result = LW_HANDSHAKE_REPLY;
     } else if (s->phase == LW_PENDING) {
         if (read_frame(wire, size, s->keys.c2b, &frame) != 0 || frame.kind != 3 ||
             frame.sequence != 1 || frame.payload_len != 0 ||
-            memcmp(frame.session, s->session, 16) ||
-            memcmp(frame.challenge, s->challenge, 16) || now - s->challenge_us > 75000) goto done;
+            memcmp(frame.session, s->session, 16)) goto done;
+        int slot = -1;
+        for (unsigned i = 0; i < 4; ++i)
+            if (s->slots[i].valid && !memcmp(frame.challenge, s->slots[i].id, 16) &&
+                now - s->slots[i].issued_us <= 75000) { slot = (int)i; break; }
+        if (slot < 0) goto done;
         response.direction = 1;
         response.kind = 4;
         response.sequence = 1;
         memcpy(response.session, s->session, 16);
-        memcpy(response.challenge, s->challenge, 16);
+        memcpy(response.challenge, frame.challenge, 16);
         if (write_frame(&response, s->keys.b2c, reply, capacity, written) != 0) goto failed;
         s->phase = LW_ACTIVE;
+        s->challenge_us = s->slots[slot].issued_us;
+        s->board_sequence = 1;
+        mbedtls_platform_zeroize(s->nonces, sizeof(s->nonces));
         result = LW_HANDSHAKE_REPLY;
     }
     goto done;

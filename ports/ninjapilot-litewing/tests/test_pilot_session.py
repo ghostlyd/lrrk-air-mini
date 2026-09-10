@@ -48,6 +48,7 @@ class FirmwareAdmissionTests(unittest.TestCase):
         command += [str(ROOT / "target" / name) for name in
                     ("litewing_pilot_session.c", "litewing_pilot_wire.c", "pios_litewing_pilot_mac.c", "pios_litewing_pilot_keys.c")]
         command += [str(out / "access.c"), "-o", str(out / "session.so")]
+        cls.compile_command = command
         result = subprocess.run(command, capture_output=True, text=True, timeout=60)
         if result.returncode:
             raise AssertionError(result.stderr)
@@ -57,6 +58,8 @@ class FirmwareAdmissionTests(unittest.TestCase):
         cls.lib.retired_keys.argtypes = [C.c_void_p]
         cls.lib.lw_session_init.argtypes = [C.c_void_p]
         cls.lib.lw_session_tick.argtypes = [C.c_void_p, C.c_int64]
+        cls.lib.lw_session_issue_challenge.argtypes = [C.c_void_p, C.c_void_p,
+            C.c_int64, RNG, C.c_void_p, C.c_void_p, C.c_size_t, C.POINTER(C.c_size_t)]
         cls.lib.lw_session_receive.argtypes = [C.c_void_p, C.c_void_p, C.c_size_t,
             C.c_void_p, C.c_int64, C.c_int, C.c_int, RNG, C.c_void_p,
             C.c_void_p, C.c_size_t, C.POINTER(C.c_size_t)]
@@ -89,6 +92,15 @@ class FirmwareAdmissionTests(unittest.TestCase):
         self.assertEqual(rc, 1)
         self.assertEqual(self.lib.phase(self.state), 1)
         return client, challenge
+
+    def issue(self, now, capacity=594):
+        reply = C.create_string_buffer(594)
+        written = C.c_size_t(99)
+        rc = self.lib.lw_session_issue_challenge(self.state, self.root, now,
+            self.random, None, reply, capacity, C.byref(written))
+        if rc != 1:
+            self.assertEqual(written.value, 0)
+        return rc, reply.raw[:written.value]
 
     def test_real_host_and_board_mutual_admission(self):
         client, challenge = self.start()
@@ -185,3 +197,54 @@ class FirmwareAdmissionTests(unittest.TestCase):
         self.assertEqual(self.lib.phase(self.state), 0)
         self.assertEqual(self.lib.retired_keys(self.state), 1)
         self.assertEqual(self.receive(claim, 301)[0], 0)
+
+    def test_rolling_pending_challenges_allow_claim_from_retained_slot(self):
+        client, initial = self.start()
+        self.assertEqual(self.issue(20099)[0], 0)
+        rc, second = self.issue(20100)
+        self.assertEqual(rc, 1)
+        frame = decode(second, self.root, 1)
+        first = decode(initial, self.root, 1)
+        self.assertEqual(frame.payload, first.payload)
+        self.assertEqual(frame.session, first.session)
+        self.assertNotEqual(frame.challenge, first.challenge)
+        self.assertEqual(frame.sequence, 0)
+        # A later challenge does not invalidate an unexpired earlier one.
+        claim = client.receive_challenge(initial, 20200)
+        self.assertEqual(self.receive(claim, 20300)[0], 1)
+        keys = derive_keys(self.root, self.host, frame.payload[32:], frame.session)
+        rc, active = self.issue(40100)
+        self.assertEqual(rc, 1)
+        active = decode(active, keys.b2c, 1)
+        self.assertEqual((active.kind, active.sequence, active.payload), (2, 2, b""))
+        # Issuing more challenges must not renew receiver-input lifetime.
+        self.assertEqual(self.lib.lw_session_tick(self.state, 100100), -1)
+
+    def test_recent_rolling_challenge_can_admit_after_initial_one_expires(self):
+        client, _ = self.start()
+        for now in (20100, 40100, 60100, 80100):
+            rc, latest = self.issue(now)
+            self.assertEqual(rc, 1)
+        claim = client.receive_challenge(latest, 80200)
+        self.assertEqual(self.receive(claim, 80300)[0], 1)
+        self.assertEqual(self.lib.lw_session_tick(self.state, 180099), 0)
+        self.assertEqual(self.lib.lw_session_tick(self.state, 180100), -1)
+
+    def test_challenge_generation_failure_retires_active_session(self):
+        client, challenge = self.start()
+        self.assertEqual(self.receive(client.receive_challenge(challenge, 200), 300)[0], 1)
+        self.fail_rng = True
+        self.assertEqual(self.issue(20100)[0], 2)
+        self.assertEqual(self.lib.phase(self.state), 0)
+        self.assertEqual(self.lib.retired_keys(self.state), 1)
+
+    def test_session_memory_sanitizers(self):
+        binary = Path(self.temp.name) / "session-memory"
+        command = [arg for arg in self.compile_command[:-2] if arg not in ("-shared", "-fPIC")]
+        command += [str(ROOT / "tests/pilot_session_memory_test.c"),
+                    "-fsanitize=address,undefined", "-fno-sanitize-recover=all",
+                    "-fno-omit-frame-pointer", "-o", str(binary)]
+        result = subprocess.run(command, capture_output=True, text=True, timeout=60)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        result = subprocess.run([str(binary)], capture_output=True, text=True, timeout=20)
+        self.assertEqual(result.returncode, 0, result.stderr)
