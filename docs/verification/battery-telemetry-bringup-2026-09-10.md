@@ -1,7 +1,8 @@
 # Battery telemetry implementation status
 
 Latest status: native ESP-IDF adapter compiles at `4f96dfd`; worker/startup and
-publication integration are pending. Sections below record incremental work
+publication integration are pending. Native SDK-boundary fault tests now pass.
+Sections below record incremental work
 and their then-current limitations, not independent current completion claims.
 
 Base: merged main `4626f90ae621d21ebcb33b5a55ce0fd32c8282e6`.
@@ -187,3 +188,20 @@ Port tests: 161 run, 125 passed, 36 optional-fixture skips. The existing
 acquisition-core failure tests do not exercise SDK resource initialization.
 Native resource-failure tests, worker lifecycle, telemetry publication and
 publication-age handling remain required before this PR is ready.
+
+## Native adapter failure tests
+
+`test_battery_native.py` compiles the actual adapter and acquisition core with
+test doubles for ESP-IDF/RTOS calls. Fourteen separately executed scenarios
+cover normal acquisition, wrong GPIO mapping, allocation/configuration/
+calibration/callback setup failures, cleanup failure, task/core ownership,
+partial read, timeout, overflow, calibration conversion failure, and stop
+failure. Duplicate initialization cannot reacquire resources. A failed stop
+prevents future starts, while a failed read with a successful stop can recover
+in a freshly flushed burst without reusing its old timestamp or overflow state.
+
+Combined battery suite: 16 test methods passed (including the fourteen native
+subcases). The boundary fixtures assert the actual native configuration and
+read timeout/size, and feed raw data through production code. They cannot prove
+ESP-IDF interrupt affinity or physical ADC accuracy. No hardware access occurs.
+Worker lifecycle and telemetry publication tests are still needed.
