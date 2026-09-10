@@ -27,6 +27,8 @@ set(LITEWING_TARGET_SRCS
     ${CMAKE_CURRENT_LIST_DIR}/litewing_pilot_controller.c
     ${CMAKE_CURRENT_LIST_DIR}/litewing_pilot_neutral.c
     ${CMAKE_CURRENT_LIST_DIR}/pios_litewing_pilot_mapping.c
+    ${CMAKE_CURRENT_LIST_DIR}/litewing_wifi_config.c
+    ${CMAKE_CURRENT_LIST_DIR}/pios_litewing_wifi_config.c
 )
 
 set(LITEWING_TARGET_INCLUDE_DIRS
