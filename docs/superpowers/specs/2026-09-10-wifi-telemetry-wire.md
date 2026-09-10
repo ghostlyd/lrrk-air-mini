@@ -82,11 +82,17 @@ The consumer has no send socket or command methods. Telemetry receipt never
 refreshes pilot input, ownership or challenge age. STOP, loss, rotation and
 maintenance retire the stream with the pilot session.
 
-Use a fixed latest-value mailbox separate from pilot ingress, initially at
-most one telemetry datagram per 100 ms, rotating the five selected objects.
-Replace obsolete samples rather than accumulating a backlog. Publisher work
-must remain outside stabilization/PWM callbacks. Object getter locking must be
-measured or moved into a separate bounded producer, not assumed nonblocking.
+Use one fixed scratch frame separate from pilot ingress, at most one telemetry
+attempt per 100 ms, rotating the five selected objects. No queued sample survives
+an attempt; contention consumes its turn without a retry or backlog. Publisher
+work remains in the low-priority command task, outside stabilization/PWM callbacks.
+The implementation refinement replaces the proposed producer/mailbox with the
+reviewed zero-wait object-manager guard: a busy mutex skips the read, and the
+pinned serializer's nested recursive acquisition is by its existing owner.
+Battery uses a short acquisition-record critical section and one coherent local
+copy for bytes and age. This removes object-manager lock waiting; it does not
+establish measured worst-case execution time. Check the existing 2 ms elapsed
+budget after read and authentication and recheck pilot expiry before send.
 On telemetry EAGAIN drop that datagram without reusing its sequence; fatal
 socket errors follow existing transport fault behavior. Challenge/control
 responses retain their current failure policy. Battery bytes must go through

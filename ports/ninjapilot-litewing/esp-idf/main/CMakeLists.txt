@@ -167,6 +167,8 @@ set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
     "${PORT_ROOT}/prepare_arming_maintenance.py"
     "${FLIGHT}/uavobjects/uavobjectmanager.c"
     "${TARGET_ROOT}/include/litewing_arming_maintenance.inc")
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+    "${TARGET_ROOT}/include/litewing_telemetry_objects.inc")
 execute_process(COMMAND python3 "${PORT_ROOT}/prepare_arming_maintenance.py"
     --source "${FLIGHT}/uavobjects" --output "${LITEWING_ARMING_DIR}"
     RESULT_VARIABLE LITEWING_ARMING_RC)
