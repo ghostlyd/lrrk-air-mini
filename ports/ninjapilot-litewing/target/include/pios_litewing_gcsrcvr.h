@@ -13,6 +13,16 @@ int32_t PIOS_LiteWing_GCSReceiver_Unpack(UAVObjHandle obj, uint16_t instance,
  * not exclude local UAVObject setters: caller must separately control those. */
 int32_t PIOS_LiteWing_GCSReceiver_BeginAdmission(int disarmed, uint64_t *token);
 int32_t PIOS_LiteWing_GCSReceiver_EndAdmission(uint64_t token);
+/* Trusted maintenance worker only. Unlike the short handshake reservation,
+ * this token may span bounded cooperative shutdown and storage, without
+ * holding the receiver spinlock. Excludes admission, wireless claims, USB
+ * unpack and persistence loads; refuses existing owners and fresh USB input.
+ * Caller separately verifies Disarmed/local setters and ends its token on
+ * every path. Failed release retains exclusion for checked cleanup/reboot.
+ * Held returns 1 only for this token with a valid current clock/fence. */
+int32_t PIOS_LiteWing_GCSReceiver_BeginMaintenance(int disarmed, uint64_t *token);
+int32_t PIOS_LiteWing_GCSReceiver_MaintenanceHeld(uint64_t token);
+int32_t PIOS_LiteWing_GCSReceiver_EndMaintenance(uint64_t token);
 /* Execute a trusted persistence load outside the spinlock, but counted as an
  * in-flight writer until synchronous load/callback work finishes. Asynchronous
  * callbacks are not covered. Refuse during admission/ownership.

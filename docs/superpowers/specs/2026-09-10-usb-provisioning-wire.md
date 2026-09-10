@@ -69,7 +69,7 @@ transactions may replace the last result; callers must serialize provisioning.
 
 Worker ordering:
 
-1. Observe Disarmed; obtain the existing receiver admission reservation, which
+1. Observe Disarmed; obtain a dedicated receiver maintenance reservation, which
    excludes fresh receiver input, another reservation, a wireless owner and
    in-flight USB writes/loads. Recheck Disarmed under the reservation.
 2. Request cooperative Wi-Fi stop. Wait at most 2 seconds on a monotonic clock
@@ -84,8 +84,11 @@ Worker ordering:
    Do not repeat the credential write. Reject new provisioning until cleanup
    finishes. Radio restart stays inhibited until an explicit reboot.
 
-The existing token API must be verified for this use against the actual
-controller/receiver tasks. Its name alone does not prove maintenance exclusion.
+Use `PIOS_LiteWing_GCSReceiver_BeginMaintenance`, `MaintenanceHeld`, and
+`EndMaintenance`. The short handshake admission token remains separate and
+must not be held across shutdown waits. Both token kinds share the monotonic
+generation counter and mutually exclude each other. Verify maintenance use
+against the actual controller/receiver tasks; its name alone does not prove exclusion.
 Reservation loss must deny the write; the worker never repairs it by clearing
 some other owner's token.
 
