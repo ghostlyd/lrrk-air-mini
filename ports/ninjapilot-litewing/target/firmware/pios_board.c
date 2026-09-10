@@ -244,8 +244,9 @@ static int board_apply_safe_defaults(void)
     return litewing_settings_recover(&ops, NULL);
 }
 
-static void board_set_boot_fault(void)
+static void board_set_boot_fault_at(unsigned line)
 {
+    printf("[LiteWing] board fault at source line %u\n", line);
     board_boot_fault = true;
     /* Before PWM initialization this is a no-op: early returns and the entry
      * gate must prevent later hardware/module initialization. After PWM init,
@@ -258,6 +259,7 @@ static void board_set_boot_fault(void)
         PIOS_LED_On(PIOS_LED_ALARM);
     }
 }
+#define board_set_boot_fault() board_set_boot_fault_at(__LINE__)
 
 static int32_t board_set_firmware_identity(void)
 {
