@@ -114,6 +114,14 @@ set(PIOS_COMMON_SRCS
 # Generate a hash-checked target-only parser adaptation. Keep the pinned
 # external files unchanged and capture packet age before receive-path locks.
 set(LITEWING_UAVTALK_DIR "${CMAKE_CURRENT_BINARY_DIR}/litewing_uavtalk")
+file(GLOB LITEWING_ID_HEADERS CONFIGURE_DEPENDS "${UAVOSYNTH}/*.h")
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+    "${PORT_ROOT}/verify_usb_ids.py" ${LITEWING_ID_HEADERS})
+execute_process(COMMAND python3 "${PORT_ROOT}/verify_usb_ids.py"
+    --objects "${UAVOSYNTH}" RESULT_VARIABLE LITEWING_USB_IDS_RC)
+if(NOT LITEWING_USB_IDS_RC EQUAL 0)
+    message(FATAL_ERROR "USB maintenance ID reservations conflict with generated objects")
+endif()
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
     "${PORT_ROOT}/prepare_uavtalk.py"
     "${TARGET_ROOT}/include/litewing_usb_uavtalk.inc"
