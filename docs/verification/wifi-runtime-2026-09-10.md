@@ -79,3 +79,27 @@ serialize this consumer-side persistence operation against wireless reservation;
 blocking only new UART writes does not close the race. Board boot settings
 setters are in target `firmware/pios_board.c`, before module startup, but the
 System queue is a continuing writer and needs its own exclusion test.
+
+## Queued-load exclusion
+
+`04c065a` adds a receiver-locked in-flight guard around the real `UAVObjLoad`
+execution, not its earlier queue submission. Admission and reservation refuse
+while loads run; loads refuse while admission or wireless ownership exists.
+Boot loads remain permitted before receiver initialization. Storage work runs
+outside the spinlock and original failure codes propagate. Bulk settings and
+metaobject loads call this same wrapper per object; this does not make an entire
+bulk operation atomic. It prevents mutation from an individual load overlapping
+admission/ownership, including synchronous callbacks, not deferred callbacks.
+
+The new ASan/UBSan regression failed before the guard and then passed boot,
+admission/ownership rejection, in-load claim attempts, failure cleanup, and
+explicit-release recovery. Receiver suite: 21 methods, 20 passed, one optional
+protocol skip. Actual target compilation caught missing PiOS prerequisites in
+the wrapper; `9d9b547` fixes include order and passes the focused regression and
+ESP-IDF build. Image size is 0x5f9b0; persistence-link check passes. Disassembly
+shows `UAVObjLoad` calling `PIOS_LiteWing_GCSReceiver_SettingsLoad` with the
+renamed upstream implementation as its callback. Review accepted this scope.
+
+Before runtime admission is wired, still audit direct setters and deferred
+callbacks for settings mutations. No AP/socket task or live board operation is
+introduced by this change.
