@@ -27,6 +27,51 @@ static int64_t received_us;
 static bool initialized;
 static bool have_timestamp;
 static bool valid;
+static bool wireless_owner;
+static uint8_t owner_session[16];
+static uint64_t owner_generation;
+static int64_t usb_fence_us = -1;
+
+int32_t PIOS_LiteWing_GCSReceiver_ClaimWireless(const uint8_t session[16], int disarmed)
+{
+    if (!session || disarmed != 1) return -1;
+    int32_t result = -1;
+    portENTER_CRITICAL(&receiver_lock);
+    const int64_t now = esp_timer_get_time();
+    if (initialized && !wireless_owner && now >= 0 &&
+        now >= usb_fence_us && owner_generation != UINT64_MAX &&
+        (!have_timestamp || now >= received_us)) {
+        if (valid && now - received_us >= LITEWING_GCS_TIMEOUT_US) valid = false;
+        if (!valid) {
+            memcpy(owner_session, session, sizeof(owner_session));
+            wireless_owner = true;
+            ++owner_generation;
+            usb_fence_us = now;
+            result = 0;
+        }
+    }
+    portEXIT_CRITICAL(&receiver_lock);
+    return result;
+}
+
+int32_t PIOS_LiteWing_GCSReceiver_ReleaseWireless(const uint8_t session[16], int disarmed)
+{
+    if (!session || disarmed != 1) return -1;
+    int32_t result = -1;
+    portENTER_CRITICAL(&receiver_lock);
+    const int64_t now = esp_timer_get_time();
+    if (initialized && wireless_owner && !memcmp(session, owner_session, 16) &&
+        now >= usb_fence_us && owner_generation != UINT64_MAX) {
+        valid = false;
+        wireless_owner = false;
+        memset(owner_session, 0, sizeof(owner_session));
+        ++owner_generation;
+        usb_fence_us = now;
+        result = 0;
+    }
+    portEXIT_CRITICAL(&receiver_lock);
+    return result;
+}
 
 /* The target-adapted parser supplies its immutable completion timestamp,
  * before receiveObject can wait on connection or object-manager locks. */
@@ -43,6 +88,11 @@ int32_t PIOS_LiteWing_GCSReceiver_Unpack(UAVObjHandle obj, uint16_t instance,
      * whatever a delayed event callback happens to find in shared storage.
      * UAVTalk validates the complete object length/CRC before this API call. */
     const int64_t arrival_us = received_time;
+    portENTER_CRITICAL(&receiver_lock);
+    const uint64_t generation = owner_generation;
+    const bool permitted = !wireless_owner && arrival_us > usb_fence_us;
+    portEXIT_CRITICAL(&receiver_lock);
+    if (!permitted) return -1;
     GCSReceiverData packet;
     memcpy(&packet, data, sizeof(packet));
     const int32_t result = UAVObjUnpack(obj, instance, data);
@@ -51,7 +101,8 @@ int32_t PIOS_LiteWing_GCSReceiver_Unpack(UAVObjHandle obj, uint16_t instance,
     }
 
     portENTER_CRITICAL(&receiver_lock);
-    if (initialized && arrival_us >= 0 &&
+    if (initialized && !wireless_owner && generation == owner_generation &&
+        arrival_us > usb_fence_us && arrival_us >= 0 &&
         (!have_timestamp || arrival_us > received_us)) {
         /* Older (or equal-time) completions cannot replace a newer packet. */
         receiver_data = packet;
