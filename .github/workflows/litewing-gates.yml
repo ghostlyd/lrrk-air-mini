@@ -42,6 +42,9 @@ jobs:
         run: python -c "import oschmod, win32security"
       - name: Test private audit creation and append
         run: python -m unittest discover -s ai_assistant/tests -p test_audit.py -v
+      - name: Test private provisioning and simulated operator transport
+        if: runner.os != 'Windows'
+        run: python -m unittest discover -s ai_assistant/tests -p 'test_provisioning_*.py' -v
 
   uavtalk-transport-gate:
     runs-on: ubuntu-latest
