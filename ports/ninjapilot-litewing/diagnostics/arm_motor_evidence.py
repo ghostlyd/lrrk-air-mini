@@ -32,6 +32,18 @@ EXPECTED_PROBE_TEST_SHA256 = "6c3c6337f461bb2ff884544ab041e96baed147acc8cb60c5d6
 EXPECTED_FLIGHT_REVISION = "ac77304a58de6c8bd552f94668b46903adb71cb2"
 EXPECTED_PROBE_TESTS = 23
 EXPECTED_DECODE_SHA256 = "f2cdc1c216929ddd0a19c8a496bc35b663d9cbfad03cfc6311d070087ff285ee"
+EXPECTED_RECORD_SHA256 = "63d51842c894f93735c5398d35f96faeedbfee7ce2877a6af02a41910d30fa88"
+EXPECTED_CLAIMS_NOT_ESTABLISHED = [
+    "electrical PWM duty or cutoff timing",
+    "physical motor rotation during this transaction",
+    (
+        "current RAM arming state after capture closure; Always Armed remains "
+        "the conservative assumption until reset or power cycle and disarmed "
+        "telemetry are verified"
+    ),
+    "arming state after a verified reset or power cycle",
+    "battery-powered operation or flight readiness",
+]
 
 
 class EvidenceError(ValueError):
@@ -115,6 +127,11 @@ def validate_record(record: Any) -> dict[str, Any]:
         "record",
     )
     _require(record["schema"] == SCHEMA, "unsupported evidence schema")
+    record_bytes = json.dumps(
+        record, sort_keys=True, separators=(",", ":"), ensure_ascii=False
+    ).encode("utf-8")
+    _require(hashlib.sha256(record_bytes).hexdigest() == EXPECTED_RECORD_SHA256,
+             "sanitized record differs from the reviewed evidence payload")
     _require(record["evidence_id"] == EXPECTED_EVIDENCE_ID,
              "evidence_id does not identify the reviewed transaction")
     _require(isinstance(record["scope"], str) and record["scope"],
@@ -314,9 +331,8 @@ def validate_record(record: Any) -> dict[str, Any]:
              "last in-session telemetry; RAM arming may survive serial link closure while USB power remains",
              "terminal-state scope is missing or overstated")
     claims = limitations["claims_not_established"]
-    _require(isinstance(claims, list) and len(claims) >= 4 and
-             all(isinstance(item, str) and item for item in claims),
-             "limitations must enumerate unproven claims")
+    _require(claims == EXPECTED_CLAIMS_NOT_ESTABLISHED,
+             "limitations do not match the reviewed claim exclusions")
 
     return {"status": "PASS", **expected_summary}
 

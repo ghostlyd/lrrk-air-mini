@@ -143,6 +143,15 @@ class ArmMotorEvidenceTests(unittest.TestCase):
             self.assertIn("serial link does not clear", normalized)
             self.assertIn("must assume `Always Armed` remains active", normalized)
 
+    def test_limitations_cannot_be_replaced_with_passing_claims(self):
+        candidate = copy.deepcopy(self.record)
+        candidate["limitations"]["claims_not_established"] = [
+            "flight readiness is established"
+        ] * 4
+
+        with self.assertRaises(evidence.EvidenceError):
+            evidence.validate_record(candidate)
+
     def test_post_pulse_and_terminal_state_require_armed_zero_output(self):
         cases = []
 
