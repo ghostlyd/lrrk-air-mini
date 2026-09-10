@@ -45,3 +45,7 @@ class USBConfigInteropTests(unittest.TestCase):
                     self.assertEqual(host,accepted)
                     if not accepted:
                         self.assertEqual(bytes(out),b"\0"*C.sizeof(out))
+                    else:
+                        self.assertEqual(bytes(out.ssid),blob[40:40+blob[5]])
+                        self.assertEqual(bytes(out.password),blob[72:72+blob[6]])
+                        self.assertEqual(bytes(out.root),blob[8:40])

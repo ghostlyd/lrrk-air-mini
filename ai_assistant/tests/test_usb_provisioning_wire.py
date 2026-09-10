@@ -26,12 +26,15 @@ class ProvisioningWireTests(unittest.TestCase):
         self.assertEqual(packet[10:26], b"t"*16)
         self.assertEqual(packet[26:-1], self.blob)
         self.assertEqual(packet[-1], crc8(packet[:-1]))
+        # Independently evaluated polynomial division, not the codec CRC helper.
+        self.assertEqual(packet[-1], 0x57)
 
     def test_status_request_has_no_secret_payload(self):
         packet = wire.status_request()
         self.assertEqual(packet[:-1], bytes.fromhex("3c210a004850574c0000"))
         self.assertEqual(len(packet), 11)
         self.assertEqual(packet[-1], crc8(packet[:-1]))
+        self.assertEqual(packet.hex(), "3c210a004850574c0000b4")
 
     def test_blob_encoding_matches_firmware_layout(self):
         self.assertEqual(wire.encode_config("x", "p"*16, b"k"*32), self.blob)
@@ -78,8 +81,19 @@ class ProvisioningWireTests(unittest.TestCase):
                     wire.parse_status(bytes(packet),b"t"*16)
 
     def test_ack_only_means_queued(self):
-        for message, accepted in ((0x23,True),(0x24,False)):
-            packet=bytes([0x3c,message])+bytes.fromhex("0a004650574c0000")
-            self.assertIs(wire.parse_receipt(packet+bytes([crc8(packet)])),accepted)
+        for packet, accepted in ((bytes.fromhex("3c230a004650574c0000ff"),True),
+                                 (bytes.fromhex("3c240a004650574c000097"),False)):
+            self.assertIs(wire.parse_receipt(packet),accepted)
         with self.assertRaises(wire.ProvisioningWireError):
             wire.parse_receipt(status_frame())
+
+    def test_receipt_rejects_semantic_corruption_and_bad_crc(self):
+        good=bytes.fromhex("3c230a004650574c0000ff")
+        for packet in (good[:-1],good+b"\0",good[:-1]+b"\0"):
+            with self.assertRaises(wire.ProvisioningWireError):
+                wire.parse_receipt(packet)
+        for index, value in ((0,0),(1,0x22),(2,11),(4,0),(8,1)):
+            packet=bytearray(good); packet[index]=value; packet[-1]=crc8(packet[:-1])
+            with self.subTest(index=index):
+                with self.assertRaises(wire.ProvisioningWireError):
+                    wire.parse_receipt(bytes(packet))
