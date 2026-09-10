@@ -26,7 +26,8 @@ def prepare(source, output):
     code = data.decode("utf-8")
     code = replace_exact(code, '#include "inc/uavobjectprivate.h"',
                          '#include "inc/uavobjectprivate.h"\n#include <stddef.h>\n'
-                         '#include "flightstatus.h"\n#include "litewing_arming_maintenance.h"')
+                         '#include "flightstatus.h"\n#include "litewing_arming_maintenance.h"\n'
+                         '#include "litewing_telemetry_objects.h"')
     code = replace_exact(code, "static xSemaphoreHandle mutex;",
                          'static xSemaphoreHandle mutex;\n#include "litewing_arming_maintenance.inc"')
     for anchor, size in (
@@ -37,6 +38,8 @@ def prepare(source, output):
         guard = (f"        if (!lw_arming_write_allowed(obj_handle,dataIn,{offset},{size})) {{\n"
                  "            goto unlock_exit;\n        }\n")
         code = replace_exact(code, anchor, guard + anchor, 1 if size == "size" else 2)
+    code += "\n" + (Path(__file__).resolve().parent /
+                    "target/include/litewing_telemetry_objects.inc").read_text()
     target = output / "uavobjectmanager.c"
     if target.is_symlink() or (target.exists() and (not target.is_file() or target.stat().st_nlink != 1)):
         raise ValueError("output must be an unaliased regular file")
