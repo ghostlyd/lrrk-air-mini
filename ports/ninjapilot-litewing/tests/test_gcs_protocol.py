@@ -54,8 +54,25 @@ class GcsProtocolTests(unittest.TestCase):
         for split in range(1,163):
             with self.subTest(split=split): self.run_case(f"provision-split-{split}")
     def test_provisioning_rejections_and_status(self):
-        for case in ("status","instance","type","invalid","length","collision","crc","relay"):
+        for case in ("status","instance","type","invalid","length","crc","relay",
+                     "collision1-submit","collision2-submit","collision1-status","collision2-status",
+                     "write-fail","write-short"):
             with self.subTest(case=case): self.run_case("provision-"+case)
+    def test_python_submission_and_c_responses_interoperate(self):
+        sys.path.insert(0, str(ROOT.parents[1] / "ai_assistant/src"))
+        from lrrk_litewing_ai.usb_provisioning_wire import (
+            encode_config, submission, parse_receipt, parse_status)
+        packet = submission(b"t"*16,encode_config("x","p"*16,b"k"*32))
+        result = subprocess.run([str(self.binary),"provision-host"], input=packet,
+                                capture_output=True, timeout=5)
+        self.assertEqual(result.returncode,0,result.stderr)
+        self.assertTrue(parse_receipt(bytes.fromhex(result.stdout.decode("ascii"))))
+        result = subprocess.run([str(self.binary),"provision-status"],
+                                capture_output=True,text=True,timeout=5)
+        self.assertEqual(result.returncode,0,result.stderr)
+        status = parse_status(bytes.fromhex(result.stdout),b"t"*16)
+        self.assertEqual((status.phase,status.result),(2,0))
+        self.assertFalse(status.persisted_and_finished)
     def test_telemetry_request_remains_available_during_wireless_ownership(self):
         self.run_case("request-wireless-owner")
     def test_connection_lock_cannot_refresh_already_parsed_input(self): self.run_case("connection-lock-delay")

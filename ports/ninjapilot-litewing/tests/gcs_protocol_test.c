@@ -19,6 +19,7 @@ static int locks[4], next_lock;
 static uint32_t receiver_id;
 static int unpack_result, unpack_calls;
 static int maintenance_calls, maintenance_queued, collision;
+static int output_failure;
 static uint8_t queued[152];
 int lw_usb_maintenance_submit(const uint8_t *data,size_t size) {
     ++maintenance_calls;
@@ -48,11 +49,12 @@ UAVObjHandle GCSReceiverHandle(void) { return &object; }
 UAVObjHandle UAVObjGetByID(uint32_t id) {
     now_us+=lookup_delay; lookup_delay=0;
     if(id==UINT32_C(0x26962352)) return battery;
-    if(collision && (id==UINT32_C(0x4c575046) || id==UINT32_C(0x4c575048))) return &object;
+    if((collision==1 && id==UINT32_C(0x4c575046)) ||
+       (collision==2 && id==UINT32_C(0x4c575048))) return &object;
     return id==UINT32_C(0xcc7e1470)?&object:NULL;
 }
 uint32_t UAVObjGetID(UAVObjHandle obj) { return obj==battery?UINT32_C(0x26962352):UINT32_C(0xcc7e1470); }
-uint16_t UAVObjGetNumBytes(UAVObjHandle obj) { return obj==battery?30:16; }
+uint16_t UAVObjGetNumBytes(UAVObjHandle obj) { return obj==battery?30:collision==1?152:16; }
 uint16_t UAVObjGetNumInstances(UAVObjHandle obj) { (void)obj; return 1; }
 bool UAVObjIsSingleInstance(UAVObjHandle obj) { (void)obj; return true; }
 int32_t UAVObjPack(UAVObjHandle obj,uint16_t instance,uint8_t *out) {
@@ -76,7 +78,9 @@ uint8_t PIOS_CRC_updateCRC(uint8_t crc,const uint8_t *bytes,int32_t count) {
     return crc;
 }
 static int32_t output(uint8_t *data,int32_t count) {
-    assert(count<=64); memcpy(transmitted,data,count); transmitted_count=count; return count;
+    assert(count<=64); memcpy(transmitted,data,count); transmitted_count=count;
+    if(output_failure) { int rc=output_failure; output_failure=0; return rc; }
+    return count;
 }
 static void expect(int32_t want) {
     const int32_t got=pios_gcsrcvr_rcvr_driver.read(receiver_id,0);
@@ -88,16 +92,22 @@ static void provisioning(UAVTalkConnection con,const char *name) {
     packet[30]=1; packet[31]=1; packet[32]=16;
     memset(packet+34,'k',32); packet[66]='x'; memset(packet+98,'p',16);
     unsigned length=163;
-    if(!strcmp(name,"provision-status")) {
+    if(strstr(name,"-status")) {
         packet[1]=0x21; packet[2]=10; packet[4]=0x48; length=11;
     }
     if(!strcmp(name,"provision-instance")) packet[8]=1;
     if(!strcmp(name,"provision-type")) packet[1]=0x20;
     if(!strcmp(name,"provision-invalid")) packet[33]=1;
     if(!strcmp(name,"provision-length")) { --length; --packet[2]; }
-    if(!strcmp(name,"provision-collision")) collision=1;
+    if(strstr(name,"collision1")) collision=1;
+    if(strstr(name,"collision2")) collision=2;
+    if(!strcmp(name,"provision-write-fail")) output_failure=-1;
+    if(!strcmp(name,"provision-write-short")) output_failure=5;
     packet[length-1]=PIOS_CRC_updateCRC(0,packet,length-1);
     if(!strcmp(name,"provision-crc")) packet[length-1]^=1;
+    if(!strcmp(name,"provision-host")) {
+        assert(fread(packet,1,163,stdin)==163 && fgetc(stdin)==EOF);
+    }
     if(!strcmp(name,"provision-relay")) {
         uint8_t position=0;
         assert(UAVTalkProcessInputStreamQuiet(con,packet,length,&position)==UAVTALK_STATE_COMPLETE);
@@ -118,14 +128,36 @@ static void provisioning(UAVTalkConnection con,const char *name) {
         assert(transmitted[10]==1 && transmitted[11]==2 && transmitted[12]==0);
         for(unsigned i=14;i<30;++i) assert(transmitted[i]=='t');
         assert(transmitted[34]==PIOS_CRC_updateCRC(0,transmitted,34));
-    } else if(!strncmp(name,"provision-split-",16)) {
+        for(int i=0;i<transmitted_count;++i) printf("%02x",transmitted[i]);
+        puts("");
+    } else if(!strncmp(name,"provision-split-",16) || !strcmp(name,"provision-host") ||
+              !strncmp(name,"provision-write-",16)) {
         assert(maintenance_calls==1 && maintenance_queued);
         assert(!memcmp(queued,packet+10,152));
         const uint8_t ack[11]={0x3c,0x23,10,0,0x46,0x50,0x57,0x4c,0,0,0xff};
         assert(transmitted_count==11 && !memcmp(transmitted,ack,11));
+        for(unsigned i=0;i<UAVTALK_MAX_PACKET_LENGTH;++i)
+            assert(((UAVTalkConnectionData *)con)->rxBuffer[i]==0);
+        if(!strcmp(name,"provision-host")) {
+            for(int i=0;i<transmitted_count;++i) printf("%02x",transmitted[i]);
+            puts("");
+        }
         /* ACK loss/replay cannot cause a second queued transaction. */
         UAVTalkProcessInputStream(con,packet,length);
         assert(maintenance_calls==2 && transmitted_count==11 && transmitted[1]==0x24);
+        if(!strncmp(name,"provision-write-",16)) {
+            /* A failed ACK must not roll back acceptance or poison the parser. */
+            assert(((UAVTalkConnectionData *)con)->stats.txErrors==1);
+            assert(maintenance_queued && !memcmp(queued,packet+10,152));
+            uint8_t request[11]={0x3c,0x21,10,0,0x48,0x50,0x57,0x4c,0,0,0};
+            request[10]=PIOS_CRC_updateCRC(0,request,10);
+            UAVTalkProcessInputStream(con,request,11);
+            assert(transmitted_count==35 && transmitted[1]==0x20);
+            request[4]=0x70; request[5]=0x14; request[6]=0x7e; request[7]=0xcc;
+            request[10]=PIOS_CRC_updateCRC(0,request,10);
+            UAVTalkProcessInputStream(con,request,11);
+            assert(transmitted_count==27 && transmitted[1]==0x20 && !unpack_calls);
+        }
     } else {
         assert(!maintenance_queued);
         if(strcmp(name,"provision-invalid")) assert(!maintenance_calls);
