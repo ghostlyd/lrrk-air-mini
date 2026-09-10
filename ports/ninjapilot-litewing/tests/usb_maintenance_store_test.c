@@ -1,5 +1,6 @@
 /* Reuse actual-worker lifecycle assertions, replacing its store-result double
- * with the actual store. Only NVS, radio and RTOS boundaries remain simulated. */
+ * with the actual store. NVS, radio, RTOS and object-manager boundaries
+ * remain simulated; generated FlightStatus setters are tested separately. */
 #include <stdio.h>
 #define main lifecycle_main
 #define lw_wifi_config_store boundary_store_checks
