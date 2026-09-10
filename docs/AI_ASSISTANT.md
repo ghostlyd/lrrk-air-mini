@@ -113,6 +113,9 @@ age, combines actuator mapping/update faults with system alarms, and leaves
 unobserved sensor and board identity fields unknown. A disconnect clears every
 partial object so aggregates cannot cross link epochs. An Armed aggregate is
 deterministically `BLOCKED`; the optional model cannot override that result.
+If the fifth object shares a read with the beginning of another frame, the
+collector stops all outbound traffic and spends at most 250 ms reading exactly
+the bytes needed to validate that already-started frame before returning.
 
 ### Binary capture inspection
 

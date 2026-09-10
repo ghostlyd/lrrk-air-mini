@@ -343,8 +343,14 @@ class LiveUAVTalkCollector:
             raise UAVTalkLiveError("host wall clock must be timezone-aware")
         return value
 
-    def _observe(self, frame: UAVTalkFrame, received_mono: float,
-                 received_wall: datetime) -> None:
+    def _observe(
+        self,
+        frame: UAVTalkFrame,
+        received_mono: float,
+        received_wall: datetime,
+        *,
+        respond: bool = True,
+    ) -> None:
         if frame.object_id == FLIGHT_TELEMETRY_STATS:
             if frame.instance_id != 0 or len(frame.payload) != 37:
                 raise UAVTalkLiveError("invalid FlightTelemetryStats object")
@@ -356,7 +362,8 @@ class LiveUAVTalkCollector:
                     self._latest.clear()
                 self._handshake_status = 3
                 self._connected = True
-                self.transport.handshake(3)
+                if respond:
+                    self.transport.handshake(3)
             elif status_value == 3:
                 if not self._connected:
                     self._latest.clear()
@@ -410,6 +417,41 @@ class LiveUAVTalkCollector:
             actuators=by_id[ACTUATOR_COMMAND].actuators,
         )
 
+    def _finish_current_frame(
+        self,
+        synchronizer: _Synchronizer,
+        capture: _PrivateCapture,
+    ) -> None:
+        completion_started = self._now()
+        while synchronizer.bytes_to_frame_boundary:
+            if self._now() - completion_started >= 0.25:
+                raise UAVTalkLiveError("current-frame completion timed out")
+            maximum = synchronizer.bytes_to_frame_boundary
+            received_mono = self._now()
+            received_wall = self._wall_now()
+            data = self.transport.read(maximum)
+            after_read = self._now()
+            if data:
+                # The capture records every byte consumed from the device,
+                # even when the completion deadline expires during this read.
+                capture.write(data)
+            if after_read - completion_started >= 0.25:
+                raise UAVTalkLiveError("current-frame completion timed out")
+            if not data:
+                self._sleep(0.005)
+                continue
+            frames = synchronizer.feed(data)
+            for frame in frames:
+                # The aggregate is already complete: validate and incorporate
+                # only this started frame, with no new ACK or handshake write.
+                self._observe(
+                    frame,
+                    received_mono,
+                    received_wall,
+                    respond=False,
+                )
+        synchronizer.finish()
+
     def collect(self) -> TelemetrySnapshot:
         capture = _PrivateCapture(self.capture_path)
         synchronizer = _Synchronizer()
@@ -439,8 +481,11 @@ class LiveUAVTalkCollector:
                             self.transport.ack(frame.object_id, frame.instance_id)
                         self._observe(frame, received_mono, received_wall)
                     if (self._connected
-                            and not SELECTED_OBJECT_IDS.difference(self._latest)
-                            and synchronizer.bytes_to_frame_boundary == 0):
+                            and not SELECTED_OBJECT_IDS.difference(self._latest)):
+                        if synchronizer.bytes_to_frame_boundary:
+                            self._finish_current_frame(synchronizer, capture)
+                        else:
+                            synchronizer.finish()
                         return self._aggregate()
                 self._sleep(0.005)
             synchronizer.finish()

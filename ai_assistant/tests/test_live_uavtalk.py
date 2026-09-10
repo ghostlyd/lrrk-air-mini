@@ -76,6 +76,11 @@ class FakeClock:
         self.value += seconds
 
 
+class CompletionClock(FakeClock):
+    def sleep(self, seconds):
+        self.value += 0.25
+
+
 class FakeTransport:
     identity = "usb-serial:1a86:7522:4-1"
 
@@ -281,6 +286,58 @@ class LiveUAVTalkTests(unittest.TestCase):
                 ).collect()
 
         self.assertTrue(transport.closed)
+
+    def test_complete_aggregate_finishes_only_the_current_partial_frame(self):
+        trailing = packet(0x20, 0x12345678, bytes(range(20)))
+        tail = trailing[-5:]
+        first = complete_stream() + trailing[:-len(tail)]
+        transport = FakeTransport((first, tail))
+        clock = CompletionClock()
+        with tempfile.TemporaryDirectory() as directory:
+            capture = Path(directory) / "live.uavtalk"
+            snapshot = LiveUAVTalkCollector(
+                transport,
+                capture,
+                duration_s=1.0,
+                monotonic=clock.monotonic,
+                wall_clock=clock.wall,
+                sleep=clock.sleep,
+            ).collect()
+            self.assertEqual(capture.read_bytes(), first + tail)
+
+        reads = [item[1] for item in transport.operations if item[0] == "read"]
+        requests = [item for item in transport.operations if item[0] == "request"]
+        self.assertEqual(reads, [4096, len(tail)])
+        self.assertEqual(len(requests), len(SELECTED_OBJECT_IDS))
+        self.assertTrue(snapshot.armed)
+
+    def test_timed_out_completion_still_captures_every_consumed_byte(self):
+        trailing = packet(0x20, 0x12345678, bytes(range(20)))
+        tail = trailing[-5:]
+        first = complete_stream() + trailing[:-len(tail)]
+        clock = FakeClock()
+
+        class SlowTailTransport(FakeTransport):
+            def read(self, maximum):
+                data = super().read(maximum)
+                if len([item for item in self.operations if item[0] == "read"]) == 2:
+                    clock.value += 0.3
+                return data
+
+        transport = SlowTailTransport((first, tail))
+        with tempfile.TemporaryDirectory() as directory:
+            capture = Path(directory) / "live.uavtalk"
+            collector = LiveUAVTalkCollector(
+                transport,
+                capture,
+                duration_s=1.0,
+                monotonic=clock.monotonic,
+                wall_clock=clock.wall,
+                sleep=clock.sleep,
+            )
+            with self.assertRaises(UAVTalkLiveError):
+                collector.collect()
+            self.assertEqual(capture.read_bytes(), first + tail)
 
     def test_initial_synchronization_reads_at_most_4096_bytes(self):
         synchronizer = _Synchronizer()
