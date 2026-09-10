@@ -105,6 +105,67 @@ class BatteryVoltageTests(unittest.TestCase):
             self.assertIsNone(result.battery.current_a)
             self.assertIsNone(result.battery.percent)
 
+    def process_dma(self, words=None, *, captured=1000, now=1000, failure_at=None,
+                    converted=None):
+        self.assertTrue(hasattr(self.lib, "litewing_battery_process_dma"),
+                        "ADC batch processing is missing")
+        callback_type = ctypes.CFUNCTYPE(ctypes.c_int, ctypes.c_void_p, ctypes.c_int,
+                                        ctypes.POINTER(ctypes.c_int))
+        def calibrate(context, raw, output):
+            if raw == failure_at:
+                return -1
+            # Nonlinear test calibration: averaging raw counts first is wrong.
+            output[0] = converted if converted is not None else raw * raw
+            return 0
+        callback = callback_type(calibrate)
+        values = [0x2000 | 40] * 16 if words is None else words
+        data = (ctypes.c_uint32 * len(values))(*values)
+        process = self.lib.litewing_battery_process_dma
+        process.argtypes = [ctypes.POINTER(Sample), ctypes.POINTER(ctypes.c_uint32),
+                            ctypes.c_size_t, ctypes.c_int64, ctypes.c_int64,
+                            callback_type, ctypes.c_void_p]
+        process.restype = ctypes.c_bool
+        return process(ctypes.byref(self.sample), data, len(values), captured, now,
+                       callback, None)
+
+    def test_dma_calibrates_each_sample_before_averaging(self):
+        # Eight 40-count and eight 42-count samples: calibrated average 1682mV.
+        self.assertTrue(self.process_dma([0x2028] * 8 + [0x202A] * 8))
+        self.assertEqual(self.read(1000), (True, 3364))
+
+    def test_dma_wrong_unit_channel_or_clipping_invalidates_entire_batch(self):
+        for bad in (0x22028, 0x4028, 0x2000, 0x2FFF):
+            for index in (0, 15):
+                with self.subTest(bad=bad, index=index):
+                    self.update(1950)
+                    words = [0x2028] * 16
+                    words[index] = bad
+                    self.assertFalse(self.process_dma(words))
+                    self.assertEqual(self.read(1000), (False, 0))
+
+    def test_dma_rejects_partial_oversize_and_failed_calibration(self):
+        for size in (0, 1, 15, 17, 64):
+            self.update(1950)
+            self.assertFalse(self.process_dma([0x2028] * size))
+            self.assertEqual(self.read(1000), (False, 0))
+        self.update(1950)
+        self.assertFalse(self.process_dma([0x2028] * 15 + [0x202A], failure_at=42))
+        self.assertEqual(self.read(1000), (False, 0))
+
+    def test_dma_rejects_invalid_calibration_output(self):
+        for value in (-1, 0, 3301, 2147483647):
+            self.update(1950)
+            self.assertFalse(self.process_dma(converted=value))
+            self.assertEqual(self.read(1000), (False, 0))
+
+    def test_dma_retains_acquisition_time_and_rejects_old_or_future_batches(self):
+        self.assertTrue(self.process_dma(captured=1000, now=501000))
+        self.assertEqual(self.read(501001), (False, 0))
+        for captured, now in ((1000, 501001), (1001, 1000), (-1, 1000)):
+            self.update(1950)
+            self.assertFalse(self.process_dma(captured=captured, now=now))
+            self.assertEqual(self.read(1000), (False, 0))
+
 
 if __name__ == "__main__":
     unittest.main()

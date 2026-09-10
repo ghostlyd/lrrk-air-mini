@@ -3,6 +3,7 @@
 #define LITEWING_BATTERY_VOLTAGE_H
 #include <stdbool.h>
 #include <stdint.h>
+#include <stddef.h>
 
 struct litewing_battery_sample {
     uint32_t millivolts;
@@ -26,4 +27,16 @@ bool litewing_battery_read(const struct litewing_battery_sample *sample,
  */
 void litewing_battery_export(const struct litewing_battery_sample *sample,
                              int64_t now_us, float fields[7]);
+/* Calibration callback returns zero and writes pad millivolts on success. */
+typedef int (*litewing_battery_calibrate_fn)(void *context, int raw, int *pad_mv);
+/* Process exactly one 64-byte ESP32-S3 TYPE2 frame (16 native uint32 words).
+ * Caller owns framing and supplies a conservative timestamp for the OLDEST
+ * sample, established at acquisition, not dequeue time. Caller must reject
+ * overflow or lost timestamp association before calling. All calls serialized.
+ */
+bool litewing_battery_process_dma(struct litewing_battery_sample *sample,
+                                  const uint32_t *words, size_t count,
+                                  int64_t captured_us, int64_t now_us,
+                                  litewing_battery_calibrate_fn calibrate,
+                                  void *context);
 #endif

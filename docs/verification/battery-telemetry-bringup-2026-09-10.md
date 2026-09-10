@@ -113,3 +113,23 @@ Implementation requirements for the next patch:
 
 The driver implementation and startup wiring are still pending. Draft PR #54
 collects this work; it must not be treated as a ready-to-flash producer.
+
+## DMA batch processing implemented
+
+`litewing_battery_process_dma` now processes one 16-word/64-byte ESP32-S3
+TYPE2 frame. The decoder follows the pinned SDK's data/channel/unit bitfields,
+requires ADC1/channel1, rejects ADC rail codes and wrong-sized frames, and
+calibrates each raw value before averaging the resulting millivolts. A failed
+conversion anywhere invalidates the whole sample, including a preceding valid
+sample. No partial average escapes on a late failure.
+
+The caller must supply the oldest acquisition timestamp and a current timestamp;
+the processor rejects old/future/negative acquisition times and retains that
+acquisition time for subsequent exports. This does not yet solve the DMA worker's
+timestamp association: the worker must establish it rather than substitute
+dequeue time. Overflow rejection remains a caller responsibility.
+
+Focused suite: 11/11 passed, including five new batch-processing tests observed
+failing for the missing implementation before it was added. The nonlinear
+calibration fixture specifically detects averaging raw counts before calibration.
+The raw decoder is host-tested; ADC resources and startup remain unimplemented.

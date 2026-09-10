@@ -42,3 +42,39 @@ void litewing_battery_export(const struct litewing_battery_sample *sample,
         fields[0] = (float)millivolts / 1000.0f;
     }
 }
+
+bool litewing_battery_process_dma(struct litewing_battery_sample *sample,
+                                  const uint32_t *words, size_t count,
+                                  int64_t captured_us, int64_t now_us,
+                                  litewing_battery_calibrate_fn calibrate,
+                                  void *context)
+{
+    *sample = (struct litewing_battery_sample){0};
+    if (!words || !calibrate || count != 16 || captured_us < 0
+        || now_us < captured_us || now_us - captured_us > 500000) {
+        return false;
+    }
+    uint32_t sum_mv = 0;
+    for (size_t i = 0; i < count; ++i) {
+        /* Pinned IDF 5.3.2 ESP32-S3 TYPE2: data[11:0], channel[16:13],
+         * unit[17]. Reserved bits are ignored as in the SDK bitfield view.
+         * Reject ADC rail codes: clipping is not a calibrated measurement.
+         */
+        int raw = (int)(words[i] & 0xFFFu);
+        unsigned channel = (words[i] >> 13) & 0xFu;
+        unsigned unit = (words[i] >> 17) & 1u;
+        if (channel != 1 || unit != 0 || raw == 0 || raw == 4095) {
+            return false;
+        }
+        int pad_mv = 0;
+        if (calibrate(context, raw, &pad_mv) != 0 || pad_mv <= 0 || pad_mv > 3300) {
+            return false;
+        }
+        sum_mv += (uint32_t)pad_mv;
+    }
+    /* Calibrate individually before averaging; curve fitting is nonlinear.
+     * At most 16*3300 mV accumulate, safely within uint32_t.
+     */
+    litewing_battery_update(sample, (int)((sum_mv + 8u) / 16u), true, captured_us);
+    return sample->valid;
+}
