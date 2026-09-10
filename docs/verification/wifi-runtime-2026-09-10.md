@@ -113,3 +113,30 @@ yet; linker garbage collection is not evidence of AP runtime reachability.
 No radio was activated. AP review and removal of machine-local test dependencies
 are in progress. The authenticated UDP owning task, startup hook, provisioning,
 operator input and telemetry integration still remain.
+
+## Integrated command startup checkpoint
+
+`054853d` implements the actual AP-bound UDP owning task; `3b97fa8` wires its
+launch into generated System startup after checked boot readiness and all three
+System queue/callback connections succeed. Optional task-creation failure does
+not stop System/USB. The startup caller passed 24 System/scheduler tests and
+scoped review. Source startup is now wired; earlier uncalled-dependency notes
+above describe historical increments, not the current source state.
+
+Integrated build at `1080561` passes with application size 0xd7740 and 16% of the
+unchanged 1 MiB application partition free. Persistence-link verification passes.
+The linked command task, AP start and real controller symbols are present.
+This is compile/link evidence only; no flashing or radio activation occurred.
+
+The broad regression completed 379 methods (367 passed, 12 skipped) while the
+final cleanup correction was being prepared; do not attribute that whole run to
+the final commit. At `1080561`, fresh six-method Wi-Fi tests passed, including
+30 command scenarios and two C/Python loopback cases. Review confirmed the fix
+keeps the task/context until a rollback-held admission guard can be released,
+with bounded cleanup sleeps; retired wireless ownership is still not released.
+
+CI now supplies both pinned SDK headers and pinned mbedTLS to the non-skipping
+Wi-Fi job. Hosted verification of the integrated revision and whole-branch
+review remain pending. Provisioning/rotation, operator input, telemetry-only AI
+integration, real radio scheduling and physical flight qualification remain
+required. Missing credentials still leave Wi-Fi disabled at runtime.
