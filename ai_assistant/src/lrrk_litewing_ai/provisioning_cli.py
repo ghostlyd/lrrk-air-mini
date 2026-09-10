@@ -3,7 +3,7 @@ import argparse
 import secrets
 from pathlib import Path
 
-from .provisioning_bundle import save_pending, load_pending, BundleError
+from .provisioning_bundle import save_pending, load_pending, record_stored, BundleError
 from .provisioning_serial import ProvisioningSerial, SerialProvisioningError
 from .provisioning_transport import _exchange
 from .usb_provisioning_wire import encode_config, submission
@@ -28,15 +28,18 @@ def main(argv=None):
             transaction = secrets.token_bytes(16)
             blob = encode_config('LW-' + secrets.token_hex(4), secrets.token_urlsafe(24),
                                  secrets.token_bytes(32))
-            save_pending(args.directory, transaction, blob)
+            pending = save_pending(args.directory, transaction, blob)
             request = submission(transaction, blob)
         else:
+            pending = args.bundle
             transaction, _ = load_pending(args.bundle)
             request = None
         stream = ProvisioningSerial(args.device, args.location, request=request)
         result = _exchange(stream, transaction, request, time.monotonic)
         stream.close()
         stream = None
+        if result.verified:
+            record_stored(pending, result.status)
     except (BundleError, SerialProvisioningError, OSError, ValueError):
         print('unresolved; preserve pending bundles; do not automatically retry')
         return 2

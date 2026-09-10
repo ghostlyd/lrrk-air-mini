@@ -16,12 +16,14 @@ from .uavtalk import UAVTalkDecoder, UAVTalkError, crc8
 from .usb_provisioning_wire import (
     STATUS_ID, SUBMISSION_ID, submission, status_request, parse_status,
     parse_receipt, ProvisioningWireError,
+    ProvisioningStatus,
 )
 
 
 @dataclass(frozen=True)
 class TransactionResult:
     outcome: str  # verified, not_written, unknown, unavailable
+    status: ProvisioningStatus | None = None
 
     @property
     def verified(self):
@@ -82,7 +84,7 @@ def _exchange(port, transaction, request, clock):
                     continue
                 status = parse_status(packet, transaction)
                 if status.persisted_and_finished:
-                    return TransactionResult('verified')
+                    return TransactionResult('verified', status)
                 if status.phase == 6:
                     return TransactionResult('not_written' if status.result in (0, 1, 2)
                                              else 'unknown')

@@ -17,7 +17,7 @@ import sys
 import ctypes
 import errno
 
-from .usb_provisioning_wire import submission, ProvisioningWireError
+from .usb_provisioning_wire import submission, ProvisioningWireError, ProvisioningStatus
 
 MAGIC = b'LWPEND01'
 SIZE = 192  # magic + transaction + LWCF + SHA256 corruption check
@@ -117,24 +117,37 @@ def save_pending(directory: Path, transaction: bytes, blob: bytes) -> Path:
     Never replaces or deletes an old bundle. SHA256 detects corruption, not an
     attacker with write access. A returned path is not proof of board storage.
     """
+    return _save(directory, transaction, blob, '.pending', False)
+
+
+def _save(directory, transaction, blob, suffix, allow_existing):
     try:
         record = _record(transaction, blob)
     except ProvisioningWireError:
         raise BundleError('invalid pending credentials') from None
     with _directory(directory) as (resolved, parent):
-        name = transaction.hex() + '.pending'
-        fd = os.open(name, os.O_RDWR | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | os.O_CLOEXEC,
-                     0o600, dir_fd=parent)
+        name = transaction.hex() + suffix
+        flags = os.O_RDWR | os.O_NOFOLLOW | os.O_CLOEXEC | os.O_NONBLOCK
+        created = True
         try:
-            os.fchmod(fd, 0o600)
+            fd = os.open(name, flags | os.O_CREAT | os.O_EXCL, 0o600, dir_fd=parent)
+        except FileExistsError:
+            if not allow_existing:
+                raise
+            created = False
+            fd = os.open(name, flags, dir_fd=parent)
+        try:
+            if created:
+                os.fchmod(fd, 0o600)
             _private(os.fstat(fd))
             _no_acl(fd)
-            position = 0
-            while position < len(record):
-                written = os.write(fd, record[position:])
-                if written <= 0:
-                    raise BundleError('pending bundle write failed')
-                position += written
+            if created:
+                position = 0
+                while position < len(record):
+                    written = os.write(fd, record[position:])
+                    if written <= 0:
+                        raise BundleError('pending bundle write failed')
+                    position += written
             os.fsync(fd)
             os.lseek(fd, 0, os.SEEK_SET)
             if _read(fd) != (transaction, blob):
@@ -143,6 +156,20 @@ def save_pending(directory: Path, transaction: bytes, blob: bytes) -> Path:
         finally:
             os.close(fd)
         return resolved / name
+
+
+def record_stored(path: Path, status: ProvisioningStatus) -> Path:
+    """Retain an immutable .stored copy after a correlated firmware result.
+
+    This is local workflow state, not a signed receipt or activation proof.
+    The trusted caller must supply the status observed on its exclusive stream.
+    Existing matching copies are checked and synced, never overwritten.
+    """
+    transaction, blob = load_pending(path)
+    if (type(status) is not ProvisioningStatus or not status.persisted_and_finished
+            or status.transaction != transaction):
+        raise BundleError('matching completed storage status required')
+    return _save(Path(path).parent, transaction, blob, '.stored', True)
 
 
 def load_pending(path: Path) -> tuple[bytes, bytes]:

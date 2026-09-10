@@ -14,6 +14,7 @@ from lrrk_litewing_ai.usb_provisioning_wire import encode_config
 from test_provisioning_transport import Port, status
 from test_provisioning_serial import Port as DriverPort
 from lrrk_litewing_ai.provisioning_serial import ProvisioningSerial
+from lrrk_litewing_ai.provisioning_serial import SerialProvisioningError
 from lrrk_litewing_ai.usb_provisioning_wire import status_request
 from lrrk_litewing_ai.uavtalk import crc8
 
@@ -42,6 +43,7 @@ class CliTests(unittest.TestCase):
             result = cli.main(['create', '--directory', str(self.root), *self.args])
         self.assertEqual(result, 0)
         self.assertEqual(ports, ['closed'])
+        self.assertEqual(len(list(self.root.glob('*.stored'))),1)
         self.assertEqual(output.getvalue(), 'verified; pending bundle retained; activation not verified\n')
 
     def test_save_failure_never_opens(self):
@@ -58,6 +60,7 @@ class CliTests(unittest.TestCase):
             self.assertEqual(cli.main(['reconcile', '--bundle', str(path), *self.args]), 0)
         self.assertIsNone(opener.call_args.kwargs['request'])
         self.assertTrue(path.exists())
+        self.assertTrue(path.with_suffix('.stored').exists())
 
     def test_actual_host_stack_over_driver_double(self):
         root = self.root
@@ -87,3 +90,23 @@ class CliTests(unittest.TestCase):
         self.assertTrue(driver.assert_saved)
         self.assertTrue(driver.closed)
         self.assertEqual(len(driver.writes), 3)  # alignment query, one write, status query
+
+    def test_close_or_open_failure_retains_pending_without_stored_success(self):
+        for phase in ('open','close'):
+            directory = self.root / phase
+            directory.mkdir(mode=0o700)
+            def opener(*args, **kwargs):
+                self.assertEqual(len(list(directory.glob('*.pending'))),1)
+                if phase == 'open':
+                    raise SerialProvisioningError('synthetic private detail')
+                port = Port([status(kwargs['request'][10:26])])
+                def fail_close():
+                    raise SerialProvisioningError('synthetic private detail')
+                port.close = fail_close
+                return port
+            output = io.StringIO()
+            with patch.object(cli,'ProvisioningSerial',side_effect=opener), contextlib.redirect_stdout(output):
+                self.assertEqual(cli.main(['create','--directory',str(directory),*self.args]),2)
+            self.assertNotIn('private detail',output.getvalue())
+            self.assertFalse(list(directory.glob('*.stored')))
+            self.assertEqual(len(list(directory.glob('*.pending'))),1)
