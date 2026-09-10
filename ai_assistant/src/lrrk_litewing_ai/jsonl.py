@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import os
+import stat
 from pathlib import Path
 from typing import Any, Dict, Iterator
 
@@ -13,9 +15,24 @@ def canonical_json(value: Dict[str, Any]) -> str:
 
 def append_record(path: Path, record: Dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("a", encoding="utf-8") as handle:
-        handle.write(canonical_json(record))
-        handle.write("\n")
+    flags = os.O_WRONLY | os.O_APPEND | os.O_CREAT
+    if hasattr(os, "O_CLOEXEC"):
+        flags |= os.O_CLOEXEC
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
+
+    descriptor = os.open(path, flags, 0o600)
+    try:
+        if not stat.S_ISREG(os.fstat(descriptor).st_mode):
+            raise ValueError("audit destination must be a regular file")
+        os.fchmod(descriptor, 0o600)
+        with os.fdopen(descriptor, "a", encoding="utf-8") as handle:
+            descriptor = -1
+            handle.write(canonical_json(record))
+            handle.write("\n")
+    finally:
+        if descriptor >= 0:
+            os.close(descriptor)
 
 
 def iter_records(path: Path, allow_truncated_final_line: bool = False) -> Iterator[Dict[str, Any]]:

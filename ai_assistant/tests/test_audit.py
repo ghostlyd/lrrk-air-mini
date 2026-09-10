@@ -1,3 +1,5 @@
+import os
+import stat
 import sys
 import tempfile
 import unittest
@@ -13,6 +15,27 @@ from lrrk_litewing_ai.jsonl import canonical_json  # noqa: E402
 
 
 class AuditTests(unittest.TestCase):
+    def test_new_audit_log_is_private_despite_permissive_umask(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "audit.jsonl"
+            previous_umask = os.umask(0)
+            try:
+                AuditLog(path, "session-1").append("snapshot_received", {"id": "one"})
+            finally:
+                os.umask(previous_umask)
+
+            self.assertEqual(stat.S_IMODE(path.stat().st_mode), 0o600)
+
+    def test_append_retightens_existing_audit_permissions(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "audit.jsonl"
+            AuditLog(path, "session-1").append("snapshot_received", {"id": "one"})
+            path.chmod(0o644)
+
+            AuditLog(path, "session-1").append("snapshot_received", {"id": "two"})
+
+            self.assertEqual(stat.S_IMODE(path.stat().st_mode), 0o600)
+
     def test_hash_chain_and_secret_redaction(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "audit.jsonl"
