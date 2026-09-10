@@ -8,6 +8,7 @@
  * out of interrupt context.
  */
 #include "pios.h"
+#include <stdio.h>
 
 #ifdef PIOS_INCLUDE_I2C
 
@@ -69,7 +70,9 @@ static bool transfer_write(uint8_t reg, uint8_t value)
         .len = sizeof(buffer),
         .buf = buffer,
     };
-    return PIOS_I2C_Transfer(device.i2c_id, &transaction, 1u) == 0;
+    const int32_t result = PIOS_I2C_Transfer(device.i2c_id, &transaction, 1u);
+    if (result != 0) printf("[LiteWing] MPU write reg=%u result=%ld\n", reg, (long)result);
+    return result == 0;
 }
 
 static bool transfer_read(uint8_t reg, uint8_t *buffer, uint32_t length)
@@ -93,8 +96,10 @@ static bool transfer_read(uint8_t reg, uint8_t *buffer, uint32_t length)
             .buf = buffer,
         },
     };
-    return PIOS_I2C_Transfer(device.i2c_id, transactions,
-                             sizeof(transactions) / sizeof(transactions[0])) == 0;
+    const int32_t result = PIOS_I2C_Transfer(device.i2c_id, transactions,
+                             sizeof(transactions) / sizeof(transactions[0]));
+    if (result != 0) printf("[LiteWing] MPU read reg=%u result=%ld\n", reg, (long)result);
+    return result == 0;
 }
 
 static bool read_who_am_i(uint8_t *who_am_i)
@@ -107,8 +112,9 @@ static bool configure_sensor(void)
 {
     uint8_t who_am_i = 0;
 
-    if (!read_who_am_i(&who_am_i) ||
-        !litewing_mpu6050_identity_valid(who_am_i)) {
+    const bool identity_read = read_who_am_i(&who_am_i);
+    printf("[LiteWing] MPU identity read=%u value=%u\n", (unsigned)identity_read, who_am_i);
+    if (!identity_read || !litewing_mpu6050_identity_valid(who_am_i)) {
         return false;
     }
     if (!transfer_write(LITEWING_MPU6050_REG_PWR_MGMT_1,
@@ -302,7 +308,9 @@ int32_t PIOS_LiteWing_MPU6050_Init(uint32_t i2c_id, uint8_t address)
     device.sample_seen = false;
     device.last_sample_ms = 0;
 
-    if (!PIOS_ESP32_I2C_Probe(i2c_id, address) || !configure_sensor()) {
+    const bool probe = PIOS_ESP32_I2C_Probe(i2c_id, address);
+    printf("[LiteWing] MPU address probe=%u\n", (unsigned)probe);
+    if (!probe || !configure_sensor()) {
         set_health(false);
         return -2;
     }
