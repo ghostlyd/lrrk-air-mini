@@ -263,3 +263,37 @@ timing under flight load, GCS NaN rendering, or bench/flight qualification.
 Full port discovery with both pinned external source fixtures supplied:
 322 tests run, 310 passed, 12 skipped, in 125.274 seconds. This includes the
 previously skipped source-dependent module lifecycle/regression fixtures.
+
+## Request-time voltage expiry
+
+Independent review found that ONCHANGE metadata did not prevent an explicit
+OBJ_REQ from returning stale stored voltage after the acquisition worker stalled.
+At `34b25c5`, every prepared UAVTalk object send uses a target packing boundary.
+For FlightBatteryState it copies the authoritative value, validity, and
+acquisition timestamp together under a critical section, then checks age using
+the local monotonic clock. Expired, future, invalid, and uninitialized samples
+serialize as NaN, without falling back to cached object storage. ADC-read and
+publication errors invalidate that authoritative sample. Other objects retain
+the original packing behavior. The pinned wire layout remains 30 bytes.
+
+The actual prepared request-handler regression was observed failing on the
+old cached-value path. The fixed protocol suite covers fresh, 500 ms boundary,
+expired, future, invalid, uninitialized, and unrelated-object requests. Worker
+tests also check wire output following acquisition and publication failures.
+
+This establishes freshness **at serialization**, not at receipt. The legacy
+wire schema has no acquisition timestamp; delayed transport can still deliver
+an old packet. Host receipt time must not be described as acquisition time.
+
+ESP-IDF 5.3.2 build passed at `34b25c5`:
+
+- Application size: `0x5dc30`, with 63% of the application partition free.
+- Application SHA-256:
+  `2e1417e65ef686ed9963e9666da073bf4b2e14ef6b5babaa04c61474bb573efa`.
+- Assistant suite: 179 run, 170 passed, nine optional-SDK tests skipped.
+
+The first full-port invocation selected system Python for nested build-script
+tests and failed two wrappers because that interpreter lacks `enterContext`.
+Those three build-script tests pass with Homebrew Python first on PATH; the
+complete suite is being rerun with the documented host environment.
+No device access, flashing, arming, settings changes, or motor output occurred.
