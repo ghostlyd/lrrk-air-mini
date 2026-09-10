@@ -91,7 +91,7 @@ checksum-valid sample observations:
 | --- | --- |
 | `FlightStatus` | 29 samples; every `Armed` value was `Disarmed` |
 | `ActuatorCommand` | 58 samples; channels 1..4 were zero in every sample |
-| Requested settings | 28 samples each of ManualControl, Actuator, Mixer, FlightMode and Hw settings; one unique raw payload per object |
+| Requested settings | 28 samples each of `ManualControlSettings`, `ActuatorSettings`, `MixerSettings`, `FlightModeSettings` and `HwSettings`; one unique raw payload per object |
 | `FlightModeSettings.Arming` | `Always Disarmed` |
 | `AttitudeState` | 749 finite samples with changing roll, pitch, yaw and quaternion values |
 | `GyroState` | 30 finite, changing filtered samples |
