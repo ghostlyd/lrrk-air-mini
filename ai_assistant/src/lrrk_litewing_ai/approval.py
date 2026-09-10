@@ -10,7 +10,7 @@ from typing import Any, Dict, Optional
 
 from .jsonl import canonical_json
 from .models import TelemetrySnapshot
-from .safety import run_preflight
+from .safety import SafetyPolicy, run_preflight
 
 
 IDLE = "IDLE"
@@ -46,6 +46,8 @@ class ActionProposal:
     expires_at: datetime
     snapshot_hash: str
     operator_session: str
+    policy_version: str
+    policy_hash: str
     proposal_hash: str
 
     def to_dict(self) -> Dict[str, Any]:
@@ -58,6 +60,8 @@ class ActionProposal:
             "expires_at": self.expires_at.astimezone(timezone.utc).isoformat().replace("+00:00", "Z"),
             "snapshot_hash": self.snapshot_hash,
             "operator_session": self.operator_session,
+            "policy_version": self.policy_version,
+            "policy_hash": self.policy_hash,
             "proposal_hash": self.proposal_hash,
         }
 
@@ -67,13 +71,31 @@ def _canonical_proposal_fields(fields: Dict[str, Any]) -> str:
 
 
 class ApprovalStateMachine:
-    def __init__(self, operator_session: str):
+    def __init__(self, operator_session: str, policy: SafetyPolicy = SafetyPolicy()):
         if not operator_session or not isinstance(operator_session, str):
             raise ApprovalError("operator_session must be non-empty")
         self.operator_session = operator_session
+        self._policy = policy
         self.state = IDLE
         self.proposal: Optional[ActionProposal] = None
         self._approval_digest: Optional[str] = None
+
+    @property
+    def policy(self) -> SafetyPolicy:
+        return self._policy
+
+    @policy.setter
+    def policy(self, policy: SafetyPolicy) -> None:
+        self._policy = policy
+        self._policy_is_current()
+
+    def _policy_is_current(self) -> bool:
+        if self.state in (PROPOSAL_READY, APPROVED) and self.proposal is not None:
+            if (self.policy.policy_version != self.proposal.policy_version
+                    or self.policy.policy_hash() != self.proposal.policy_hash):
+                self.abort("safety policy changed after proposal creation")
+                return False
+        return True
 
     def create_proposal(
         self,
@@ -105,6 +127,8 @@ class ApprovalStateMachine:
             "expires_at": expires_at,
             "snapshot_hash": snapshot.snapshot_hash(),
             "operator_session": self.operator_session,
+            "policy_version": self.policy.policy_version,
+            "policy_hash": self.policy.policy_hash(),
         }
         hash_fields = dict(fields)
         hash_fields["created_at"] = created_at.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
@@ -122,6 +146,8 @@ class ApprovalStateMachine:
         current_snapshot: TelemetrySnapshot,
         now: Optional[datetime] = None,
     ) -> Dict[str, Any]:
+        if not self._policy_is_current():
+            raise ApprovalError("safety policy changed after proposal creation")
         if self.state != PROPOSAL_READY or self.proposal is None:
             raise ApprovalError("no proposal is waiting for approval")
         if proposal_id != self.proposal.proposal_id:
@@ -137,7 +163,7 @@ class ApprovalStateMachine:
         if current_snapshot.snapshot_hash() != self.proposal.snapshot_hash:
             self.state = ABORTED
             raise ApprovalError("telemetry changed after proposal creation")
-        report = run_preflight(current_snapshot, now=current)
+        report = run_preflight(current_snapshot, policy=self.policy, now=current)
         if report.overall in ("BLOCKED", "INCOMPLETE"):
             self.state = ABORTED
             raise ApprovalError("current safety report is not complete and clear")
@@ -147,6 +173,8 @@ class ApprovalStateMachine:
             "state": self.state,
             "proposal_id": proposal_id,
             "proposal_hash": self.proposal.proposal_hash,
+            "policy_version": self.proposal.policy_version,
+            "policy_hash": self.proposal.policy_hash,
             "approved_at": current.astimezone(timezone.utc).isoformat().replace("+00:00", "Z"),
             "approval_token_hash": self._approval_digest,
         }
@@ -178,6 +206,8 @@ class ApprovalStateMachine:
         return False
 
     def approval_is_current(self, current_snapshot: TelemetrySnapshot, now: Optional[datetime] = None) -> bool:
+        if not self._policy_is_current():
+            return False
         if self.state != APPROVED or self.proposal is None or self._approval_digest is None:
             return False
         current = now or datetime.now(timezone.utc)
@@ -190,7 +220,7 @@ class ApprovalStateMachine:
             self._approval_digest = None
             return False
         # The snapshot can expire without its bytes/hash changing.
-        if run_preflight(current_snapshot, now=current).overall != "PASS":
+        if run_preflight(current_snapshot, policy=self.policy, now=current).overall != "PASS":
             self.state = ABORTED
             self._approval_digest = None
             return False

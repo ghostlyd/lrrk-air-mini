@@ -2,12 +2,17 @@
 
 from __future__ import annotations
 
+import hashlib
 import math
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from typing import Any, Dict, Iterable, Optional, Tuple
 
+from .jsonl import canonical_json
 from .models import TelemetrySnapshot
+
+
+ANALYZER_VERSION = "litewing-safety-3"
 
 
 @dataclass(frozen=True)
@@ -17,6 +22,14 @@ class SafetyPolicy:
     min_battery_voltage_v: float = 3.30
     warn_battery_percent: float = 20.0
     accepted_imu_identities: Tuple[str, ...] = ("MPU6050", "0x68", "0x69", "104", "105")
+
+    @property
+    def policy_version(self) -> str:
+        return ANALYZER_VERSION
+
+    def policy_hash(self) -> str:
+        fields = {"analyzer_version": self.policy_version, "policy": asdict(self)}
+        return hashlib.sha256(canonical_json(fields).encode("utf-8")).hexdigest()
 
 
 @dataclass(frozen=True)
@@ -212,7 +225,7 @@ def run_preflight(
     return PreflightReport(
         snapshot_hash=snapshot.snapshot_hash(),
         generated_at=current,
-        analyzer_version="litewing-safety-3",
+        analyzer_version=ANALYZER_VERSION,
         overall=overall,
         findings=tuple(findings),
     )

@@ -17,6 +17,32 @@ approval rechecks freshness. Capture timestamps must come from trusted metadata.
 An already approved proposal also rechecks preflight whenever its currentness
 is queried; an unchanged snapshot hash cannot extend telemetry freshness.
 
+Approval is a short-lived advisory record bound to both telemetry and the
+configured safety policy. Proposals and approval results include
+`policy_version` (the analyzer version) and `policy_hash` (SHA-256 of canonical
+JSON containing the analyzer version and every `SafetyPolicy` field). Both
+fields are included in `proposal_hash`. Default thresholds remain unchanged;
+new proposal hashes include the policy binding, so regenerate earlier proposals.
+
+Configure `AssistantRuntime(policy=SafetyPolicy(...))`, and replace a policy
+through `runtime.policy = SafetyPolicy(...)`. The runtime and
+`runtime.approvals.policy` share one policy source; standalone state machines
+also accept `ApprovalStateMachine(operator_session, policy=...)` and public
+`machine.policy` replacement. Any changed policy identity immediately moves
+a pending or approved record to `ABORTED` and clears its approval digest.
+Replacing a policy with the same identity preserves the record. Approval and
+currentness checks recheck the bound identity and apply that exact configured
+policy, including customized freshness budgets; they never revert to defaults.
+
+`runtime.ingest(snapshot)` immediately aborts a pending or approved record when
+the incoming snapshot hash differs from the proposal's snapshot hash.
+Re-ingesting identical normalized telemetry preserves the record but does not
+extend its expiry or freshness budget. Ingestion only updates observations and
+advisory state. A new proposal and explicit human approval are required after
+invalidation; restoring an earlier policy or snapshot cannot revive approval.
+The raw human token is neither retained nor returned. Approval still grants
+no flight execution authority.
+
 Normalized snapshot schema **2** distinguishes unknown alarm state (`null`)
 from a complete report with no alarms (`[]`). JSONL schema 1 remains readable,
 but omitted/null alarms now stay unknown rather than silently becoming clear.
@@ -64,9 +90,9 @@ live mode fails closed; offline mode remains usable.
 
 The live agent is limited to the read-only tool surface in
 `ai_assistant/src/lrrk_litewing_ai/tools.py`. Proposals are not execution.
-Approval requires an operator-provided token, the same current snapshot hash,
-a short expiry, and a clear deterministic preflight report. Link loss, state
-drift, alarm escalation, or expiry invalidates approval.
+Approval requires an operator-provided token, the same current snapshot and
+policy identities, a short expiry, and a clear deterministic preflight report.
+Link loss, state or policy drift, alarm escalation, or expiry invalidates approval.
 
 ### Provider audit events
 

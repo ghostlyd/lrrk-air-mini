@@ -5,6 +5,16 @@ It reads normalized telemetry, runs deterministic preflight checks, records
 redacted hash-chained audit events, and creates bounded proposals for explicit
 human review.
 
+Approval is a short-lived advisory record bound to the exact telemetry hash
+and configured safety policy. Proposals and approval results carry the
+human-readable analyzer/policy version and a canonical JSON SHA-256 policy
+hash; both participate in the proposal hash. Changing `runtime.policy` or
+ingesting telemetry with a different bound snapshot hash immediately aborts
+pending/approved state and clears the approval digest. Identical telemetry or
+an equivalent policy does not create drift or extend freshness. Approval
+requires an explicit human token, which is never stored or returned raw, and
+grants no flight execution authority. See [approval policy binding](../docs/AI_ASSISTANT.md#offline-first).
+
 The default mode is offline. It needs no API key, network, firmware change, or
 flight-controller write path:
 

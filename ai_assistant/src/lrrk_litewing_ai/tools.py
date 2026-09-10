@@ -2,10 +2,9 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
 from typing import Any, Dict, Optional
 
-from .approval import ApprovalStateMachine
+from .approval import APPROVED, PROPOSAL_READY, ApprovalStateMachine
 from .models import TelemetrySnapshot
 from .safety import PreflightReport, SafetyPolicy, run_preflight
 
@@ -59,19 +58,36 @@ TOOL_SCHEMAS = (
 )
 
 
-@dataclass
 class AssistantRuntime:
-    policy: SafetyPolicy = field(default_factory=SafetyPolicy)
-    operator_session: str = "offline-session"
-    latest: Optional[TelemetrySnapshot] = None
-    previous: Optional[TelemetrySnapshot] = None
-    last_report: Optional[PreflightReport] = None
-    approvals: ApprovalStateMachine = field(init=False)
+    def __init__(
+        self,
+        policy: SafetyPolicy = SafetyPolicy(),
+        operator_session: str = "offline-session",
+        latest: Optional[TelemetrySnapshot] = None,
+        previous: Optional[TelemetrySnapshot] = None,
+        last_report: Optional[PreflightReport] = None,
+    ):
+        self.operator_session = operator_session
+        self.latest = latest
+        self.previous = previous
+        self.last_report = last_report
+        self.approvals = ApprovalStateMachine(operator_session, policy=policy)
 
-    def __post_init__(self) -> None:
-        self.approvals = ApprovalStateMachine(self.operator_session)
+    @property
+    def policy(self) -> SafetyPolicy:
+        # One policy source for preflight, proposals, approval and currentness.
+        return self.approvals.policy
+
+    @policy.setter
+    def policy(self, policy: SafetyPolicy) -> None:
+        self.approvals.policy = policy
+        self.last_report = None
 
     def ingest(self, snapshot: TelemetrySnapshot) -> None:
+        proposal = self.approvals.proposal
+        if (self.approvals.state in (PROPOSAL_READY, APPROVED)
+                and proposal is not None and snapshot.snapshot_hash() != proposal.snapshot_hash):
+            self.approvals.abort("telemetry changed after proposal creation")
         self.previous = self.latest
         self.latest = snapshot
         self.last_report = None
