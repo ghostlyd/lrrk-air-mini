@@ -93,6 +93,56 @@ class ArmMotorEvidenceTests(unittest.TestCase):
             with self.subTest(label=label), self.assertRaises(evidence.EvidenceError):
                 evidence.validate_record(candidate)
 
+    def test_exact_decoded_sample_set_and_counts_are_pinned(self):
+        cases = []
+
+        truncated_nonzero = copy.deepcopy(self.record)
+        truncated_nonzero["decode"]["nonzero_actuator_samples"] = truncated_nonzero[
+            "decode"
+        ]["nonzero_actuator_samples"][:3]
+        truncated_nonzero["decode"]["summary"].update({
+            "nonzero_motor_samples": 3,
+            "max_observed_motor_command": 80,
+            "peak_motor_channels": [80, 0, 0, 70],
+        })
+        cases.append(("truncated nonzero sample set", truncated_nonzero))
+
+        altered_motor = copy.deepcopy(self.record)
+        altered_motor["decode"]["nonzero_actuator_samples"][0]["motors"][0] = 72
+        cases.append(("altered in-range motor sample", altered_motor))
+
+        altered_frame = copy.deepcopy(self.record)
+        altered_frame["decode"]["nonzero_actuator_samples"][0]["valid_frame"] = 534
+        cases.append(("altered valid-frame ordinal", altered_frame))
+
+        truncated_zero = copy.deepcopy(self.record)
+        zeros = truncated_zero["decode"]["post_nonzero_zero_samples"]
+        truncated_zero["decode"]["post_nonzero_zero_samples"] = [
+            zeros[0], zeros[1], zeros[-1]
+        ]
+        truncated_zero["decode"]["summary"]["post_nonzero_zero_samples"] = 3
+        cases.append(("truncated trailing-zero sample set", truncated_zero))
+
+        altered_count = copy.deepcopy(self.record)
+        altered_count["decode"]["object_samples"]["FlightStatus"] = 33
+        cases.append(("altered object sample count", altered_count))
+
+        for label, candidate in cases:
+            with self.subTest(label=label), self.assertRaises(evidence.EvidenceError):
+                evidence.validate_record(candidate)
+
+    def test_link_closure_residual_arming_hazard_is_explicit(self):
+        readme = (REPO_ROOT / "README.md").read_text(encoding="utf-8")
+        report = (
+            REPO_ROOT
+            / "docs/verification/armed-nonzero-motor-proof-2026-09-09.md"
+        ).read_text(encoding="utf-8")
+
+        for text in (readme, report):
+            normalized = " ".join(text.split())
+            self.assertIn("serial link does not clear", normalized)
+            self.assertIn("must assume `Always Armed` remains active", normalized)
+
     def test_post_pulse_and_terminal_state_require_armed_zero_output(self):
         cases = []
 

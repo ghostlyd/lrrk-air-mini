@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 from datetime import datetime
+import hashlib
 import json
 import math
 from pathlib import Path
@@ -30,6 +31,7 @@ EXPECTED_PROBE_SHA256 = "0fea2cbcfba9bece72e2b62dd5f848386b4aeb5bec4c8ee6e2817ac
 EXPECTED_PROBE_TEST_SHA256 = "6c3c6337f461bb2ff884544ab041e96baed147acc8cb60c5d69d90a709988755"
 EXPECTED_FLIGHT_REVISION = "ac77304a58de6c8bd552f94668b46903adb71cb2"
 EXPECTED_PROBE_TESTS = 23
+EXPECTED_DECODE_SHA256 = "f2cdc1c216929ddd0a19c8a496bc35b663d9cbfad03cfc6311d070087ff285ee"
 
 
 class EvidenceError(ValueError):
@@ -231,6 +233,11 @@ def validate_record(record: Any) -> dict[str, Any]:
         },
         "decode",
     )
+    decoded_bytes = json.dumps(
+        decoded, sort_keys=True, separators=(",", ":"), ensure_ascii=False
+    ).encode("utf-8")
+    _require(hashlib.sha256(decoded_bytes).hexdigest() == EXPECTED_DECODE_SHA256,
+             "decoded observations differ from the reviewed sample set")
     valid_frames = _require_int(decoded["valid_frames"], "decode.valid_frames", 1)
     object_samples = _require_keys(
         decoded["object_samples"],
@@ -304,7 +311,7 @@ def validate_record(record: Any) -> dict[str, Any]:
         "limitations",
     )
     _require(limitations["terminal_scope"] ==
-             "last in-session telemetry; RAM-only and not a current-state claim after link closure",
+             "last in-session telemetry; RAM arming may survive serial link closure while USB power remains",
              "terminal-state scope is missing or overstated")
     claims = limitations["claims_not_established"]
     _require(isinstance(claims, list) and len(claims) >= 4 and

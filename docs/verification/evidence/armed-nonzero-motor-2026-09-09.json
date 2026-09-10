@@ -225,11 +225,12 @@
     }
   },
   "limitations": {
-    "terminal_scope": "last in-session telemetry; RAM-only and not a current-state claim after link closure",
+    "terminal_scope": "last in-session telemetry; RAM arming may survive serial link closure while USB power remains",
     "claims_not_established": [
       "electrical PWM duty or cutoff timing",
       "physical motor rotation during this transaction",
-      "persistent arming state after reset or reconnect",
+      "current RAM arming state after capture closure; Always Armed remains the conservative assumption until reset or power cycle and disarmed telemetry are verified",
+      "arming state after a verified reset or power cycle",
       "battery-powered operation or flight readiness"
     ]
   }
