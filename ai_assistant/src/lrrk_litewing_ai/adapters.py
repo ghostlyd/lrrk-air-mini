@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 from datetime import datetime
+import math
 from typing import Iterable, Iterator, Protocol, Union
 
 from .jsonl import iter_records
@@ -38,13 +39,52 @@ class JsonlTelemetryAdapter:
 
 
 class UAVTalkAdapter:
-    """Reserved protocol boundary; deliberately has no write operation."""
+    """Collect one bounded, read-side aggregate from the pinned LiteWing target."""
 
-    def __init__(self, endpoint: str):
-        self.endpoint = endpoint
+    def __init__(
+        self,
+        device: str,
+        location: str,
+        capture_path: Union[str, Path],
+        duration_s: float = 2.0,
+    ):
+        if (isinstance(duration_s, bool)
+                or not isinstance(duration_s, (int, float))
+                or not math.isfinite(duration_s)
+                or not 0.1 <= duration_s <= 5.0):
+            raise AdapterError("live collection duration must be 0.1..5.0 seconds")
+        self.device = device
+        self.location = location
+        self.capture_path = Path(capture_path)
+        self.duration_s = duration_s
 
     def snapshots(self) -> Iterator[TelemetrySnapshot]:
-        raise AdapterError("UAVTalk adapter is not enabled in the offline build")
+        from .live_uavtalk import (
+            LiveUAVTalkCollector,
+            SerialTelemetryTransport,
+            UAVTalkLiveError,
+        )
+
+        try:
+            transport = SerialTelemetryTransport(self.device, self.location)
+        except (UAVTalkLiveError, OSError) as exc:
+            raise AdapterError(str(exc)) from exc
+        try:
+            collector = LiveUAVTalkCollector(
+                transport,
+                self.capture_path,
+                duration_s=self.duration_s,
+            )
+        except (UAVTalkLiveError, OSError) as exc:
+            try:
+                transport.close()
+            except Exception:
+                pass
+            raise AdapterError(str(exc)) from exc
+        try:
+            yield collector.collect()
+        except (UAVTalkLiveError, OSError) as exc:
+            raise AdapterError(str(exc)) from exc
 
 
 class UAVTalkCaptureAdapter:

@@ -13,6 +13,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
 from lrrk_litewing_ai.audit import validate_replay  # noqa: E402
+from lrrk_litewing_ai.adapters import JsonlTelemetryAdapter  # noqa: E402
 from lrrk_litewing_ai.cli import main  # noqa: E402
 
 
@@ -49,6 +50,96 @@ class CliTests(unittest.TestCase):
             if original is not None:
                 os.environ["OPENAI_API_KEY"] = original
         self.assertEqual(result, 3)
+
+    def test_live_uavtalk_routes_exact_device_capture_and_duration(self):
+        snapshot = next(JsonlTelemetryAdapter(FIXTURE).snapshots())
+        adapter = patch("lrrk_litewing_ai.cli.UAVTalkAdapter", autospec=True)
+        with tempfile.TemporaryDirectory() as directory, adapter as adapter_class:
+            capture = Path(directory) / "private.uavtalk"
+            adapter_class.return_value.snapshots.return_value = iter((snapshot,))
+            output = io.StringIO()
+            with contextlib.redirect_stdout(output):
+                result = main([
+                    "--input-format", "uavtalk-live",
+                    "--device", "/dev/cu.wchusbserial410",
+                    "--usb-location", "4-1",
+                    "--private-capture", str(capture),
+                    "--duration", "0.75",
+                    "--json",
+                ])
+
+        self.assertEqual(result, 0)
+        adapter_class.assert_called_once_with(
+            device="/dev/cu.wchusbserial410",
+            location="4-1",
+            capture_path=capture,
+            duration_s=0.75,
+        )
+        self.assertIn('"overall":', output.getvalue())
+
+    def test_input_modes_reject_missing_and_cross_mode_flags(self):
+        cases = (
+            [],
+            ["--input-format", "jsonl", "--device", "/dev/cu.test"],
+            ["--input", str(FIXTURE), "--input-format", "uavtalk-live",
+             "--device", "/dev/cu.test", "--usb-location", "4-1",
+             "--private-capture", "/tmp/private.uavtalk"],
+            ["--input-format", "uavtalk-live", "--device", "/dev/cu.test",
+             "--usb-location", "4-1"],
+            ["--input-format", "uavtalk-live", "--device", "/dev/cu.test",
+             "--usb-location", "4-1", "--private-capture", "/tmp/private.uavtalk",
+             "--duration", "nan"],
+            ["--input-format", "uavtalk-live", "--device", "/dev/cu.test",
+             "--usb-location", "4-1", "--private-capture", "/tmp/private.uavtalk",
+             "--duration", "5.01"],
+            ["--input", str(FIXTURE), "--input-format", "uavtalk",
+             "--captured-at", "2026-09-09T10:00:00Z",
+             "--private-capture", "/tmp/private.uavtalk"],
+        )
+        for argv in cases:
+            with self.subTest(argv=argv), contextlib.redirect_stderr(io.StringIO()):
+                self.assertEqual(main(argv), 2)
+
+    def test_live_capture_and_audit_paths_must_be_distinct(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "shared-output"
+            with patch("lrrk_litewing_ai.cli.UAVTalkAdapter", autospec=True) as adapter:
+                with contextlib.redirect_stderr(io.StringIO()):
+                    result = main([
+                        "--input-format", "uavtalk-live",
+                        "--device", "/dev/cu.wchusbserial410",
+                        "--usb-location", "4-1",
+                        "--private-capture", str(path),
+                        "--audit-log", str(path.parent / "." / path.name),
+                    ])
+
+        self.assertEqual(result, 2)
+        adapter.assert_not_called()
+
+    def test_live_capture_and_audit_inode_alias_is_blocked_before_append(self):
+        snapshot = next(JsonlTelemetryAdapter(FIXTURE).snapshots())
+        with tempfile.TemporaryDirectory() as directory:
+            capture = Path(directory) / "capture.uavtalk"
+            audit = Path(directory) / "audit.jsonl"
+
+            def snapshots():
+                capture.write_bytes(b"private raw capture")
+                os.link(capture, audit)
+                return iter((snapshot,))
+
+            with patch("lrrk_litewing_ai.cli.UAVTalkAdapter", autospec=True) as adapter:
+                adapter.return_value.snapshots.side_effect = snapshots
+                with contextlib.redirect_stderr(io.StringIO()):
+                    result = main([
+                        "--input-format", "uavtalk-live",
+                        "--device", "/dev/cu.wchusbserial410",
+                        "--usb-location", "4-1",
+                        "--private-capture", str(capture),
+                        "--audit-log", str(audit),
+                    ])
+
+            self.assertEqual(result, 2)
+            self.assertEqual(capture.read_bytes(), b"private raw capture")
 
 
 if __name__ == "__main__":

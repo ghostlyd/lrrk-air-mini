@@ -10,7 +10,12 @@ from pathlib import Path
 from datetime import datetime
 from typing import Iterable, Optional, Sequence
 
-from .adapters import AdapterError, JsonlTelemetryAdapter, UAVTalkCaptureAdapter
+from .adapters import (
+    AdapterError,
+    JsonlTelemetryAdapter,
+    UAVTalkAdapter,
+    UAVTalkCaptureAdapter,
+)
 from .agent import create_assistant
 from .audit import AuditLog
 from .tools import AssistantRuntime, run_preflight_tool
@@ -18,9 +23,17 @@ from .tools import AssistantRuntime, run_preflight_tool
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Offline-first LiteWing telemetry assistant")
-    parser.add_argument("--input", type=Path, required=True, help="JSONL telemetry input")
-    parser.add_argument("--input-format", choices=("jsonl", "uavtalk"), default="jsonl")
+    parser.add_argument("--input", type=Path, help="JSONL or saved UAVTalk telemetry input")
+    parser.add_argument(
+        "--input-format",
+        choices=("jsonl", "uavtalk", "uavtalk-live"),
+        default="jsonl",
+    )
     parser.add_argument("--captured-at", help="timezone-aware capture time, required for UAVTalk replay")
+    parser.add_argument("--device", help="live /dev/cu.* serial device")
+    parser.add_argument("--usb-location", help="exact live USB topology location")
+    parser.add_argument("--private-capture", type=Path, help="new mode-0600 live capture path")
+    parser.add_argument("--duration", type=float, help="live collection duration in seconds (0.1..5.0)")
     parser.add_argument("--audit-log", type=Path, help="append-only JSONL audit destination")
     parser.add_argument("--session", default="cli-session", help="operator session identifier")
     parser.add_argument("--prompt", help="optional offline prompt or live-agent prompt")
@@ -50,9 +63,36 @@ def _live_prompt(agent: object, prompt: str) -> str:
 def main(argv: Optional[Sequence[str]] = None) -> int:
     args = build_parser().parse_args(argv)
     runtime = AssistantRuntime(operator_session=args.session)
-    audit = AuditLog(args.audit_log, args.session) if args.audit_log else None
+    audit = None
     try:
-        if args.input_format == "uavtalk":
+        live_values = (args.device, args.usb_location, args.private_capture, args.duration)
+        if args.input_format == "uavtalk-live":
+            if args.input is not None or args.captured_at:
+                raise AdapterError("--input and --captured-at do not apply to live UAVTalk")
+            missing = [
+                flag for flag, value in (
+                    ("--device", args.device),
+                    ("--usb-location", args.usb_location),
+                    ("--private-capture", args.private_capture),
+                ) if value is None
+            ]
+            if missing:
+                raise AdapterError("live UAVTalk requires %s" % ", ".join(missing))
+            if (args.audit_log is not None
+                    and args.private_capture.resolve(strict=False)
+                    == args.audit_log.resolve(strict=False)):
+                raise AdapterError("--private-capture and --audit-log must be distinct paths")
+            adapter = UAVTalkAdapter(
+                device=args.device,
+                location=args.usb_location,
+                capture_path=args.private_capture,
+                duration_s=2.0 if args.duration is None else args.duration,
+            )
+        elif args.input_format == "uavtalk":
+            if args.input is None:
+                raise AdapterError("--input is required for UAVTalk replay")
+            if any(value is not None for value in live_values):
+                raise AdapterError("live transport flags apply only to --input-format uavtalk-live")
             if not args.captured_at:
                 raise AdapterError("--captured-at is required for UAVTalk replay")
             try:
@@ -61,11 +101,22 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                 raise AdapterError("invalid --captured-at timestamp") from exc
             adapter = UAVTalkCaptureAdapter(args.input, captured_at)
         else:
+            if args.input is None:
+                raise AdapterError("--input is required for JSONL replay")
+            if any(value is not None for value in live_values):
+                raise AdapterError("live transport flags apply only to --input-format uavtalk-live")
             if args.captured_at:
                 raise AdapterError("--captured-at applies only to UAVTalk replay")
             adapter = JsonlTelemetryAdapter(args.input)
+        audit = AuditLog(args.audit_log, args.session) if args.audit_log else None
         snapshots = list(adapter.snapshots())
-    except (AdapterError, OSError) as exc:
+        if (args.input_format == "uavtalk-live"
+                and args.audit_log is not None
+                and args.private_capture.exists()
+                and args.audit_log.exists()
+                and args.private_capture.samefile(args.audit_log)):
+            raise AdapterError("--private-capture and --audit-log resolve to the same file")
+    except (AdapterError, OSError, ValueError) as exc:
         print("telemetry input blocked: %s" % exc, file=sys.stderr)
         return 2
     if not snapshots:

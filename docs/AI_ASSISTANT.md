@@ -70,10 +70,52 @@ drift, alarm escalation, or expiry invalidates approval.
 
 ## Protocol boundary
 
-The first adapter is JSONL replay. `UAVTalkAdapter` is a deliberately
-read-only boundary until the NinjaPilot telemetry schema and transport are
-validated against the selected target. No adapter may issue an actuator,
-arming, gain, failsafe, takeoff, landing, or navigation write.
+The JSONL and saved-capture adapters are deterministic replay paths.
+`UAVTalkAdapter` now provides a bounded live read-side path for the pinned
+NinjaPilot schema. No adapter may issue an actuator, arming, settings,
+persistence, receiver, gain, failsafe, takeoff, landing, or navigation write.
+
+### Bounded live serial collection
+
+Install the host-only transport extra in a Python 3.11+ environment:
+
+```sh
+python3 -m pip install './ai_assistant[uavtalk]'
+```
+
+Then select the exact serial node and USB topology location reported by
+`serial.tools.list_ports`, and provide a new private capture destination:
+
+```sh
+PYTHONPATH=ai_assistant/src python3 -m lrrk_litewing_ai.cli \
+  --input-format uavtalk-live \
+  --device /dev/cu.wchusbserial410 \
+  --usb-location 4-1 \
+  --private-capture /path/to/new-private-capture.uavtalk \
+  --duration 2 --json
+```
+
+Live and replay arguments are mutually exclusive, and private capture and
+audit paths must be distinct. The live path requires an
+exact `1A86:7522` identity/location match before opening, deasserts DTR/RTS
+before the open, and uses exclusive 57600-baud access. It creates the inbound
+capture with exclusive-create semantics and mode `0600`, caps it at 1 MiB,
+and preserves a partial capture when collection fails. Initial framing noise
+is tolerated only within the 4096-byte synchronization bound; framing errors
+after synchronization are fatal.
+
+The only outbound frames are GCS telemetry handshake status 1 or 3, read
+requests for `AttitudeState`, `FlightStatus`, `FlightBatteryState`,
+`SystemAlarms`, and `ActuatorCommand`, and acknowledgements required for those
+objects or `FlightTelemetryStats`. The collector returns only after all five
+selected objects form one aggregate. It records their receipt span as link
+age, combines actuator mapping/update faults with system alarms, and leaves
+unobserved sensor and board identity fields unknown. A disconnect clears every
+partial object so aggregates cannot cross link epochs. An Armed aggregate is
+deterministically `BLOCKED`; the optional model cannot override that result.
+If the fifth object shares a read with the beginning of another frame, the
+collector stops all outbound traffic and spends at most 250 ms reading exactly
+the bytes needed to validate that already-started frame before returning.
 
 ### Binary capture inspection
 
@@ -136,10 +178,10 @@ channels outside that mapping and the reported failed-update counter become
 blocking evidence. A zero failure counter does not establish a clear global
 alarm state or prove physical gate-pin timing.
 
-The snapshot's source identifies the decoder schema, not the aircraft's actual
+The replay snapshot's source identifies the decoder schema, not the aircraft's actual
 firmware. IMU identity/health, physical actuator outputs, battery percentage, and board
 identity remain unknown. Battery voltage/current are received observations;
 the current target wrapper has no verified battery measurement producer.
-Live transport and per-object freshness/aggregation remain required before
-declaring telemetry integration complete. Physical target captures now exist,
-but are replay evidence, not current flight readiness or an active AI link.
+The live adapter adds bounded per-object receipt aggregation and USB-bridge
+identity, but it still does not authenticate the aircraft, establish physical
+motor output, prove flight readiness, or authorize an AI flight action.

@@ -100,8 +100,8 @@ Tests must prove:
 - Python 3.11+ for the assistant service;
 - standard library for the deterministic core;
 - `pytest` for tests;
-- `cflib` or the pinned NinjaPilot `pyuavtalk` client only in protocol adapter
-  extras;
+- `pyserial` for exclusive live UAVTalk serial transport, with `cflib` isolated
+  to a separate future Crazyflie host extra;
 - `openai-agents` only in the optional live-AI extra;
 - an explicitly approved host secret destination for `OPENAI_API_KEY` before
   any live API call.
@@ -117,3 +117,6 @@ No dependency is installed on the ESP32-S3 flight image for AI assistance.
 - The assistant reports “not enough evidence” rather than inventing missing
   position, battery, or sensor data.
 - The implementation is independently testable from the firmware build.
+- Live serial mode exact-matches USB `1A86:7522` and topology location, writes
+  a new private bounded capture, aggregates only five pinned telemetry objects,
+  and exposes no flight-state write API.
