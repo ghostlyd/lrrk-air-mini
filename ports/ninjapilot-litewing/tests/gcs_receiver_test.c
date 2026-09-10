@@ -39,6 +39,8 @@ int32_t UAVObjUnpack(UAVObjHandle obj, uint16_t instance, const uint8_t *data) {
     if (inject_claim) {
         inject_claim = false;
         assert(PIOS_LiteWing_GCSReceiver_ClaimWireless(wifi_session, 1) == -1);
+        uint64_t token=99;
+        assert(PIOS_LiteWing_GCSReceiver_BeginAdmission(1,&token)==-1 && token==0);
         assert(object.Channel[0] == 0 && unpacked_events == 0);
     }
 #endif
@@ -135,6 +137,27 @@ int main(int argc,char **argv) {
         inject_newer=true; input(1500); expect(0,1700);
         now_us=101010; expect(0,PIOS_RCVR_TIMEOUT);
 #ifndef LRRK_TEST_UPSTREAM
+    } else if (!strcmp(name,"admission-guard")) {
+        uint64_t token=0, other=0;
+        assert(PIOS_LiteWing_GCSReceiver_BeginAdmission(0,&token)==-1 && token==0);
+        assert(PIOS_LiteWing_GCSReceiver_BeginAdmission(1,&token)==0 && token!=0);
+        assert(PIOS_LiteWing_GCSReceiver_BeginAdmission(1,&other)==-1 && other==0);
+        GCSReceiverData frame={.Channel={1700}};
+        assert(PIOS_LiteWing_GCSReceiver_Unpack(&other_object,0,(const uint8_t *)&frame,now_us)==-1);
+        assert(unpack_calls==0);
+        assert(PIOS_LiteWing_GCSReceiver_EndAdmission(token+1)==-1);
+        expect(0,PIOS_RCVR_TIMEOUT);
+        now_us=2000;
+        assert(PIOS_LiteWing_GCSReceiver_EndAdmission(token)==0);
+        assert(PIOS_LiteWing_GCSReceiver_Unpack(&other_object,0,(const uint8_t *)&frame,1500)==-1);
+        now_us=3000;
+        assert(PIOS_LiteWing_GCSReceiver_Unpack(&other_object,0,(const uint8_t *)&frame,now_us)==0);
+        assert(unpack_calls==1);
+        assert(PIOS_LiteWing_GCSReceiver_BeginAdmission(1,&other)==0 && other!=token);
+        assert(PIOS_LiteWing_GCSReceiver_EndAdmission(token)==-1);
+        assert(PIOS_LiteWing_GCSReceiver_ClaimWireless(wifi_session,1)==0);
+        assert(PIOS_LiteWing_GCSReceiver_EndAdmission(other)==0);
+        assert(PIOS_LiteWing_GCSReceiver_Unpack(&other_object,0,(const uint8_t *)&frame,now_us+1)==-1);
     } else if (!strcmp(name,"wireless-excludes-usb")) {
         assert(PIOS_LiteWing_GCSReceiver_ClaimWireless(wifi_session, 0) == -1);
         assert(PIOS_LiteWing_GCSReceiver_ClaimWireless(wifi_session, 1) == 0);
@@ -151,6 +174,8 @@ int main(int argc,char **argv) {
         now_us=3000; input(1600); expect(0,1600);
     } else if (!strcmp(name,"wireless-cannot-steal-fresh-usb")) {
         input(1500);
+        uint64_t token=99;
+        assert(PIOS_LiteWing_GCSReceiver_BeginAdmission(1,&token)==-1 && token==0);
         assert(PIOS_LiteWing_GCSReceiver_ClaimWireless(wifi_session, 1)==-1);
         expect(0,1500);
         now_us=101000;

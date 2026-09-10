@@ -7,6 +7,7 @@ Do not expose this object or its keys to assistant tools. Python cannot guarante
 secure erasure of immutable bytes; close drops references, not physical copies.
 """
 import hmac
+import struct
 from .pilot_keys import derive_keys
 from .pilot_wire import Envelope, decode, encode
 
@@ -50,7 +51,13 @@ class PilotAdmission:
         self._phase = "challenge"
         return hello
 
-    def receive_challenge(self, datagram: bytes, now_us: int) -> bytes:
+    def receive_challenge(self, datagram: bytes, now_us: int,
+                          samples: tuple[int, ...] | None = None) -> bytes:
+        """Supply operator samples captured after receipt of this challenge.
+
+        None preserves the legacy handshake-only fixture transcript; the runtime
+        controller rejects that empty CLAIM and never grants it ownership.
+        """
         if self._phase != "challenge":
             raise ValueError("not awaiting challenge")
         self._time(now_us)
@@ -58,8 +65,12 @@ class PilotAdmission:
         if (frame.kind != 2 or frame.sequence != 0 or len(frame.payload) != 64
                 or not hmac.compare_digest(frame.payload[:32], self._host)):
             raise ValueError("invalid board proof")
+        if samples is not None and (type(samples) is not tuple or len(samples) != 8
+                or any(type(v) is not int or not 1000 <= v <= 2000 for v in samples)):
+            raise ValueError("invalid admission samples")
+        payload = b"" if samples is None else struct.pack("!8H", *samples)
         keys = derive_keys(self._root, self._host, frame.payload[32:], frame.session)
-        claim = encode(Envelope(0, 3, frame.session, 1, frame.challenge, b""), keys.c2b)
+        claim = encode(Envelope(0, 3, frame.session, 1, frame.challenge, payload), keys.c2b)
         self._keys = keys
         self._session, self._challenge = frame.session, frame.challenge
         self._root = self._host = None

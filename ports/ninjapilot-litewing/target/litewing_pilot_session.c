@@ -133,8 +133,12 @@ enum lw_session_result lw_session_receive(struct lw_pilot_session *s,
         result = LW_HANDSHAKE_REPLY;
     } else if (s->phase == LW_PENDING) {
         if (read_frame(wire, size, s->keys.c2b, &frame) != 0 || frame.kind != 3 ||
-            frame.sequence != 1 || frame.payload_len != 0 ||
+            frame.sequence != 1 || (frame.payload_len != 0 && frame.payload_len != 16) ||
             memcmp(frame.session, s->session, 16)) goto done;
+        for (unsigned i=0; i<frame.payload_len; i+=2) {
+            unsigned value=((unsigned)frame.payload[i] << 8) | frame.payload[i+1];
+            if (value<1000 || value>2000) goto done;
+        }
         int slot = -1;
         for (unsigned i = 0; i < 4; ++i)
             if (s->slots[i].valid && !memcmp(frame.challenge, s->slots[i].id, 16) &&

@@ -6,6 +6,18 @@ from lrrk_litewing_ai.pilot_wire import Envelope, encode, decode
 
 
 class AdmissionTests(unittest.TestCase):
+    def test_fresh_claim_samples_are_authenticated_and_strict(self):
+        client = self.make()
+        samples = (1000, 1500, 1500, 1500, 1500, 1000, 2000, 1234)
+        wire = client.receive_challenge(self.challenge_wire(), 200, samples)
+        keys = derive_keys(self.root, self.host, self.board, self.session)
+        self.assertEqual(decode(wire, keys.c2b, 0).payload,
+                         b'\x03\xe8\x05\xdc\x05\xdc\x05\xdc\x05\xdc\x03\xe8\x07\xd0\x04\xd2')
+        for samples in ((), (1500,)*7, (1500,)*9, (True,)*8, (999,)*8,
+                        (2001,)*8, [1500]*8):
+            with self.subTest(samples=samples), self.assertRaises(ValueError):
+                self.make().receive_challenge(self.challenge_wire(),200,samples)
+
     root = b"r" * 32
     host = b"h" * 32
     board = b"b" * 32
