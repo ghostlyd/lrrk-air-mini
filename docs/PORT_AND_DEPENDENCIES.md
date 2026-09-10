@@ -118,14 +118,19 @@ pinned UAVTalk decoder; optional serial and OpenAI SDK dependencies are declared
 in [`ai_assistant/pyproject.toml`](../ai_assistant/pyproject.toml). OpenAI runs on
 the host, with no API credential or model on the board. The selected wrapper's
 authenticated Wi-Fi command runtime and USB provisioning workflow are now
-source-integrated. Physical provisioning/activation, wireless telemetry,
-physical operator input integration and radio qualification remain unfinished.
+source-integrated. Authenticated wireless telemetry now reaches the advisory
+runtime in localhost integration tests. Physical provisioning/activation,
+board-side wireless telemetry qualification, physical operator input integration
+and radio qualification remain unfinished.
 The stock firmware's Wi-Fi features below do not establish
 support in this port.
 
 ### Authenticated Wi-Fi dependency checkpoint — 2026-09-10
 
-Source baseline: PR #62, merged as `62333acf7a4d65c0961d0c63837c182d14e63abb`.
+Initial source checkpoint: PR #62, merged as `62333acf7a4d65c0961d0c63837c182d14e63abb`.
+Telemetry and advisory rows below are updated through PR #69
+(`7b30469702d38958c0d65ba3dbb1a209602d53ee`) and PR #70
+(`40cf494286fb2911b59e27b91a78c0d7515ea506`).
 The dependency declarations below were checked against the wrapper's
 [`main/CMakeLists.txt`](../ports/ninjapilot-litewing/esp-idf/main/CMakeLists.txt),
 [`sources.cmake`](../ports/ninjapilot-litewing/target/sources.cmake),
@@ -141,7 +146,8 @@ fresh installation or live radio test.
 | Timing/randomness | IDF `esp_timer`, `esp_hw_support` | Monotonic challenge age and platform RNG; radio-load timing still needs measurement |
 | Host pilot protocol | CPython 3.11–3.14 standard-library networking, HMAC and randomness | Protocol/operator APIs exist; physical input-device adapter and user-facing pilot launcher remain outstanding |
 | USB telemetry | Optional `uavtalk` extra: `pyserial>=3.5,<4` | Existing UAVTalk path retained; stock CRTP clients cannot operate LWPL |
-| Host advisory AI | Optional `openai` extra: `openai-agents==0.22.1` | Host-only API credential; no pilot key shared with AI tools; new Wi-Fi telemetry ingestion outstanding |
+| Authenticated telemetry | Pinned NinjaPilot UAVObject manager, battery acquisition boundary and IDF `mbedtls`; CPython standard library on the host | Five rotating schemas, independent telemetry key/sequence, coherent battery bytes/age; real C-to-Python localhost integration verified, not board radio qualification |
+| Host advisory AI | Optional `openai` extra: `openai-agents==0.22.1`; standard-library handoff requires no extra package | Read-only single-slot handoff reaches the actual AssistantRuntime; no pilot key shared with AI tools; deployed worker/launcher and live wireless-to-OpenAI validation remain outstanding |
 | Windows private audit files | `oschmod==0.3.12`, `pywin32==312` | Declared Windows-only dependencies; not yet a credential-bundle storage implementation |
 
 Provisioning update: the [operator commands](../ai_assistant/README.md#operator-provisioning)
@@ -149,8 +155,21 @@ use the existing `uavtalk` extra for USB and standard-library UDP/HMAC/randomnes
 for key reachability. macOS storage also checks descriptor ACLs through system
 libc; Linux rejects POSIX ACL attributes. No additional pip dependency is added.
 Windows provisioning and Linux serial opening are not implemented. The current
-source candidate was rebuilt at `daeb3bf` with ESP-IDF 5.3.2 and dump-disabled
+provisioning source candidate was rebuilt at `daeb3bf` with ESP-IDF 5.3.2 and dump-disabled
 configuration; physical activation is not inferred from that build.
+
+The later publisher build at `e86d872` uses the same ESP-IDF 5.3.2 dependency
+boundary and disabled core dumps. Its linked image is `0xd53e0` bytes, with 17%
+free in the unchanged application partition. See the
+[publisher build and integration evidence](verification/wifi-telemetry-publisher-2026-09-10.md).
+The [advisory handoff evidence](verification/wifi-advisory-handoff-2026-09-10.md)
+separately records 300 assistant tests (9 optional skips) and the real
+C/UDP/Python/runtime path. That host-only change adds no third-party dependency
+and performs no OpenAI request or board operation. A slow consumer can miss
+object types: the slot holds a latest partial observation, not a complete or
+synchronized aircraft state. The pilot-device choice, its calibrated input
+adapter, user-facing launcher and deployed advisory-worker scheduling are still
+required before qualifying the complete wireless operator workflow.
 
 No additional onboard AI computer, GPS, optical-flow sensor or range sensor is
 required by this attitude/rate pilot-link design. These exclusions do not imply
