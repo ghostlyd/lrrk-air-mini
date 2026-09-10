@@ -30,6 +30,17 @@ static jmp_buf system_loop;
 static bool lifecycle, early_system, executing_system, system_live, system_monitored, queue_live;
 static unsigned system_creates, system_registers, system_unregisters, queue_creates, queue_deletes, object_inits;
 static unsigned parked, module_inits;
+#ifdef TEST_MANUAL_MODULE
+static bool manual_real_start, manual_start_in_progress;
+/* The pinned implementation currently returns zero. This injection proves
+ * only that ManualControl propagates a future/reported interface error. */
+static bool manual_fail_configuration, manual_fail_alarm;
+static unsigned manual_fail_start_connection;
+static unsigned manual_configuration_checks, manual_alarm_clears, manual_frame_reads;
+static unsigned manual_arm_init_calls, manual_arm_run_calls;
+static unsigned manual_takeoff_init_calls, manual_takeoff_run_calls;
+static unsigned manual_handler_calls, manual_flight_writes;
+#endif
 int32_t SystemModStart(void);
 void app_main(void);
 uintptr_t pios_uavo_settings_fs_id, pios_user_fs_id;
@@ -110,9 +121,21 @@ static unsigned init_calls, start_calls;
 static int fail_init = -1, fail_start = -1;
 #ifdef TEST_MANUAL_MODULE
 int32_t RealManualControlInitialize(void);
+int32_t RealManualControlStart(void);
+static int32_t manual_start_result(unsigned index)
+{
+    if (index != 4 || !manual_real_start) return 0;
+    CHECK(!manual_start_in_progress);
+    manual_start_in_progress = true;
+    int32_t result = RealManualControlStart();
+    manual_start_in_progress = false;
+    return result;
+}
 #define MANUAL_INIT_RESULT(Index) ((Index) == 4 ? RealManualControlInitialize() : 0)
+#define MANUAL_START_RESULT(Index) manual_start_result(Index)
 #else
 #define MANUAL_INIT_RESULT(Index) 0
+#define MANUAL_START_RESULT(Index) 0
 #endif
 #define MODULE(Name, Index) \
     int32_t Name##Initialize(void) { \
@@ -122,6 +145,8 @@ int32_t RealManualControlInitialize(void);
     int32_t Name##Start(void) { \
         CHECK(start_calls++ == Index); \
         if (fail_start == Index) return -9; \
+        int32_t result = MANUAL_START_RESULT(Index); \
+        if (result != 0) return result; \
         if (Index == 5) register_test_callbacks(); \
         return 0; \
     }
@@ -140,7 +165,19 @@ int32_t AlarmsSet(SystemAlarmsAlarmElem alarm, SystemAlarmsAlarmOptions severity
     fault_alarms++;
     return 0;
 }
-int32_t AlarmsClear(SystemAlarmsAlarmElem alarm) { (void)alarm; CHECK(!"unexpected alarm clear"); return -1; }
+int32_t AlarmsClear(SystemAlarmsAlarmElem alarm)
+{
+#ifdef TEST_MANUAL_MODULE
+    if (manual_start_in_progress) {
+        CHECK(alarm == SYSTEMALARMS_ALARM_MANUALCONTROL);
+        manual_alarm_clears++;
+        return manual_fail_alarm ? -1 : 0;
+    }
+#endif
+    (void)alarm;
+    CHECK(!"unexpected alarm clear");
+    return -1;
+}
 int32_t ExtendedAlarmsSet(SystemAlarmsAlarmElem alarm, SystemAlarmsAlarmOptions severity,
     SystemAlarmsExtendedAlarmStatusOptions status, uint8_t substatus)
 { (void)alarm; (void)severity; (void)status; (void)substatus; CHECK(!"unexpected extended alarm write"); return -1; }
@@ -176,41 +213,79 @@ OBJECT(StabilizationSettings)
 OBJECT(VtolSelfTuningStats)
 OBJECT(VtolPathFollowerSettings)
 static unsigned manual_connections;
+static UAVObjHandle manual_connection_objects[5];
+static UAVObjEventCallback manual_connection_callbacks[5];
 void armHandler(bool init, FrameType_t frame)
-{ (void)init; (void)frame; CHECK(!"unexpected arming handler"); }
-void manualHandler(bool init) { (void)init; CHECK(!"unexpected manual handler"); }
+{
+    CHECK(manual_real_start && frame == FRAME_TYPE_MULTIROTOR);
+    if (init) manual_arm_init_calls++;
+    else manual_arm_run_calls++;
+}
+void manualHandler(bool init)
+{ CHECK(manual_real_start && init); manual_handler_calls++; }
 void stabilizedHandler(bool init) { (void)init; CHECK(!"unexpected stabilized handler"); }
 void pathFollowerHandler(bool init) { (void)init; CHECK(!"unexpected path follower handler"); }
 void pathPlannerHandler(bool init) { (void)init; CHECK(!"unexpected path planner handler"); }
-void takeOffLocationHandler(void) { CHECK(!"unexpected takeoff location handler"); }
-void takeOffLocationHandlerInit(void) { CHECK(!"unexpected takeoff location initializer"); }
+void takeOffLocationHandler(void)
+{ CHECK(manual_real_start); manual_takeoff_run_calls++; }
+void takeOffLocationHandlerInit(void)
+{ CHECK(manual_real_start && manual_start_in_progress); manual_takeoff_init_calls++; }
 void StabilizationSettingsFlightModeAssistMapGet(uint8_t *out)
 { (void)out; CHECK(!"unexpected runtime field read"); }
 void VtolPathFollowerSettingsThrustLimitsGet(VtolPathFollowerSettingsThrustLimitsData *out)
-{ (void)out; CHECK(!"unexpected runtime field read"); }
+{ CHECK(manual_real_start); memset(out, 0, sizeof(*out)); }
 void VtolPathFollowerSettingsTreatCustomCraftAsGet(uint8_t *out)
-{ (void)out; CHECK(!"unexpected runtime field read"); }
+{
+    CHECK(manual_real_start && manual_start_in_progress);
+    *out = VTOLPATHFOLLOWERSETTINGS_TREATCUSTOMCRAFTAS_VTOL;
+}
 void VtolSelfTuningStatsNeutralThrustOffsetGet(float *out)
 { (void)out; CHECK(!"unexpected runtime field read"); }
-int32_t configuration_check(void) { CHECK(!"unexpected configuration check"); return -1; }
+int32_t configuration_check(void)
+{
+    CHECK(manual_real_start && manual_start_in_progress);
+    manual_configuration_checks++;
+    return manual_fail_configuration ? -1 : 0;
+}
 #endif
 
 int32_t UAVObjGetData(UAVObjHandle handle, void *out)
 { struct object *obj = handle; CHECK(obj && obj->size <= 1024); memcpy(out, obj->data, obj->size); return 0; }
 int32_t UAVObjSetData(UAVObjHandle handle, const void *in)
-{ (void)handle; (void)in; CHECK(!"unexpected object write"); return -1; }
+{
+#ifdef TEST_MANUAL_MODULE
+    if (manual_real_start && handle == FlightStatusHandle()) {
+        struct object *obj = handle;
+        memcpy(obj->data, in, obj->size);
+        manual_flight_writes++;
+        return 0;
+    }
+#endif
+    (void)handle; (void)in; CHECK(!"unexpected object write"); return -1;
+}
 int32_t UAVObjConnectQueue(UAVObjHandle obj, xQueueHandle queue, uint8_t mask)
 { (void)mask; CHECK(obj == ObjectPersistenceHandle() && queue == &persistence_queue); after_scheduler++; return 0; }
 int32_t UAVObjConnectCallback(UAVObjHandle obj, UAVObjEventCallback cb, uint8_t mask)
 {
     (void)obj; (void)cb; (void)mask;
 #ifdef TEST_MANUAL_MODULE
-    if (!executing_system) {
+    if (!executing_system || manual_start_in_progress) {
         CHECK(cb && mask == EV_MASK_ALL_UPDATES);
-        CHECK(obj == (manual_connections == 0 ? VtolPathFollowerSettingsHandle() : SystemSettingsHandle()));
-        CHECK(manual_connections++ < 2);
-        if ((!strcmp(scenario, "connect-VtolPathFollowerSettings") && obj == VtolPathFollowerSettingsHandle()) ||
-            (!strcmp(scenario, "connect-SystemSettings") && obj == SystemSettingsHandle())) return -1;
+        CHECK(manual_connections < 5);
+        const UAVObjHandle expected[] = {
+            VtolPathFollowerSettingsHandle(), SystemSettingsHandle(),
+            SystemSettingsHandle(), ManualControlSettingsHandle(), ManualControlCommandHandle(),
+        };
+        unsigned index = manual_connections++;
+        CHECK(obj == expected[index]);
+        manual_connection_objects[index] = obj;
+        manual_connection_callbacks[index] = cb;
+        if (index < 2) {
+            if ((!strcmp(scenario, "connect-VtolPathFollowerSettings") && index == 0) ||
+                (!strcmp(scenario, "connect-SystemSettings") && index == 1)) return -1;
+        } else if (manual_fail_start_connection == index - 1) {
+            return -1;
+        }
         return 0;
     }
 #endif
@@ -235,7 +310,13 @@ void EventGetStats(EventStats *out) { memset(out, 0, sizeof(*out)); }
 void EventClearStats(void) {}
 int32_t PIOS_FLASHFS_GetStats(uintptr_t id, struct PIOS_FLASHFS_Stats *out)
 { (void)id; (void)out; CHECK(!"unexpected storage access"); return -1; }
-FrameType_t GetCurrentFrameType(void) { return FRAME_TYPE_MULTIROTOR; }
+FrameType_t GetCurrentFrameType(void)
+{
+#ifdef TEST_MANUAL_MODULE
+    if (manual_start_in_progress) manual_frame_reads++;
+#endif
+    return FRAME_TYPE_MULTIROTOR;
+}
 void NotificationUpdateStatus(void) { longjmp(system_loop, 1); }
 void NotificationOnboardLedsRun(void) {}
 unsigned xPortGetFreeHeapSize(void) { return 10000; }
@@ -342,6 +423,70 @@ static void lifecycle_case(void)
     CHECK(system_creates == creates_before && system_registers == registers_before);
 }
 
+#ifdef TEST_MANUAL_MODULE
+static unsigned manual_effect_count(void)
+{
+    return manual_configuration_checks + manual_connections + manual_alarm_clears +
+           manual_frame_reads + manual_arm_init_calls + manual_arm_run_calls +
+           manual_takeoff_init_calls + manual_takeoff_run_calls +
+           manual_handler_calls + manual_flight_writes;
+}
+
+static void manual_start_case(void)
+{
+    lifecycle = true;
+    manual_real_start = true;
+    if (!strcmp(scenario, "premature")) {
+        CHECK(manual_start_result(4) != 0);
+        CHECK(manual_effect_count() == 0);
+        return;
+    }
+    if (!strcmp(scenario, "configuration")) manual_fail_configuration = true;
+    if (!strcmp(scenario, "alarm")) manual_fail_alarm = true;
+    if (!strncmp(scenario, "connection-", 11)) {
+        manual_fail_start_connection = (unsigned)atoi(scenario + 11);
+        CHECK(manual_fail_start_connection >= 1 && manual_fail_start_connection <= 3);
+    }
+    bool nominal = !strcmp(scenario, "nominal");
+    bool failed = !nominal;
+    app_main();
+    CHECK(init_calls == 6 && system_live && manual_connections == 2);
+    run_system();
+    CHECK(manual_configuration_checks == 1);
+    if (failed) {
+        unsigned expected_connections = 2;
+        if (manual_fail_start_connection) expected_connections += manual_fail_start_connection;
+        else if (manual_fail_alarm) expected_connections = 5;
+        CHECK(manual_connections == expected_connections);
+        CHECK(start_calls == 5 && shutdowns == 1 && fault_alarms == 1);
+        CHECK(!system_live && !system_monitored && !queue_live && after_scheduler == 0);
+        CHECK(task_calls == 0 && manual_arm_init_calls == 0 && manual_takeoff_init_calls == 0);
+        CHECK(manual_alarm_clears == (unsigned)manual_fail_alarm);
+        CHECK(manual_frame_reads == 0 && manual_arm_run_calls == 0 && manual_takeoff_run_calls == 0);
+        unsigned effects = manual_effect_count();
+        CHECK(manual_start_result(4) != 0 && manual_effect_count() == effects);
+        return;
+    }
+    CHECK(start_calls == 6 && shutdowns == 0 && fault_alarms == 0);
+    CHECK(system_live && system_monitored && queue_live && after_scheduler == 3);
+    CHECK(manual_connections == 5 && manual_alarm_clears == 1 && manual_frame_reads == 1);
+    CHECK(manual_arm_init_calls == 1 && manual_takeoff_init_calls == 1);
+    CHECK(manual_connection_callbacks[0] == manual_connection_callbacks[1]);
+    CHECK(manual_connection_callbacks[2] == manual_connection_callbacks[3]);
+    CHECK(manual_connection_callbacks[2] != manual_connection_callbacks[0]);
+    CHECK(manual_connection_callbacks[4] != manual_connection_callbacks[2]);
+    CHECK(manual_connection_objects[2] == SystemSettingsHandle());
+    CHECK(manual_connection_objects[3] == ManualControlSettingsHandle());
+    CHECK(manual_connection_objects[4] == ManualControlCommandHandle());
+    CHECK(task_calls == 2 && manual_arm_run_calls == 0 && manual_handler_calls == 0);
+    execute_until_block(0);
+    CHECK(manual_arm_run_calls == 1 && manual_takeoff_run_calls == 1);
+    CHECK(manual_handler_calls == 1 && manual_flight_writes == 1 && callback_calls == 1);
+    unsigned effects = manual_effect_count();
+    CHECK(manual_start_result(4) != 0 && manual_effect_count() == effects);
+}
+#endif
+
 int main(int argc, char **argv)
 {
     CHECK(argc == 2);
@@ -355,6 +500,11 @@ int main(int argc, char **argv)
     CHECK(PIOS_CALLBACKSCHEDULER_Initialize() == 0);
 #ifdef TEST_MODULE_TABLE
 #ifdef TEST_MANUAL_MODULE
+    if (!strncmp(scenario, "manual-start-", 13)) {
+        scenario += 13;
+        manual_start_case();
+        return 0;
+    }
     if (!strncmp(scenario, "manual-", 7)) {
         scenario += 7;
         lifecycle = true;

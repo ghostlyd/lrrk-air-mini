@@ -76,8 +76,9 @@ class PersistenceLinkTests(unittest.TestCase):
             self.skipTest("generated IDF graph not supplied; host fixtures do not prove target dependencies")
         for target in ("app", "flash"):
             with self.subTest(target=target):
-                # -n prints commands without running them, especially flash.
-                result = subprocess.run([ninja, "-C", directory, "-n", target],
+                # Query the generated graph without executing CMake or flash. A
+                # dry run can stop at CMake regeneration when the Git ref moves.
+                result = subprocess.run([ninja, "-C", directory, "-t", "query", target],
                     capture_output=True, text=True, timeout=30)
                 self.assertEqual(result.returncode, 0, result.stderr)
-                self.assertIn("verify_persistence_link.py", result.stdout)
+                self.assertIn("litewing_persistence_gate", result.stdout)

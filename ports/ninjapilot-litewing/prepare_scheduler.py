@@ -86,6 +86,16 @@ static bool systemResourcesReady;""")
     }""")
     manual = replace_exact(codes["manualcontrol.c"], '#include "inc/manualcontrol.h"',
         '#include <manualcontrol.h>')
+    manual = replace_exact(manual, "static DelayedCallbackInfo *callbackHandle;", """static DelayedCallbackInfo *callbackHandle;
+static bool manualControlInitAttempted;
+static bool manualControlResourcesReady;
+static bool manualControlStartAttempted;""")
+    manual = replace_function(manual, "int32_t ManualControlStart()",
+        (ROOT / "target/startup/manual_control_start.inc").read_text())
+    manual = replace_exact(manual, "int32_t ManualControlInitialize()\n{", """int32_t ManualControlInitialize(void)
+{
+    if (manualControlInitAttempted) return -1;
+    manualControlInitAttempted = true;""")
     for name in ("ManualControlCommand", "FlightStatus", "ManualControlSettings",
                  "FlightModeSettings", "SystemSettings", "StabilizationSettings",
                  "VtolSelfTuningStats", "VtolPathFollowerSettings"):
@@ -96,7 +106,10 @@ static bool systemResourcesReady;""")
         manual = replace_exact(manual, "    " + name + "ConnectCallback(&SettingsUpdatedCb);",
             "    if (" + name + "ConnectCallback(&SettingsUpdatedCb) != 0) return -1;")
     anchor = "    callbackHandle = PIOS_CALLBACKSCHEDULER_Create(&manualControlTask, CALLBACK_PRIORITY, CBTASK_PRIORITY, CALLBACKINFO_RUNNING_MANUALCONTROL, STACK_SIZE_BYTES);"
-    codes["manualcontrol.c"] = replace_exact(manual, anchor, anchor + "\n    if (!callbackHandle) return -1;")
+    manual = replace_exact(manual, anchor, anchor + "\n    if (!callbackHandle) return -1;")
+    codes["manualcontrol.c"] = replace_exact(manual,
+        "    if (!callbackHandle) return -1;\n\n    return 0;\n}",
+        "    if (!callbackHandle) return -1;\n    manualControlResourcesReady = true;\n\n    return 0;\n}")
     for name in codes:
         path = output / name
         if path.is_symlink() or (path.exists() and (not path.is_file() or path.stat().st_nlink != 1)):

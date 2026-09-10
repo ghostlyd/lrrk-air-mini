@@ -85,6 +85,7 @@ set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
     "${PORT_ROOT}/target/startup/scheduler_start.inc"
     "${PORT_ROOT}/target/startup/scheduler_create.inc"
     "${PORT_ROOT}/target/startup/system_start.inc"
+    "${PORT_ROOT}/target/startup/manual_control_start.inc"
     "${FLIGHT}/pios/common/pios_callbackscheduler.c"
     "${FLIGHT}/modules/System/systemmod.c"
     "${FLIGHT}/modules/ManualControl/manualcontrol.c")

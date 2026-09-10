@@ -121,3 +121,8 @@ Physical cutoff, motor order, IMU orientation/calibration, USB-reset behavior
 and a verified battery/charger/connector combination are separate gates. No
 battery is assumed available. Obtain fresh props-off/power confirmation before
 any new hardware I/O; source/build success must not clear these gates.
+
+The subsequent
+[ManualControl start lifecycle correction](manual-control-start-lifecycle-2026-09-09.md)
+checks its boot-caller ordering, start-time subscriptions and initial dispatch;
+it does not retroactively change this report's source-only boundary.

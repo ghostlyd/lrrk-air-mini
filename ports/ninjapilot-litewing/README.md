@@ -73,6 +73,12 @@ consumes reported module errors and checks ManualControl's required objects and
 scheduler allocation through the actual entry point. Other module internals and
 all physical gates remain separate; the built candidate is not installed.
 
+The [ManualControl start lifecycle correction](../../docs/verification/manual-control-start-lifecycle-2026-09-09.md)
+checks start ordering, its three subscriptions, the reported configuration
+result, alarm-clear result and the real scheduler's initially-full dispatch
+behavior. It is retained build evidence only; runtime-handler, complete-boot
+and physical gates remain open.
+
 The selected upstream `litewing` branch currently includes a POSIX/Gazebo
 LiteWing twin, not a flashable ESP32-S3 target. The repository-owned target
 work therefore proceeds in gates:

@@ -122,6 +122,7 @@ class SchedulerBuildSelectionTests(unittest.TestCase):
         configure = next(line for line in (build / "build.ninja").read_text().splitlines()
                          if line.startswith("build build.ninja") and ": RERUN_CMAKE " in line)
         for dependency in ("prepare_scheduler.py", "prepare_startup.py",
-                           "scheduler_start.inc", "scheduler_create.inc", "system_start.inc", *INPUTS):
+                           "scheduler_start.inc", "scheduler_create.inc", "system_start.inc",
+                           "manual_control_start.inc", *INPUTS):
             with self.subTest(dependency=dependency):
                 self.assertTrue(dependency in configure, "missing configure dependency: " + dependency)
