@@ -28,3 +28,14 @@ replay/no resampling, encoded channel bytes, input failure, timing bounds,
 strict samples, one-shot STOP and single-use accepted handoff. Review pending.
 Real socket integration, physical input-device selection, loss/jitter testing,
 separate telemetry export and deployment remain required.
+
+## Review correction
+
+Review found that an exception from the initial clock callback escaped without
+retiring the session. A regression reproduced retained credentials after that
+failure. The initial read is now protected by the same retirement-on-exception
+contract as later sampling/clock work. Tests cover initial clock exceptions for
+both PILOT and STOP, prevent subsequent command generation, and prove a cached
+STOP cannot receive a new lifetime from a falsely refreshed receive timestamp.
+The full assistant suite passes: 209 run, 200 passed, 9 skipped. Scoped re-review
+is pending; no networking or hardware operations were performed.

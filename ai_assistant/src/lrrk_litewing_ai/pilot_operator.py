@@ -48,7 +48,11 @@ class OperatorSession:
         return self._respond(datagram,received_us,None,clock,True)
 
     def _respond(self, datagram, received_us, sample, clock, stopping):
-        now=clock()
+        try:
+            now=clock()
+        except BaseException:
+            self.close()
+            raise
         self._time(now)
         if (type(received_us) is not int or received_us<0 or received_us>now
                 or now-received_us>75_000):

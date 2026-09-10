@@ -56,3 +56,19 @@ class OperatorTests(unittest.TestCase):
             session=self.make()
             with self.assertRaises(ValueError): session.pilot(self.proof(),2000,lambda:values,lambda:2100)
             self.assertTrue(session.closed)
+    def test_initial_clock_failure_retires_pilot_and_stop(self):
+        def failed_clock(): raise RuntimeError("clock unavailable")
+        for stopping in (False,True):
+            session=self.make()
+            with self.assertRaises(RuntimeError):
+                if stopping: session.stop(self.proof(),2000,failed_clock)
+                else: session.pilot(self.proof(),2000,lambda:(1500,)*8,failed_clock)
+            self.assertTrue(session.closed)
+            with self.assertRaises(ValueError):
+                session.pilot(self.proof(),2000,lambda:(1500,)*8,lambda:2100)
+    def test_cached_stop_cannot_be_rejuvenated(self):
+        session=self.make()
+        session.pilot(self.proof(),2000,lambda:(1500,)*8,lambda:2100)
+        with self.assertRaises(ValueError):
+            session.stop(self.proof(),78000,lambda:78000)
+        self.assertTrue(session.closed)
