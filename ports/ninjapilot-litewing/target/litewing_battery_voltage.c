@@ -1,4 +1,5 @@
 #include "litewing_battery_voltage.h"
+#include <math.h>
 
 void litewing_battery_update(struct litewing_battery_sample *sample,
                              int pad_mv, bool calibrated, int64_t captured_us)
@@ -28,4 +29,16 @@ bool litewing_battery_read(const struct litewing_battery_sample *sample,
     }
     *battery_mv = sample->millivolts;
     return true;
+}
+
+void litewing_battery_export(const struct litewing_battery_sample *sample,
+                             int64_t now_us, float fields[7])
+{
+    for (unsigned i = 0; i < 7; ++i) {
+        fields[i] = NAN;
+    }
+    uint32_t millivolts;
+    if (litewing_battery_read(sample, now_us, &millivolts)) {
+        fields[0] = (float)millivolts / 1000.0f;
+    }
 }

@@ -76,6 +76,35 @@ class BatteryVoltageTests(unittest.TestCase):
         self.assertEqual(self.read(9223372036854775807), (False, 0))
         self.assertEqual(self.read(-9223372036854775808), (False, 0))
 
+    def test_voltage_export_reaches_host_without_inventing_other_measurements(self):
+        import math
+        import struct
+        import sys
+        from datetime import datetime, timezone
+        sys.path.insert(0, str(ROOT.parents[1] / "ai_assistant/src"))
+        from lrrk_litewing_ai.uavobjects import BATTERY_STATE, snapshot_from_frame
+        from lrrk_litewing_ai.uavtalk import UAVTalkFrame
+
+        self.assertTrue(hasattr(self.lib, "litewing_battery_export"),
+                        "battery telemetry field exporter is missing")
+        export = self.lib.litewing_battery_export
+        export.argtypes = [ctypes.POINTER(Sample), ctypes.c_int64,
+                           ctypes.POINTER(ctypes.c_float)]
+        self.update(1950)
+        for now, expected in ((1000, 3.9), (501001, None)):
+            fields = (ctypes.c_float * 7)()
+            export(ctypes.byref(self.sample), now, fields)
+            self.assertTrue(all(math.isnan(value) for value in fields[1:]))
+            packet = UAVTalkFrame(0x20, BATTERY_STATE, 0, None,
+                                  struct.pack("<7f2B", *fields, 1, 0))
+            result = snapshot_from_frame(packet, datetime.now(timezone.utc))
+            if expected is None:
+                self.assertIsNone(result.battery.voltage_v)
+            else:
+                self.assertAlmostEqual(result.battery.voltage_v, expected, places=5)
+            self.assertIsNone(result.battery.current_a)
+            self.assertIsNone(result.battery.percent)
+
 
 if __name__ == "__main__":
     unittest.main()
