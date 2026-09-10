@@ -31,6 +31,7 @@ static bool wireless_owner;
 static uint8_t owner_session[16];
 static uint64_t owner_generation;
 static int64_t usb_fence_us = -1;
+static uint32_t usb_inflight;
 
 int32_t PIOS_LiteWing_GCSReceiver_ClaimWireless(const uint8_t session[16], int disarmed)
 {
@@ -38,7 +39,7 @@ int32_t PIOS_LiteWing_GCSReceiver_ClaimWireless(const uint8_t session[16], int d
     int32_t result = -1;
     portENTER_CRITICAL(&receiver_lock);
     const int64_t now = esp_timer_get_time();
-    if (initialized && !wireless_owner && now >= 0 &&
+    if (initialized && !wireless_owner && usb_inflight == 0 && now >= 0 &&
         now >= usb_fence_us && owner_generation != UINT64_MAX &&
         (!have_timestamp || now >= received_us)) {
         if (valid && now - received_us >= LITEWING_GCS_TIMEOUT_US) valid = false;
@@ -90,18 +91,19 @@ int32_t PIOS_LiteWing_GCSReceiver_Unpack(UAVObjHandle obj, uint16_t instance,
     const int64_t arrival_us = received_time;
     portENTER_CRITICAL(&receiver_lock);
     const uint64_t generation = owner_generation;
-    const bool permitted = !wireless_owner && arrival_us > usb_fence_us;
+    const bool permitted = !wireless_owner && arrival_us > usb_fence_us &&
+                           usb_inflight != UINT32_MAX;
+    /* Reservation refuses while storage/events may still be in flight. Never
+     * hold the spinlock across the potentially blocking object-manager call. */
+    if (permitted) ++usb_inflight;
     portEXIT_CRITICAL(&receiver_lock);
     if (!permitted) return -1;
     GCSReceiverData packet;
     memcpy(&packet, data, sizeof(packet));
     const int32_t result = UAVObjUnpack(obj, instance, data);
-    if (result != 0) {
-        return result;
-    }
-
     portENTER_CRITICAL(&receiver_lock);
-    if (initialized && !wireless_owner && generation == owner_generation &&
+    --usb_inflight;
+    if (result == 0 && initialized && !wireless_owner && generation == owner_generation &&
         arrival_us > usb_fence_us && arrival_us >= 0 &&
         (!have_timestamp || arrival_us > received_us)) {
         /* Older (or equal-time) completions cannot replace a newer packet. */

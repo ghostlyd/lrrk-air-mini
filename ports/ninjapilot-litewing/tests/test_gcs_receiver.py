@@ -25,6 +25,10 @@ class GcsReceiverTests(unittest.TestCase):
             raise AssertionError(result.stderr)
 
     def run_case(self, case):
+        if "LRRK_GCS_TEST_SOURCE" in os.environ and case in (
+                "wireless-excludes-usb", "wireless-cannot-steal-fresh-usb",
+                "ownership-change-during-unpack"):
+            self.skipTest("upstream baseline has no wireless ownership API")
         result = subprocess.run([str(self.binary), case], capture_output=True, text=True, timeout=5)
         self.assertEqual(result.returncode, 0, result.stderr)
 

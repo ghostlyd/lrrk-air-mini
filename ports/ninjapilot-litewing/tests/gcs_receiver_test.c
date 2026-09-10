@@ -15,24 +15,31 @@ static int64_t pre_unpack_delay;
 static uint32_t receiver_id = 1234;
 static int other_object;
 static bool inject_newer;
+static unsigned unpacked_events;
+#ifndef LRRK_TEST_UPSTREAM
 static bool inject_claim;
 static const uint8_t wifi_session[16] = {1};
+#endif
 
 int64_t esp_timer_get_time(void) { return now_us; }
 UAVObjHandle GCSReceiverHandle(void) { return &object; }
 int32_t GCSReceiverGet(GCSReceiverData *out) { *out = object; return 0; }
 int32_t GCSReceiverConnectCallback(UAVObjEventCallback cb) { callback = cb; return 0; }
 static void event(UAVObjEventType kind) {
+    if (kind == EV_UNPACKED) ++unpacked_events;
     UAVObjEvent ev = {.obj=&object, .instId=0, .event=kind, .lowPriority=false};
     if (callback) callback(&ev);
 }
 int32_t UAVObjUnpack(UAVObjHandle obj, uint16_t instance, const uint8_t *data) {
     now_us += unpack_delay;
     if (unpack_result) return unpack_result;
+#ifndef LRRK_TEST_UPSTREAM
     if (inject_claim) {
         inject_claim = false;
-        assert(PIOS_LiteWing_GCSReceiver_ClaimWireless(wifi_session, 1) == 0);
+        assert(PIOS_LiteWing_GCSReceiver_ClaimWireless(wifi_session, 1) == -1);
+        assert(object.Channel[0] == 0 && unpacked_events == 0);
     }
+#endif
     if (obj == &object && instance == 0) {
         memcpy(&object, data, sizeof(object));
         event(EV_UNPACKED);
@@ -125,6 +132,7 @@ int main(int argc,char **argv) {
     } else if (!strcmp(name,"out-of-order-completion")) {
         inject_newer=true; input(1500); expect(0,1700);
         now_us=101010; expect(0,PIOS_RCVR_TIMEOUT);
+#ifndef LRRK_TEST_UPSTREAM
     } else if (!strcmp(name,"wireless-excludes-usb")) {
         assert(PIOS_LiteWing_GCSReceiver_ClaimWireless(wifi_session, 0) == -1);
         assert(PIOS_LiteWing_GCSReceiver_ClaimWireless(wifi_session, 1) == 0);
@@ -149,11 +157,18 @@ int main(int argc,char **argv) {
     } else if (!strcmp(name,"ownership-change-during-unpack")) {
         inject_claim=true;
         input(1500);
-        expect(0,PIOS_RCVR_TIMEOUT);
-        now_us=2000;
+        expect(0,1500);
+        assert(object.Channel[0] == 1500 && unpacked_events == 1);
+        now_us=101000;
+        assert(PIOS_LiteWing_GCSReceiver_ClaimWireless(wifi_session, 1)==0);
+        GCSReceiverData blocked={.Channel={1700}};
+        assert(PIOS_LiteWing_GCSReceiver_Unpack(&object,0,(const uint8_t *)&blocked,now_us)==-1);
+        assert(object.Channel[0] == 1500 && unpacked_events == 1);
+        now_us=200000;
         assert(PIOS_LiteWing_GCSReceiver_ReleaseWireless(wifi_session, 1)==0);
         expect(0,PIOS_RCVR_TIMEOUT);
-        now_us=3000; input(1600); expect(0,1600);
+        now_us=201000; input(1600); expect(0,1600);
+#endif
     } else if (!strcmp(name,"handles-channels")) {
         assert(receiver_id != 0); expect(8,PIOS_RCVR_INVALID);
         assert(pios_gcsrcvr_rcvr_driver.read(0,0)==PIOS_RCVR_NODRIVER);
