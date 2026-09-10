@@ -1,5 +1,7 @@
 /* SPDX-License-Identifier: GPL-3.0-or-later */
 #include "litewing_pilot_controller.h"
+#include "pios.h"
+#include <freertos/FreeRTOS.h>
 #include "pios_litewing_gcsrcvr.h"
 #include <string.h>
 
