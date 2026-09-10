@@ -2,6 +2,8 @@
 import os
 from pathlib import Path
 import tempfile
+import subprocess
+import sys
 import unittest
 from unittest.mock import patch
 
@@ -17,6 +19,14 @@ class BundleTests(unittest.TestCase):
         self.directory = Path(self.temp.name)
         self.tx = b't' * 16
         self.blob = encode_config('test-only', 'p' * 24, b'k' * 32)
+
+    @unittest.skipUnless(sys.platform == 'darwin', 'macOS inherited ACL')
+    def test_inherited_acl_rejected_before_secret_write(self):
+        subprocess.run(['chmod', '+a', 'everyone allow read,file_inherit,directory_inherit',
+                        str(self.directory)], check=True, capture_output=True)
+        with self.assertRaises(BundleError):
+            save_pending(self.directory, self.tx, self.blob)
+        self.assertEqual(list(self.directory.iterdir()), [])
 
     def test_roundtrip_private_and_never_overwrites(self):
         path = save_pending(self.directory, self.tx, self.blob)

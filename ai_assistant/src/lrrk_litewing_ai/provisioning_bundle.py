@@ -13,6 +13,9 @@ import hashlib
 import os
 from pathlib import Path
 import stat
+import sys
+import ctypes
+import errno
 
 from .usb_provisioning_wire import submission, ProvisioningWireError
 
@@ -22,6 +25,31 @@ SIZE = 192  # magic + transaction + LWCF + SHA256 corruption check
 
 class BundleError(ValueError):
     """Static messages intentionally exclude credentials, paths and OS details."""
+
+
+def _no_acl(fd):
+    if sys.platform == 'darwin':
+        # Darwin Libc acl_file.c/filesec.c: NULL + ENOENT means no ACL
+        # property on an already opened descriptor. Reject any present ACL.
+        libc = ctypes.CDLL('/usr/lib/libSystem.B.dylib', use_errno=True)
+        libc.acl_get_fd_np.argtypes = [ctypes.c_int, ctypes.c_int]
+        libc.acl_get_fd_np.restype = ctypes.c_void_p
+        libc.acl_free.argtypes = [ctypes.c_void_p]
+        ctypes.set_errno(0)
+        acl = libc.acl_get_fd_np(fd, 0x100)
+        if not acl:
+            if ctypes.get_errno() == errno.ENOENT:
+                return
+            raise BundleError('cannot verify private bundle ACL')
+        try:
+            raise BundleError('bundle storage ACL must be absent')
+        finally:
+            libc.acl_free(acl)
+    elif sys.platform.startswith('linux'):
+        if any(name.startswith('system.posix_acl_') for name in os.listxattr(fd)):
+            raise BundleError('bundle storage ACL must be empty')
+    else:
+        raise BundleError('private provisioning ACL backend unavailable')
 
 
 def _private(info, directory=False):
@@ -46,6 +74,7 @@ def _directory(path):
             raise BundleError('bundle storage must be outside repositories')
         descriptor = os.open(resolved, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC)
         _private(os.fstat(descriptor), directory=True)
+        _no_acl(descriptor)
         yield resolved, descriptor
     except (OSError, ProvisioningWireError):
         raise BundleError('private bundle operation failed; preserve pending records') from None
@@ -66,6 +95,7 @@ def _record(transaction, blob):
 
 def _read(fd):
     _private(os.fstat(fd))
+    _no_acl(fd)
     data = b''
     while len(data) <= SIZE:
         chunk = os.read(fd, SIZE + 1 - len(data))
@@ -98,6 +128,7 @@ def save_pending(directory: Path, transaction: bytes, blob: bytes) -> Path:
         try:
             os.fchmod(fd, 0o600)
             _private(os.fstat(fd))
+            _no_acl(fd)
             position = 0
             while position < len(record):
                 written = os.write(fd, record[position:])
