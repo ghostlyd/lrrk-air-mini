@@ -49,6 +49,20 @@ comparisons; sampled runtime state remained disarmed with zero commands on the
 four motor channels. Initial startup alarms and BootFault still prevent flight
 clearance, and arming remains `Always Disarmed`.
 
+The checked ManualControl start build is likewise [installed and observed over
+USB](docs/verification/manual-control-start-usb-install-2026-09-09.md). Its
+application and preserved regions passed independent comparisons and complete
+readbacks. Sampled ManualControl state ended disconnected, FlightStatus
+remained Disarmed, and motor channels 1..4 remained zero. This does not clear
+the persistent BootFault, startup-alarm, commanded-output or flight gates.
+
+**USB-C is a motor-capable power source on this hardware.** Battery absence is
+not a motor de-energization gate: a user-supplied
+[LiteWing recording](https://x.com/d0tslash/status/2095720911743725618)
+shows the battery connector empty while USB-C powers rotating propellers. USB
+bench work must therefore use the same propeller-removal, containment,
+disarmed-state and zero-command controls as any other energized motor test.
+
 ## Firmware build
 
 The firmware is an ESP-IDF project. Install a compatible ESP-IDF toolchain,
