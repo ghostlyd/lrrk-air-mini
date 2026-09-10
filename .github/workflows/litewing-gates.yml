@@ -124,9 +124,17 @@ jobs:
             components/esp_wifi/include
             components/esp_event/include
             components/esp_hw_support/include
-      - name: Exercise AP lifecycle without optional skips
+      - name: Fetch pinned crypto for command-task interoperability
+        uses: actions/checkout@v4
+        with:
+          repository: espressif/mbedtls
+          ref: 98fcfd6d2cea90d306e8fde8e5bffd6087c9cda8
+          path: .pilot-crypto-input
+          persist-credentials: false
+      - name: Exercise AP and command lifecycle without optional skips
         env:
           LRRK_TEST_IDF_ROOT: ${{ github.workspace }}/.pilot-idf-input
+          LRRK_TEST_MBEDTLS_ROOT: ${{ github.workspace }}/.pilot-crypto-input
         run: |
           python - <<'PY'
           import sys
