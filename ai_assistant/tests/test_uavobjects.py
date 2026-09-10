@@ -109,6 +109,28 @@ class UAVObjectTests(unittest.TestCase):
         self.assertIsNone(result.battery.percent)
         self.assertEqual(result.actuators, ())
 
+    def test_battery_unavailable_fields_remain_unknown_and_json_safe(self):
+        for voltage, expected in ((3.75, 3.75), (float("nan"), None)):
+            payload = struct.pack("<7f2B", voltage, *([float("nan")] * 6), 1, 0)
+            result = snapshot_from_frame(frame(BATTERY_STATE, payload), CAPTURED)
+            self.assertEqual(result.battery.voltage_v, expected)
+            self.assertIsNone(result.battery.current_a)
+            self.assertIsNone(result.battery.percent)
+            json.dumps(result.to_dict(), allow_nan=False)
+            if expected is None:
+                finding = next(f for f in run_preflight(result, now=CAPTURED).findings
+                               if f.finding_id == "battery.availability")
+                self.assertEqual(finding.status, "UNKNOWN")
+
+    def test_battery_infinity_is_corruption_not_unavailable(self):
+        for index in range(7):
+            for value in (float("inf"), -float("inf")):
+                fields = [float("nan")] * 7
+                fields[index] = value
+                with self.subTest(index=index, value=value), self.assertRaises(UAVTalkError):
+                    snapshot_from_frame(frame(BATTERY_STATE,
+                                              struct.pack("<7f2B", *fields, 1, 0)), CAPTURED)
+
     def test_arming_is_never_disarmed(self):
         for armed in range(3):
             payload = bytes([armed, 8, 0, 0, 0, 1, 0, 0])

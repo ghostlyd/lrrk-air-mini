@@ -245,6 +245,8 @@ int32_t ActuatorInitialize(void) { return 0; }
 int32_t ActuatorStart(void) { return 0; }
 #endif
 LATER(ManualControl) LATER(Telemetry)
+int32_t LiteWingBatteryInitialize(void) { return 0; }
+int32_t LiteWingBatteryStart(void) { return 0; }
 
 static unsigned resources_touched(void) { return registrations + connections + allocations + instance_calls; }
 int main(int argc, char **argv) {

@@ -57,7 +57,12 @@ def snapshot_from_frame(frame: UAVTalkFrame, captured_at: datetime) -> Optional[
     if len(frame.payload) != layout.size:
         raise UAVTalkError("payload length does not match pinned object schema")
     values = layout.unpack(frame.payload)
-    if any(isinstance(value, float) and not math.isfinite(value) for value in values):
+    # LiteWing voltage-only producers use NaN for unmeasured battery fields.
+    # Translate these to model None before serialization; never admit infinity
+    # or relax non-finite handling for attitude/other object schemas.
+    if any(isinstance(value, float) and not math.isfinite(value)
+           and not (frame.object_id == BATTERY_STATE and math.isnan(value))
+           for value in values):
         raise UAVTalkError("object contains non-finite numeric values")
     fields = {}
     if frame.object_id == ATTITUDE_STATE:
@@ -65,7 +70,9 @@ def snapshot_from_frame(frame: UAVTalkFrame, captured_at: datetime) -> Optional[
     elif frame.object_id == BATTERY_STATE:
         if values[8] not in (0, 1):
             raise UAVTalkError("invalid battery autodetection enum")
-        fields["battery"] = BatteryState(voltage_v=values[0], current_a=values[1])
+        fields["battery"] = BatteryState(
+            voltage_v=None if math.isnan(values[0]) else values[0],
+            current_a=None if math.isnan(values[1]) else values[1])
     elif frame.object_id == FLIGHT_STATUS:
         bounds = (3, len(_MODES), 3, 3, 3, 2, 2, 2)
         if any(value >= limit for value, limit in zip(values, bounds)):
