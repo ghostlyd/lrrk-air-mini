@@ -110,6 +110,12 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             adapter = JsonlTelemetryAdapter(args.input)
         audit = AuditLog(args.audit_log, args.session) if args.audit_log else None
         snapshots = list(adapter.snapshots())
+        if (args.input_format == "uavtalk-live"
+                and args.audit_log is not None
+                and args.private_capture.exists()
+                and args.audit_log.exists()
+                and args.private_capture.samefile(args.audit_log)):
+            raise AdapterError("--private-capture and --audit-log resolve to the same file")
     except (AdapterError, OSError, ValueError) as exc:
         print("telemetry input blocked: %s" % exc, file=sys.stderr)
         return 2

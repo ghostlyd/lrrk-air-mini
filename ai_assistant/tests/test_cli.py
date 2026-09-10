@@ -116,6 +116,31 @@ class CliTests(unittest.TestCase):
         self.assertEqual(result, 2)
         adapter.assert_not_called()
 
+    def test_live_capture_and_audit_inode_alias_is_blocked_before_append(self):
+        snapshot = next(JsonlTelemetryAdapter(FIXTURE).snapshots())
+        with tempfile.TemporaryDirectory() as directory:
+            capture = Path(directory) / "capture.uavtalk"
+            audit = Path(directory) / "audit.jsonl"
+
+            def snapshots():
+                capture.write_bytes(b"private raw capture")
+                os.link(capture, audit)
+                return iter((snapshot,))
+
+            with patch("lrrk_litewing_ai.cli.UAVTalkAdapter", autospec=True) as adapter:
+                adapter.return_value.snapshots.side_effect = snapshots
+                with contextlib.redirect_stderr(io.StringIO()):
+                    result = main([
+                        "--input-format", "uavtalk-live",
+                        "--device", "/dev/cu.wchusbserial410",
+                        "--usb-location", "4-1",
+                        "--private-capture", str(capture),
+                        "--audit-log", str(audit),
+                    ])
+
+            self.assertEqual(result, 2)
+            self.assertEqual(capture.read_bytes(), b"private raw capture")
+
 
 if __name__ == "__main__":
     unittest.main()
