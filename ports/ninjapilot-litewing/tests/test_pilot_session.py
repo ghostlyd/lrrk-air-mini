@@ -146,6 +146,15 @@ class FirmwareAdmissionTests(unittest.TestCase):
         self.assertEqual(self.commit(1000)[1].origin_us, 100)
         self.assertEqual(self.lib.lw_session_tick(self.state, 100100), -1)
 
+    def test_channel_order_endianness_and_inclusive_endpoints(self):
+        frame, keys = self.active()
+        values = [1000, 2000, 1001, 1999, 1234, 1567, 1789, 1100]
+        payload = bytes.fromhex("03e8 07d0 03e9 07cf 04d2 061f 06fd 044c")
+        self.assertEqual(self.prepare(self.control_wire(frame, keys, payload=payload), 500), 3)
+        rc, candidate = self.commit(600)
+        self.assertEqual(rc, 3)
+        self.assertEqual(list(candidate.channels), values)
+
     def test_commit_delay_and_lost_ownership_retire_without_candidate(self):
         for now, owner in ((75101, 1), (600, 0), (499, 1)):
             self.lib.lw_session_init(self.state)
