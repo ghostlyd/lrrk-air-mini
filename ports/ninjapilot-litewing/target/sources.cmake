@@ -33,6 +33,7 @@ set(LITEWING_TARGET_SRCS
     ${CMAKE_CURRENT_LIST_DIR}/pios_litewing_wifi_store.c
     ${CMAKE_CURRENT_LIST_DIR}/pios_litewing_wifi_ap.c
     ${CMAKE_CURRENT_LIST_DIR}/pios_litewing_wifi_command.c
+    ${CMAKE_CURRENT_LIST_DIR}/pios_litewing_usb_maintenance.c
 )
 
 set(LITEWING_TARGET_INCLUDE_DIRS
