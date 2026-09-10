@@ -14,6 +14,7 @@
 #include "uavobjectmanager.h"
 #include "pios_gcsrcvr_priv.h"
 #include "pios_litewing_gcsrcvr.h"
+#include "litewing_pilot_session.h"
 
 #define LITEWING_GCS_ID UINT32_C(0x4c474353)
 #define LITEWING_GCS_TIMEOUT_US INT64_C(100000)
@@ -69,6 +70,35 @@ int32_t PIOS_LiteWing_GCSReceiver_ReleaseWireless(const uint8_t session[16], int
         ++owner_generation;
         usb_fence_us = now;
         result = 0;
+    }
+    portEXIT_CRITICAL(&receiver_lock);
+    return result;
+}
+
+int32_t PIOS_LiteWing_GCSReceiver_PublishWireless(const uint8_t owner[16],
+                                                struct lw_pilot_session *session)
+{
+    if (!session) return -1;
+    struct lw_pilot_candidate candidate = {0};
+    int32_t result = -1;
+    portENTER_CRITICAL(&receiver_lock);
+    const bool named_owner = initialized && wireless_owner && owner &&
+                             !memcmp(owner, owner_session, 16);
+    const bool state_owner = initialized && wireless_owner &&
+                             !memcmp(session->session, owner_session, 16);
+    if (!named_owner || !state_owner || session->phase != LW_ACTIVE) {
+        if (named_owner || state_owner) valid = false;
+        lw_session_retire(session);
+    } else {
+        const enum lw_session_result rc = lw_session_commit_control(
+            session, esp_timer_get_time(), 1, &candidate);
+        if (rc == LW_PILOT_CANDIDATE) {
+            memcpy(receiver_data.Channel, candidate.channels, sizeof(candidate.channels));
+            received_us = candidate.origin_us;
+            have_timestamp = true;
+            valid = true;
+            result = 0;
+        } else if (rc == LW_RETIRED) valid = false;
     }
     portEXIT_CRITICAL(&receiver_lock);
     return result;
