@@ -67,7 +67,7 @@ class PilotWireCTests(unittest.TestCase):
                 packet = encode(env, self.key)
                 rc, frame = self.unpack(packet, direction)
                 self.assertEqual(rc, 0)
-                for capacity in (0, len(packet)-1, len(packet)):
+                for capacity in range(len(packet)+1):
                     buffer = (U8*596)(*([0xa5]*596))
                     written = C.c_size_t(999)
                     rc = self.lib.lw_wire_encode(C.byref(frame), self.mac, None,
@@ -75,10 +75,14 @@ class PilotWireCTests(unittest.TestCase):
                     self.assertEqual((buffer[0], buffer[595]), (0xa5, 0xa5))
                     if capacity < len(packet):
                         self.assertEqual((rc, written.value), (-1, 0))
+                        self.assertEqual(bytes(buffer), b"\xa5"*596)
                     else:
                         result = bytes(buffer[1:1+written.value])
                         self.assertEqual(result, packet)
                         self.assertEqual(decode(result, self.key, direction), env)
+                        tampered = bytearray(result)
+                        tampered[-1] ^= 1
+                        self.assertEqual(self.unpack(bytes(tampered), direction)[0], -1)
 
     def test_tamper_truncation_extra_bytes_and_wrong_direction(self):
         packet = encode(Envelope(0, 5, b"s"*16, 9, b"c"*16, b"ab"), self.key)
@@ -106,6 +110,17 @@ class PilotWireCTests(unittest.TestCase):
         self.assertEqual(self.lib.lw_wire_encode(C.byref(frame), self.mac, None, buffer, 594, C.byref(written)), -1)
         self.assertEqual(written.value, 0)
 
+    def test_standalone_memory_sanitizers(self):
+        binary = Path(self.temp.name) / "wire-sanitizers"
+        subprocess.run(["cc", "-std=c11", "-Wall", "-Wextra", "-Werror",
+                        "-fsanitize=address,undefined", "-fno-omit-frame-pointer",
+                        "-I", str(ROOT / "target/include"),
+                        str(ROOT / "target/litewing_pilot_wire.c"),
+                        str(ROOT / "tests/pilot_wire_memory_test.c"),
+                        "-o", str(binary)], check=True, capture_output=True, text=True)
+        result = subprocess.run([str(binary)], capture_output=True, text=True, timeout=30)
+        self.assertEqual(result.returncode, 0, result.stderr)
+
     def test_valid_mac_cannot_bypass_header_validation(self):
         unsigned = encode(Envelope(0, 5, b"s"*16, 9, b"c"*16, b"ab"), self.key)[:-32]
         for offset, value in ((4, 2), (5, 2), (6, 2), (6, 8), (7, 1), (48, 3), (49, 1)):
@@ -123,3 +138,14 @@ class PilotWireCTests(unittest.TestCase):
         written = C.c_size_t(99)
         self.assertEqual(self.lib.lw_wire_encode(None, self.mac, None, None, 594, C.byref(written)), -1)
         self.assertEqual(written.value, 0)
+        packet = encode(Envelope(0, 5, b"s"*16, 0, b"c"*16, b""), self.key)
+        data = (U8*len(packet)).from_buffer_copy(packet)
+        self.assertEqual(self.lib.lw_wire_decode(data, len(packet), 0, MAC(), None, C.byref(out)), -1)
+        self.assertEqual(bytes(out), b"\0"*C.sizeof(out))
+        _, frame = self.unpack(packet)
+        buffer = (U8*594)()
+        self.assertEqual(self.lib.lw_wire_encode(C.byref(frame), MAC(), None, buffer, 594, C.byref(written)), -1)
+        self.assertEqual(written.value, 0)
+        self.assertEqual(self.lib.lw_wire_encode(C.byref(frame), self.mac, None, None, 594, C.byref(written)), -1)
+        self.assertEqual(written.value, 0)
+        self.assertEqual(self.lib.lw_wire_encode(C.byref(frame), self.mac, None, buffer, 594, None), -1)
