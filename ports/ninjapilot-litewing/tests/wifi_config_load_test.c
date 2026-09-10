@@ -6,6 +6,7 @@
 static int failure, opened, closed, reads;
 esp_err_t nvs_flash_init_partition(const char *partition) {
     assert(!strcmp(partition,"nvs"));
+    if(failure==6) return ESP_ERR_NVS_NEW_VERSION_FOUND;
     return failure==1 ? ESP_ERR_NVS_NO_FREE_PAGES : ESP_OK;
 }
 esp_err_t nvs_open_from_partition(const char *partition,const char *space,int mode,nvs_handle_t *h) {
@@ -16,6 +17,8 @@ esp_err_t nvs_open_from_partition(const char *partition,const char *space,int mo
 void nvs_close(nvs_handle_t h) { assert(h==9); ++closed; }
 esp_err_t nvs_get_blob(nvs_handle_t h,const char *key,void *out,size_t *size) {
     assert(h==9 && !strcmp(key,"config") && out && *size==136); ++reads;
+    if(failure==7) return ESP_ERR_NVS_NOT_FOUND;
+    if(failure==8) { *size=4096; return ESP_ERR_NVS_INVALID_LENGTH; }
     uint8_t b[136]={'L','W','C','F',1,4,16,0};
     memset(b+8,0x42,32); memcpy(b+40,"test",4); memcpy(b+72,"fixture-key-1234",16);
     memcpy(out,b,136);
@@ -27,11 +30,11 @@ esp_err_t nvs_get_blob(nvs_handle_t h,const char *key,void *out,size_t *size) {
 /* Deliberately no erase, set, commit or radio API: a call fails linkage. */
 int main(void) {
     struct lw_wifi_config c;
-    for(failure=0;failure<=5;++failure) {
+    for(failure=0;failure<=8;++failure) {
         opened=closed=reads=0; memset(&c,0xaa,sizeof(c));
         int result=lw_wifi_config_load(&c);
         assert(opened==closed);
-        assert(reads==(failure==1 || failure==2 ? 0 : 1));
+        assert(reads==(failure==1 || failure==2 || failure==6 ? 0 : 1));
         if(!failure) {
             assert(result==0 && !strcmp(c.ssid,"test") && !strcmp(c.password,"fixture-key-1234"));
             for(size_t i=0;i<32;++i) assert(c.root[i]==0x42);

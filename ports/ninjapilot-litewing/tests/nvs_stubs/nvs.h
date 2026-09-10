@@ -6,6 +6,7 @@ typedef uint32_t nvs_handle_t;
 #define ESP_OK 0
 #define ESP_FAIL -1
 #define ESP_ERR_NVS_NOT_FOUND 0x1102
+#define ESP_ERR_NVS_INVALID_LENGTH 0x110c
 #define ESP_ERR_NVS_NO_FREE_PAGES 0x110d
 #define ESP_ERR_NVS_NEW_VERSION_FOUND 0x1110
 #define NVS_READWRITE 1
