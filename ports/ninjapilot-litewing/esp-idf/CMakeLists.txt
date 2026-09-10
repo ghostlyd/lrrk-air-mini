@@ -15,6 +15,8 @@ include($ENV{IDF_PATH}/tools/cmake/project.cmake)
 
 project(lrrk_litewing_ninjapilot)
 
+include("${CMAKE_CURRENT_LIST_DIR}/pilot_secret_policy.cmake")
+
 # Retain the session KDF while admission integration is in progress, so the
 # target link checks its SDK dependencies instead of garbage-collecting them.
 # This does not invoke the function or enable wireless operation.
