@@ -62,6 +62,12 @@ fixes the four-axis outer-loop buffers and packed quaternion inputs using a
 hash-checked target copy. Sanitizer and real SDK checks are distinct from the
 still-open startup, physical cutoff and flight acceptance gates.
 
+The [Stabilization startup correction](../../docs/verification/stabilization-startup-lifecycle-2026-09-09.md)
+checks its objects, loop schedulers, subscriptions, watchdog registration and
+initial state application through the real module table. It is built but not
+installed; synchronous startup acceptance does not establish asynchronous or
+flight readiness.
+
 The [checked module startup correction](../../docs/verification/checked-module-startup-2026-09-09.md)
 consumes reported module errors and checks ManualControl's required objects and
 scheduler allocation through the actual entry point. Other module internals and

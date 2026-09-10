@@ -180,18 +180,20 @@ set(LITEWING_STABILIZATION_DIR "${CMAKE_CURRENT_BINARY_DIR}/litewing_stabilizati
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
     "${PORT_ROOT}/prepare_stabilization.py"
     "${PORT_ROOT}/prepare_startup.py"
-    "${FLIGHT}/modules/Stabilization/outerloop.c")
+    "${FLIGHT}/modules/Stabilization/stabilization.c"
+    "${FLIGHT}/modules/Stabilization/outerloop.c"
+    "${FLIGHT}/modules/Stabilization/innerloop.c")
 execute_process(COMMAND python3 "${PORT_ROOT}/prepare_stabilization.py"
     --source "${FLIGHT}/modules" --output "${LITEWING_STABILIZATION_DIR}"
     RESULT_VARIABLE LITEWING_STABILIZATION_RC)
 if(NOT LITEWING_STABILIZATION_RC EQUAL 0)
-    message(FATAL_ERROR "Pinned stabilization bounds adaptation failed")
+    message(FATAL_ERROR "Pinned stabilization adaptation failed")
 endif()
 set(NINJA_MODULE_SRCS
     "${LITEWING_CONTROL_DIR}/attitude.c"
-    "${FLIGHT}/modules/Stabilization/stabilization.c"
-    "${FLIGHT}/modules/Stabilization/innerloop.c"
+    "${LITEWING_STABILIZATION_DIR}/stabilization.c"
     "${LITEWING_STABILIZATION_DIR}/outerloop.c"
+    "${LITEWING_STABILIZATION_DIR}/innerloop.c"
     "${FLIGHT}/modules/Stabilization/cruisecontrol.c"
     "${FLIGHT}/modules/Stabilization/virtualflybar.c"
     "${FLIGHT}/modules/Stabilization/relay_tuning.c"
