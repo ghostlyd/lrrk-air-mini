@@ -56,4 +56,9 @@ Thus compilation is proven, runtime linkage and execution are not.
 The initial sandboxed component-manager invocation failed while inspecting
 parent processes. The approved build retry outside the sandbox succeeded.
 No flashing, credential access, radio activation, settings writes, or motor
-commands occurred. Final adapter/whole-slice independent review remains pending.
+commands occurred. Independent whole-slice review approved `03e4933` with no
+Important findings, including the adapter and pinned real-crypto tests.
+
+CI now has a dedicated `pilot-crypto-gate` that obtains the exact mbedTLS revision
+and supplies it to the focused suite. Its live result must be checked separately;
+adding the workflow does not itself prove the hosted test passed.

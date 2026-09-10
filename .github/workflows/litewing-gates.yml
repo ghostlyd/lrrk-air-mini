@@ -87,6 +87,25 @@ jobs:
       - name: Run host and static gates
         run: ports/ninjapilot-litewing/build.sh --host-only
 
+  pilot-crypto-gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Fetch pinned ESP-IDF mbedTLS source
+        uses: actions/checkout@v4
+        with:
+          repository: espressif/mbedtls
+          ref: 98fcfd6d2cea90d306e8fde8e5bffd6087c9cda8
+          path: .pilot-crypto-input
+          persist-credentials: false
+      - name: Verify real crypto vectors and bounded codec
+        env:
+          LRRK_TEST_MBEDTLS_ROOT: ${{ github.workspace }}/.pilot-crypto-input
+        run: python -m unittest discover -s ports/ninjapilot-litewing/tests -p 'test_pilot*.py' -v
+
   source-gate:
     runs-on: ubuntu-latest
     steps:
