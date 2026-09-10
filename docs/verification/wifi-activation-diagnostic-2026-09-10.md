@@ -72,6 +72,20 @@ contract tests and firmware/persistence-link checks passed before this flash;
 the five board-startup tests passed for the preceding adapter-code diagnostic.
 Raw boot captures remain private. No initialization failure was bypassed.
 
+The expanded diagnostic at source `e9c96a9`, application SHA-256
+`9c7e4731d7785739d27e31141175426a95f98ced5cb329d406713e46b6ca7181`,
+reported `MPU address probe=0`. Identity/register configuration was not reached.
+The application-only write passed hash verification and remains installed.
+The configured sensor address is `0x68`, SDA GPIO11 and SCL GPIO10; these do not
+overlap the configured motor pins. The pinned probe returns false for an invalid
+bus handle or any unsuccessful SDK address probe, so this boolean alone does
+not distinguish a NACK, timeout, power issue or physical sensor fault.
+
+Next physical diagnostic: a complete USB power removal/reconnection with any
+battery disconnected and propellers removed. An MCU reset is not equivalent to
+removing power from the sensor. No automatic sensor-address changes or health
+check bypasses were implemented.
+
 ### Follow-up identity and persistence checks
 
 The installed esptool 4.12.0 `verify_flash` command exited successfully for the
