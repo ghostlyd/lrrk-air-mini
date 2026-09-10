@@ -54,4 +54,7 @@ int32_t SystemModInitialize(void);
 #define FW_VERSION_HASH32 0x12345678u
 #define FW_VERSION_UNIXTIME 123u
 #define FW_VERSION_FWTAG "board-startup-host-test"
+#define LRRK_WRAPPER_COMMIT "0123456789abcdef0123456789abcdef01234567"
+#define LRRK_WRAPPER_IDENTITY_MARKER "LRRK0123456789abcdef"
+#define LRRK_WRAPPER_IDENTITY_MARKER_LENGTH 20u
 static const uint8_t fw_version_uavo_sha1[20] = {0};

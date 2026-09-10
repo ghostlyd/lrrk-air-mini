@@ -144,20 +144,23 @@ static bool configure_sensor(void)
 static void orient_sample(const struct litewing_mpu6050_sample *raw,
                           PIOS_SENSORS_3Axis_SensorsWithTemp *out)
 {
+    int16_t accel[3];
+    int16_t gyro[3];
     /* The OP body-frame convention follows the existing MPU6000 path: chip Y
-     * becomes body X, chip X becomes body Y, and body Z is inverted. Physical
-     * corner/IMU orientation is still a required props-off bench gate. */
+     * becomes body X, chip X becomes body Y, and body Z is inverted. */
     switch (device.orientation) {
     case LITEWING_MPU6050_ORIENTATION_TOP_0DEG:
     default:
-        out->sample[0].x = raw->accel[1];
-        out->sample[0].y = raw->accel[0];
-        out->sample[1].x = raw->gyro[1];
-        out->sample[1].y = raw->gyro[0];
+        (void)litewing_mpu6050_orient_top_0deg(raw->accel, accel);
+        (void)litewing_mpu6050_orient_top_0deg(raw->gyro, gyro);
         break;
     }
-    out->sample[0].z = (int16_t)(-1 - raw->accel[2]);
-    out->sample[1].z = (int16_t)(-1 - raw->gyro[2]);
+    out->sample[0].x = accel[0];
+    out->sample[0].y = accel[1];
+    out->sample[0].z = accel[2];
+    out->sample[1].x = gyro[0];
+    out->sample[1].y = gyro[1];
+    out->sample[1].z = gyro[2];
     out->temperature = (int16_t)(3653 + ((int32_t)raw->temperature * 100) / 340);
     out->count = LITEWING_MPU6050_SENSOR_COUNT;
 }

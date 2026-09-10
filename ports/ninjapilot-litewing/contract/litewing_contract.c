@@ -16,6 +16,20 @@ bool litewing_mpu6050_identity_valid(uint8_t who_am_i)
     return who_am_i == LITEWING_MPU6050_WHO_AM_I;
 }
 
+bool litewing_mpu6050_orient_top_0deg(const int16_t sensor[3], int16_t body[3])
+{
+    if (sensor == 0 || body == 0) {
+        return false;
+    }
+    /* Match NinjaPilot's MPU6000 TOP_0DEG body convention exactly. The
+     * -1-z expression is defined for every int16 input without signed
+     * overflow, including INT16_MIN. */
+    body[0] = sensor[1];
+    body[1] = sensor[0];
+    body[2] = (int16_t)(-1 - sensor[2]);
+    return true;
+}
+
 bool litewing_arm_allowed(bool imu_present, bool imu_healthy, bool link_fresh, bool disarmed)
 {
     return imu_present && imu_healthy && link_fresh && disarmed;

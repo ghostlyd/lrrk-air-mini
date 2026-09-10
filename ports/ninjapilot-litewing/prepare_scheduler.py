@@ -46,7 +46,7 @@ def prepare(source, output):
         scheduler = replace_function(scheduler, signature, (ROOT / "target/startup" / fragment).read_text())
     codes["pios_callbackscheduler.c"] = scheduler
     system = replace_exact(codes["systemmod.c"], "#include <openpilot.h>",
-        "#include <openpilot.h>\n#include <pios_litewing_brushed_pwm.h>\n#include <pios_litewing_modules.h>")
+        "#include <openpilot.h>\n#include <pios_litewing_brushed_pwm.h>\n#include <pios_litewing_modules.h>\n#include <pios_litewing_readiness.h>")
     # The copy lives in the build directory; retain the pinned public header
     # through the existing System/inc include path, not a copied header.
     system = replace_exact(system, '#include "inc/systemmod.h"', '#include <systemmod.h>')
@@ -80,10 +80,15 @@ static bool systemResourcesReady;""")
         stopSystemBeforeConnections(true);
         return;
     }""")
-    codes["systemmod.c"] = replace_exact(system, "    PIOS_CALLBACKSCHEDULER_Start();", """    if (PIOS_CALLBACKSCHEDULER_Start() != 0) {
+    system = replace_exact(system, "    PIOS_CALLBACKSCHEDULER_Start();", """    if (PIOS_CALLBACKSCHEDULER_Start() != 0) {
         stopSystemBeforeConnections(true);
         return;
     }""")
+    codes["systemmod.c"] = replace_exact(system, "#if defined(PIOS_INCLUDE_IAP)", """    if (PIOS_LiteWing_ConfirmBootReady() != 0) {
+        stopSystemBeforeConnections(true);
+        return;
+    }
+#if defined(PIOS_INCLUDE_IAP)""")
     manual = replace_exact(codes["manualcontrol.c"], '#include "inc/manualcontrol.h"',
         '#include <manualcontrol.h>')
     manual = replace_exact(manual, "static DelayedCallbackInfo *callbackHandle;", """static DelayedCallbackInfo *callbackHandle;

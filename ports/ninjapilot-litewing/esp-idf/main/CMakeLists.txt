@@ -281,6 +281,28 @@ if(NOT FW_VERSION_RC EQUAL 0)
     message(FATAL_ERROR "fw_version_info.h generation failed")
 endif()
 
+# Bind every firmware artifact to the exact clean wrapper commit as well as
+# the pinned upstream NinjaPilot revision. The always-run target catches a
+# commit change that does not otherwise require CMake reconfiguration; the
+# generator is byte-idempotent so unchanged identity does not rebuild C.
+set(WRAPPER_REPOSITORY_ROOT "${PORT_ROOT}/../..")
+get_filename_component(WRAPPER_REPOSITORY_ROOT "${WRAPPER_REPOSITORY_ROOT}" ABSOLUTE)
+set(WRAPPER_IDENTITY_HEADER "${CMAKE_CURRENT_BINARY_DIR}/lrrk_wrapper_identity.h")
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+    "${PORT_ROOT}/generate_wrapper_identity.py")
+execute_process(
+    COMMAND python3 "${PORT_ROOT}/generate_wrapper_identity.py"
+            --repository "${WRAPPER_REPOSITORY_ROOT}"
+            --output "${WRAPPER_IDENTITY_HEADER}"
+    RESULT_VARIABLE WRAPPER_IDENTITY_RC
+    OUTPUT_VARIABLE WRAPPER_IDENTITY_OUT
+    ERROR_VARIABLE WRAPPER_IDENTITY_ERR)
+if(NOT WRAPPER_IDENTITY_RC EQUAL 0)
+    message(FATAL_ERROR
+        "Wrapper identity generation failed.\n"
+        "${WRAPPER_IDENTITY_OUT}\n${WRAPPER_IDENTITY_ERR}")
+endif()
+
 idf_component_register(
     SRCS ${ALL_PORT_SRCS}
     INCLUDE_DIRS
@@ -315,6 +337,14 @@ idf_component_register(
         esp_hw_support
         nvs_flash
 )
+
+add_custom_target(lrrk_wrapper_identity ALL
+    COMMAND python3 "${PORT_ROOT}/generate_wrapper_identity.py"
+            --repository "${WRAPPER_REPOSITORY_ROOT}"
+            --output "${WRAPPER_IDENTITY_HEADER}"
+    BYPRODUCTS "${WRAPPER_IDENTITY_HEADER}"
+    VERBATIM)
+add_dependencies(${COMPONENT_LIB} lrrk_wrapper_identity)
 
 target_linker_script(${COMPONENT_LIB} INTERFACE "uavo_handles.ld")
 

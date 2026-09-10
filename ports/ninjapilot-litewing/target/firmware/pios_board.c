@@ -30,6 +30,8 @@
 #include <freertos/task.h>
 
 #include "fw_version_info.h"
+#include "litewing_contract.h"
+#include "lrrk_wrapper_identity.h"
 #include "pios_litewing_board.h"
 #include "pios_litewing_brushed_pwm.h"
 #include "pios_litewing_flashfs.h"
@@ -46,6 +48,12 @@ static bool board_boot_fault;
 static bool board_leds_ready;
 static bool board_init_started;
 static bool board_services_initialized;
+
+_Static_assert(sizeof(LRRK_WRAPPER_IDENTITY_MARKER) - 1 ==
+               LRRK_WRAPPER_IDENTITY_MARKER_LENGTH,
+               "wrapper identity marker length changed");
+_Static_assert(sizeof(((FirmwareIAPObjData *)0)->Description) >= 80,
+               "FirmwareIAP description layout is too small");
 
 const struct pios_board_info pios_board_info_blob = {
     .magic      = PIOS_BOARD_INFO_BLOB_MAGIC,
@@ -165,22 +173,22 @@ static int board_defaults_and_save(void *context, unsigned index)
         mixer.Mixer1Vector.ThrottleCurve1 = 127;
         mixer.Mixer1Vector.Roll = 127;
         mixer.Mixer1Vector.Pitch = 127;
-        mixer.Mixer1Vector.Yaw = -127;
+        mixer.Mixer1Vector.Yaw = LITEWING_MOTOR_1_MIXER_YAW;
         mixer.Mixer2Type = MIXERSETTINGS_MIXER2TYPE_MOTOR;
         mixer.Mixer2Vector.ThrottleCurve1 = 127;
         mixer.Mixer2Vector.Roll = -127;
         mixer.Mixer2Vector.Pitch = 127;
-        mixer.Mixer2Vector.Yaw = 127;
+        mixer.Mixer2Vector.Yaw = LITEWING_MOTOR_2_MIXER_YAW;
         mixer.Mixer3Type = MIXERSETTINGS_MIXER3TYPE_MOTOR;
         mixer.Mixer3Vector.ThrottleCurve1 = 127;
         mixer.Mixer3Vector.Roll = -127;
         mixer.Mixer3Vector.Pitch = -127;
-        mixer.Mixer3Vector.Yaw = -127;
+        mixer.Mixer3Vector.Yaw = LITEWING_MOTOR_3_MIXER_YAW;
         mixer.Mixer4Type = MIXERSETTINGS_MIXER4TYPE_MOTOR;
         mixer.Mixer4Vector.ThrottleCurve1 = 127;
         mixer.Mixer4Vector.Roll = 127;
         mixer.Mixer4Vector.Pitch = -127;
-        mixer.Mixer4Vector.Yaw = 127;
+        mixer.Mixer4Vector.Yaw = LITEWING_MOTOR_4_MIXER_YAW;
         if (MixerSettingsSet(&mixer) != 0) return -1;
     } else if (index == 1) {
 
@@ -271,6 +279,10 @@ static int32_t board_set_firmware_identity(void)
     iap.Description[12] = pios_board_info_blob.board_type;
     iap.Description[13] = pios_board_info_blob.board_rev;
     strncpy((char *)&iap.Description[14], FW_VERSION_FWTAG, 25);
+    /* OpenPilot leaves bytes 39..58 unused. Keep the canonical upstream
+     * identity fields intact and add the exact wrapper source commit there. */
+    memcpy(&iap.Description[39], LRRK_WRAPPER_IDENTITY_MARKER,
+           LRRK_WRAPPER_IDENTITY_MARKER_LENGTH);
     memcpy(&iap.Description[60], fw_version_uavo_sha1,
            sizeof(fw_version_uavo_sha1));
     return FirmwareIAPObjSet(&iap);

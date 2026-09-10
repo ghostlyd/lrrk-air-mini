@@ -28,6 +28,11 @@ class LiteWingBrushedOutputTests(unittest.TestCase):
         self.assertNotIn("pios_servo.c", source)
         self.assertNotIn("pios_icm20602.c", source)
 
+    def test_board_mixer_uses_reviewed_motor_direction_contract(self):
+        source = (ROOT / "target/firmware/pios_board.c").read_text()
+        for index in range(1, 5):
+            self.assertIn(f"LITEWING_MOTOR_{index}_MIXER_YAW", source)
+
 
 if __name__ == "__main__":
     unittest.main()

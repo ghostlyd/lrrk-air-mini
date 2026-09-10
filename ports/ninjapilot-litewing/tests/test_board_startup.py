@@ -36,7 +36,7 @@ class BoardStartupTests(unittest.TestCase):
             "inc/openpilot.h", "pios_com_priv.h", "pios_debuglog.h",
             "pios_gcsrcvr_priv.h", "pios_rcvr_priv.h", "pios_esp32_priv.h",
             "freertos/FreeRTOS.h", "freertos/task.h", "fw_version_info.h",
-            "esp_system.h", "systemmod.h",
+            "lrrk_wrapper_identity.h", "esp_system.h", "systemmod.h",
         )
         for name in boundary_headers:
             path = output / name
@@ -73,7 +73,7 @@ class BoardStartupTests(unittest.TestCase):
                 raise AssertionError("board mutation anchor changed")
             path.write_text(code.replace(old, new))
         cls.binary = output / "board-startup-test"
-        includes = [output, ROOT / "tests/board_stubs", ROOT / "target/include",
+        includes = [output, ROOT / "tests/board_stubs", ROOT / "target/include", ROOT / "contract",
                     synth, flight / "flight/uavobjects/inc",
                     flight / "flight/libraries/inc", flight / "flight/pios/inc"]
         args = ["cc", "-std=gnu11", "-Wall", "-Wextra", "-Werror",

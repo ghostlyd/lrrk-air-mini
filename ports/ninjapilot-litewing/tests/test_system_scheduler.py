@@ -310,6 +310,11 @@ class SystemSchedulerTests(unittest.TestCase):
                 result = subprocess.run([str(self.binary), name], capture_output=True, text=True, timeout=5)
                 self.assertEqual(result.returncode, 0, result.stderr)
 
+    def test_failed_whole_boot_readiness_stops_before_normal_boot_work(self):
+        result = subprocess.run([str(self.binary), "boot-readiness"],
+                                capture_output=True, text=True, timeout=5)
+        self.assertEqual(result.returncode, 0, result.stderr)
+
     def test_nominal_system_starts_scheduler_and_reaches_monitoring_loop(self):
         result = subprocess.run([str(self.binary), "nominal"], capture_output=True, text=True, timeout=5)
         self.assertEqual(result.returncode, 0, result.stderr)
