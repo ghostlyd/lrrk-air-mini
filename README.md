@@ -28,11 +28,13 @@ proved `FlightStatus=Armed` together with six nonzero motor-command samples,
 then 11 zero-command samples and receiver timeout while still Armed. It made no
 persistent settings write and, by operator request, did not restore
 `Always Disarmed`; the last observed `Always Armed` state was RAM-only and is
-not evidence of persistence across a verified reset or power cycle. Closing the
-serial link does not clear RAM state while USB power remains; later work must
-assume `Always Armed` remains active until a reset or power cycle is performed
-and disarmed telemetry is reverified. Electrical output, calibrated orientation,
-battery operation, physical flight safety and flight remain pending.
+not evidence of persistence across a verified reset or power cycle. Later live
+diagnosis established that a conventional pyserial reopen is not passive: the
+CH340 DTR/RTS auto-reset path restarted the ESP32-S3 and the first observed
+uptime was 402 ms. A reset-neutral POSIX open preserved continuing uptime.
+Terminal RAM state must therefore be checked in the original session or through
+that reset-neutral path. Electrical output, six-face calibration, battery
+operation, physical flight safety and flight remain pending.
 
 The NinjaPilot target's [settings-persistence correction and USB reset
 verification](docs/verification/settings-recovery-2026-09-09.md) are also complete

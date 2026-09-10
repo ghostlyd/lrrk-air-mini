@@ -26,6 +26,7 @@
 static TaskFunction_t system_entry;
 static int system_token, persistence_queue;
 static unsigned module_starts, after_scheduler, fault_alarms, shutdowns, system_deletes;
+static unsigned readiness_checks;
 static jmp_buf system_loop;
 static bool lifecycle, early_system, executing_system, system_live, system_monitored, queue_live;
 static unsigned system_creates, system_registers, system_unregisters, queue_creates, queue_deletes, object_inits;
@@ -352,6 +353,11 @@ int xQueueReceive(xQueueHandle q, void *out, unsigned ticks)
 void PIOS_SYS_Init(void) {}
 void PIOS_Board_Init(void) {}
 bool PIOS_LiteWing_BoardServicesInitialized(void) { return true; }
+int32_t PIOS_LiteWing_ConfirmBootReady(void)
+{
+    readiness_checks++;
+    return !strcmp(scenario, "boot-readiness") ? -1 : 0;
+}
 #ifndef TEST_MODULE_TABLE
 int32_t PIOS_LiteWing_ModulesInitialize(void) { module_inits++; return 0; }
 #endif
@@ -593,10 +599,22 @@ int main(int argc, char **argv)
     CHECK(SystemModInitialize() == 0 && system_entry);
     run_system();
     CHECK(module_starts == 1);
+    CHECK(readiness_checks == (!strcmp(scenario, "task") || !strcmp(scenario, "monitor") ? 0u : 1u));
     if (strcmp(scenario, "nominal")) {
         CHECK(shutdowns == 1 && fault_alarms == 1 && system_deletes == 1);
         CHECK(after_scheduler == 0);
-        no_workers();
+        if (!strcmp(scenario, "boot-readiness")) {
+            /* A post-start readiness failure permanently latches outputs off.
+             * Scheduler workers are not deleted while they may own callback
+             * state; the process remains faulted and performs no normal boot
+             * connections. */
+            CHECK(task_calls == 2);
+            for (unsigned n = 0; n < task_calls; ++n) {
+                CHECK(tasks[n].live && tasks[n].monitored);
+            }
+        } else {
+            no_workers();
+        }
     } else {
         CHECK(shutdowns == 0 && fault_alarms == 0 && system_deletes == 0);
         CHECK(after_scheduler == 3);

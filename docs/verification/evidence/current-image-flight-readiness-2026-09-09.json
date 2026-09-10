@@ -1,0 +1,84 @@
+{
+  "schema": "lrrk.litewing.current-image-readiness.v1",
+  "source": {
+    "wrapper_commit": "37f2476c6984f15dfe2b9ecd2861321652497804",
+    "ninjapilot_commit": "ac77304a58de6c8bd552f94668b46903adb71cb2",
+    "firmware_marker": "LRRK37f2476c6984f15d",
+    "esp_idf": "5.3.2",
+    "target": "esp32s3"
+  },
+  "application": {
+    "offset": "0x10000",
+    "bytes": 359776,
+    "built_sha256": "98214708fcf511b3ccfb3a5511784791dda4166d87cd809102393e395d37f013",
+    "readback_sha256": "98214708fcf511b3ccfb3a5511784791dda4166d87cd809102393e395d37f013",
+    "bootloader_unchanged": true,
+    "partition_table_unchanged": true,
+    "settings_unchanged": true
+  },
+  "boot": {
+    "boot_fault_terminal": "OK",
+    "initial_flight_time_ms": 402,
+    "terminal_flight_time_ms": 29501,
+    "initial_transient_alarms": {
+      "CPUOverload": "Critical",
+      "Actuator": "Critical",
+      "Receiver": "Warning"
+    },
+    "terminal_active_alarms": {
+      "Receiver": "Warning"
+    },
+    "terminal_motor_commands": [0, 0, 0, 0]
+  },
+  "reset_neutral_open": {
+    "first_flight_time_ms": 130473,
+    "last_flight_time_ms": 138321,
+    "capture_bytes": 32492,
+    "capture_sha256": "4662232d51c508b1b87f18e66ab8c5e7a070db35bd0d9ba99b483cb8e048ef94",
+    "reset_observed": false,
+    "implementation_smoke": {
+      "transmitted_bytes": 0,
+      "first_flight_time_ms": 576322,
+      "last_flight_time_ms": 579360,
+      "initial_discarded_bytes": 28,
+      "capture_bytes": 13122,
+      "capture_sha256": "3d96d648725a84c48a6e7b154681eecb607abf97a669855302c91610a443972c"
+    }
+  },
+  "motor_contract": [
+    {"channel": 1, "gpio": 5, "corner": "front-right", "class": "B", "wires": "black/white", "rotation": "CCW", "mixer_yaw": -127},
+    {"channel": 2, "gpio": 6, "corner": "rear-right", "class": "A", "wires": "red/blue", "rotation": "CW", "mixer_yaw": 127},
+    {"channel": 3, "gpio": 3, "corner": "rear-left", "class": "B", "wires": "black/white", "rotation": "CCW", "mixer_yaw": -127},
+    {"channel": 4, "gpio": 4, "corner": "front-left", "class": "A", "wires": "red/blue", "rotation": "CW", "mixer_yaw": 127}
+  ],
+  "imu": {
+    "transform": {"body_x": "sensor_y", "body_y": "sensor_x", "body_z": "-sensor_z"},
+    "stationary_terminal_mps2": [0.0155623108, 0.6536170840, -9.4445276260],
+    "startup_and_arming_gyro_bias_estimation": true,
+    "six_face_accelerometer_calibration_performed": false
+  },
+  "armed_motor_proof": {
+    "capture_bytes": 32254,
+    "capture_sha256": "56a4fa7f94df75cd181d999b72eedf1761168b649b17862346ccdadeea9a8d51",
+    "nonzero_motor_samples": 5,
+    "peak_motor_commands": [101, 0, 0, 110],
+    "terminal_flight_status": "Armed",
+    "terminal_motor_commands": [0, 0, 0, 0],
+    "terminal_receiver_connected": false,
+    "persistent_write_sent": false,
+    "restore_to_always_disarmed_sent": false
+  },
+  "physical_conditions": {
+    "propellers_removed": true,
+    "contained": true,
+    "battery_connected": false,
+    "power_source": "USB-C"
+  },
+  "not_established": [
+    "battery-powered operation",
+    "visual shaft-direction continuity",
+    "six-face accelerometer calibration",
+    "propeller installation",
+    "airworthiness or free flight"
+  ]
+}

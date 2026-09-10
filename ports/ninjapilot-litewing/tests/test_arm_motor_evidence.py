@@ -132,7 +132,7 @@ class ArmMotorEvidenceTests(unittest.TestCase):
             with self.subTest(label=label), self.assertRaises(evidence.EvidenceError):
                 evidence.validate_record(candidate)
 
-    def test_link_closure_residual_arming_hazard_is_explicit(self):
+    def test_serial_reset_observation_boundary_is_explicit(self):
         readme = (REPO_ROOT / "README.md").read_text(encoding="utf-8")
         report = (
             REPO_ROOT
@@ -140,9 +140,10 @@ class ArmMotorEvidenceTests(unittest.TestCase):
         ).read_text(encoding="utf-8")
 
         for text in (readme, report):
-            normalized = " ".join(text.split())
-            self.assertIn("serial link does not clear", normalized)
-            self.assertIn("must assume `Always Armed` remains active", normalized)
+            normalized = " ".join(text.split()).casefold()
+            self.assertIn("pyserial reopen is not passive", normalized)
+            self.assertIn("reset-neutral", normalized)
+            self.assertIn("terminal ram state must", normalized)
 
     def test_limitations_cannot_be_replaced_with_passing_claims(self):
         candidate = copy.deepcopy(self.record)

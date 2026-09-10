@@ -58,6 +58,14 @@ these metrics; `end_s` is the last checked host time before port closure, not an
 electrical timestamp. This finite capture does not assert
 anything about later unread telemetry or continuous electrical safety.
 
+On POSIX hosts the probe opens the callout tty through a raw descriptor and
+configures only 57,600-baud 8N1 data framing plus exclusive ownership. It never
+issues modem-control ioctls or changes DTR/RTS because the LiteWing schematic
+routes those CH340 signals to the ESP32-S3 auto-reset circuit. Initial UART
+bytes are retained and passed through the existing bounded synchronization
+logic; the port is not flushed to manufacture a clean frame boundary. A host
+without POSIX termios fails before opening the serial device.
+
 Preflight waits up to15s for fresh safe settings/status and actual no-input
 timeout values. The four phases are input1/silence1/input2/silence2, each1.2s.
 Each phase must end with at least three consecutive matching receiver samples;

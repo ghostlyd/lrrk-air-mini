@@ -32,7 +32,7 @@ class StartupServicesTests(unittest.TestCase):
         for name in ("inc/openpilot.h", "pios_com_priv.h", "pios_debuglog.h",
                      "pios_gcsrcvr_priv.h", "pios_rcvr_priv.h", "pios_esp32_priv.h",
                      "freertos/FreeRTOS.h", "freertos/task.h", "fw_version_info.h",
-                     "esp_system.h", "systemmod.h"):
+                     "lrrk_wrapper_identity.h", "esp_system.h", "systemmod.h"):
             path = output / name
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text('#include "board_test.h"\n')
@@ -62,6 +62,7 @@ class StartupServicesTests(unittest.TestCase):
                 "-include", str(ROOT / "tests/service_stubs/openpilot.h")]
         includes = [output, ROOT / "tests/service_stubs", ROOT / "tests/board_stubs",
                     ROOT / "tests/thrust_stubs", ROOT / "target/include", synth,
+                    ROOT / "contract",
                     flight / "flight/uavobjects/inc", flight / "flight/libraries/inc",
                     flight / "flight/pios/inc"]
         for path in includes:

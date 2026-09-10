@@ -142,24 +142,112 @@ class Wire:
         return decoded
 
 
+class ResetNeutralPosixPort:
+    """Open a POSIX callout device without changing DTR or RTS.
+
+    LiteWing routes those CH340 modem-control lines through its ESP32-S3 auto
+    reset circuit. pyserial applies modem-line state while opening, so even a
+    nominally read-only probe can restart the controller. This descriptor path
+    configures only tty data framing and exclusive ownership; it deliberately
+    issues no TIOCM modem-control ioctl and does not flush inbound bytes.
+    """
+    WRITE_TIMEOUT_SECONDS = .02
+
+    def __init__(self, device, baud, *, os_api=os, termios_api=None,
+                 fcntl_api=None, select_api=None, clock=time.monotonic):
+        if baud != 57600 or not isinstance(device, str) or not device.startswith('/dev/cu.'):
+            raise ProbeFailure('reset-neutral port requires a 57600-baud POSIX callout device')
+        if termios_api is None:
+            try:
+                import termios as termios_api
+            except ImportError as exc:
+                raise ProbeFailure('reset-neutral serial access requires POSIX termios') from exc
+        if fcntl_api is None:
+            import fcntl as fcntl_api
+        if select_api is None:
+            import select as select_api
+        self._os = os_api
+        self._termios = termios_api
+        self._select = select_api
+        self._clock = clock
+        self._fd = None
+        try:
+            self._fd = os_api.open(
+                device, os_api.O_RDWR | os_api.O_NOCTTY | os_api.O_NONBLOCK
+            )
+            if not os_api.isatty(self._fd):
+                raise ProbeFailure('serial device is not a tty')
+            attrs = termios_api.tcgetattr(self._fd)
+            attrs[0] = 0
+            attrs[1] = 0
+            control_mask = (
+                termios_api.CSIZE | termios_api.PARENB | termios_api.CSTOPB |
+                getattr(termios_api, 'CRTSCTS', 0)
+            )
+            attrs[2] = (attrs[2] & ~control_mask) | (
+                termios_api.CS8 | termios_api.CREAD | termios_api.CLOCAL
+            )
+            attrs[3] = 0
+            attrs[4] = termios_api.B57600
+            attrs[5] = termios_api.B57600
+            attrs[6][termios_api.VMIN] = 0
+            attrs[6][termios_api.VTIME] = 0
+            termios_api.tcsetattr(self._fd, termios_api.TCSANOW, attrs)
+            # TIOCEXCL reserves the tty but does not alter DTR/RTS.
+            fcntl_api.ioctl(self._fd, termios_api.TIOCEXCL)
+        except Exception as exc:
+            self.close()
+            if isinstance(exc, ProbeFailure):
+                raise
+            raise ProbeFailure('reset-neutral serial configuration failed: ' + str(exc)) from exc
+
+    def write(self, data):
+        if not isinstance(data, (bytes, bytearray, memoryview)):
+            raise ProbeFailure('serial write requires bytes')
+        view = memoryview(data)
+        total = 0
+        deadline = self._clock() + self.WRITE_TIMEOUT_SECONDS
+        while view:
+            try:
+                written = self._os.write(self._fd, view)
+            except BlockingIOError:
+                written = 0
+            if written < 0 or written > len(view):
+                raise ProbeFailure('invalid serial write result')
+            if written:
+                total += written
+                view = view[written:]
+                continue
+            remaining = deadline - self._clock()
+            if remaining <= 0:
+                raise ProbeFailure('serial write deadline exceeded')
+            if not self._select.select([], [self._fd], [], remaining)[1]:
+                raise ProbeFailure('serial write deadline exceeded')
+        return total
+
+    def read_available(self, max_bytes):
+        if type(max_bytes) is not int or not 1 <= max_bytes <= 4096:
+            raise ProbeFailure('invalid serial read limit')
+        try:
+            return self._os.read(self._fd, max_bytes)
+        except BlockingIOError:
+            return b''
+
+    def close(self):
+        if self._fd is not None:
+            fd, self._fd = self._fd, None
+            self._os.close(fd)
+
+
 class SerialLink:
     def __init__(self, wire, device, location):
-        import serial
         from serial.tools import list_ports
         matches = [p for p in list_ports.comports() if p.device == device and
                    p.vid == 0x1a86 and p.pid == 0x7522 and p.location == location]
         if not device.startswith('/dev/cu.') or not location or len(matches) != 1:
             raise ProbeFailure('expected USB serial identity/location not present')
         self.wire = wire
-        self.port = serial.Serial(port=None, baudrate=57600, timeout=0,
-                                  write_timeout=.02, exclusive=True)
-        try:
-            self.port.dtr = self.port.rts = False
-            self.port.port = device
-            self.port.open()
-        except BaseException:
-            self.port.close()
-            raise
+        self.port = ResetNeutralPosixPort(device, 57600)
 
     def send(self, packet, allow_neutral=False):
         self.wire.validate_send(packet, allow_neutral)
@@ -169,6 +257,8 @@ class SerialLink:
     def read(self, max_bytes=4096):
         if type(max_bytes) is not int or not 1 <= max_bytes <= 4096:
             raise ProbeFailure('invalid serial read limit')
+        if hasattr(self.port, 'read_available'):
+            return self.port.read_available(max_bytes)
         return self.port.read(min(max(self.port.in_waiting,1),max_bytes))
 
 

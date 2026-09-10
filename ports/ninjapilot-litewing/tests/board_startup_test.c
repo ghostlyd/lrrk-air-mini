@@ -90,6 +90,8 @@ int32_t UAVObjSetData(UAVObjHandle obj, const void *data)
         const FirmwareIAPObjData *iap = data;
         CHECK(iap->BoardType == 0x13 && iap->BoardRevision == 2);
         CHECK(memcmp(iap->Description, "OpFw", 4) == 0);
+        CHECK(memcmp(&iap->Description[39], LRRK_WRAPPER_IDENTITY_MARKER,
+                     LRRK_WRAPPER_IDENTITY_MARKER_LENGTH) == 0);
         CHECK(iap->Command == 0x1234); /* Preserve unrelated initialized fields. */
     } else {
         CHECK(false); /* Existing settings must never be defaulted in this fixture. */
