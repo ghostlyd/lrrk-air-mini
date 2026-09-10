@@ -32,6 +32,32 @@ The installed aircraft application was not reflashed in this diagnostic.
 
 ## Limits and next investigation
 
+### Temporary console diagnostic changes the failure boundary
+
+A separately built bench image enabled the UART console at 115200 and selected
+silent panic reboot, with core dumps still disabled. No flight-control policy
+was changed. Its application-only write passed esptool hash verification; no
+bootloader, partition table, settings or credential write was requested.
+
+The first capture reached `app_main`, printed `board startup failed; modules not
+initialized`, and returned from `app_main`. Thus the current evidence does not
+support the earlier hypothesis of failure inside credential-enabled Wi-Fi
+initialization: startup stops before modules and Wi-Fi are launched.
+
+A second diagnostic added a source-line marker to the existing board fault
+handler. All five board-startup tests passed; build and persistence-link checks
+passed. Its application SHA-256 is
+`fd0f07f92fec80c0db44943397642e9a6df7ae366e722766519ca630f94a0c7a`.
+The application-only write passed hash verification. The private boot capture
+reported line 393 of `target/firmware/pios_board.c` at source commit `c1410f3`:
+the failure return from `PIOS_LiteWing_Board_Init()`.
+
+That adapter has three failure stages: brushed PWM initialization, I2C
+initialization, and MPU6050 initialization. The exact failed stage is not yet
+known. The temporary console image remains installed and is not flight-qualified;
+console text can interfere with binary telemetry. The original verified image
+is retained for recovery. No arming or motor-output command was issued.
+
 ### Follow-up identity and persistence checks
 
 The installed esptool 4.12.0 `verify_flash` command exited successfully for the
@@ -53,7 +79,7 @@ not definitive evidence of an inactive AP: scan visibility and OS permissions
 were not independently qualified. No network association was attempted and no
 SSID, password, key, transaction ID or raw inventory was published.
 
-The immediate unresolved issue is application startup/USB telemetry, not a
+The immediate unresolved issue is hardware-adapter startup/USB telemetry, not a
 confirmed wireless authentication failure. No AP association or live wireless
 telemetry was established. The reset reason alone cannot establish why startup
 does not reach a responsive telemetry service. Serial-opening line transients
@@ -62,6 +88,6 @@ remain a possible confounder.
 No credentials were resubmitted. No flash, saved-settings, arming or motor-output
 commands were issued. Raw UART captures remain private and outside Git.
 
-Next: inspect the boot/application boundary and the credential-enabled Wi-Fi
-startup path now that application contents and retained settings match. Do not claim an Armed state, a
+Next: distinguish the PWM, I2C and MPU6050 adapter return codes, fix the evidenced
+cause, and validate a normal-console build before wireless qualification. Do not claim an Armed state, a
 working STOP path, or flight readiness from these observations.
