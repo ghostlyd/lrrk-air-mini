@@ -7,4 +7,5 @@ class PilotControllerTests(test_pilot_receiver.PilotReceiverTests):
     extra_sources = ("litewing_pilot_controller.c", "litewing_pilot_neutral.c")
     cases = ("publish", "stop", "timeout", "fault", "not-neutral", "armed", "busy",
              "queued", "tick-queued", "stale-queue", "future-receive", "clock-rollback",
-             "challenge", "challenge-failure", "empty-claim", "unsafe-claim")
+             "challenge", "challenge-failure", "empty-claim", "unsafe-claim",
+             "observed", "observed-failure", "observed-rollback", "observed-badmac")

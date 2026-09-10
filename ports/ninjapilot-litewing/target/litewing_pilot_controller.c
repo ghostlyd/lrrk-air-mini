@@ -42,11 +42,18 @@ void lw_controller_fault(struct lw_pilot_controller *c)
     lw_session_retire(&c->session);
     if (c->owned)
         (void)PIOS_LiteWing_GCSReceiver_PublishWireless(c->owner, &c->session);
+    if (c->admission_guard &&
+        PIOS_LiteWing_GCSReceiver_EndAdmission(c->admission_guard)==0)
+        c->admission_guard=0;
 }
 
 int lw_controller_tick(struct lw_pilot_controller *c, int64_t now_us)
 {
     if (!c) return -1;
+    if (c->admission_guard) {
+        lw_controller_fault(c);
+        return -1;
+    }
     if (lw_session_tick(&c->session, now_us) < 0) {
         lw_controller_fault(c);
         return -1;
@@ -76,6 +83,52 @@ enum lw_session_result lw_controller_challenge(struct lw_pilot_controller *c,
     if (r == LW_RETIRED || c->session.phase == LW_CLOSED)
         lw_controller_fault(c);
     return r;
+}
+
+enum lw_session_result lw_controller_receive_observed(struct lw_pilot_controller *c,
+    const uint8_t *wire, size_t size, const uint8_t root[32], int64_t received_us,
+    lw_pilot_mapping_reader read_mapping, lw_session_rng random, void *random_ctx,
+    uint8_t *reply, size_t capacity, size_t *written)
+{
+    if (written) *written=0;
+    if (!c || !written) return LW_REJECT;
+    if (lw_controller_tick(c,esp_timer_get_time())<0) return LW_RETIRED;
+    if (c->owned)
+        return lw_controller_receive(c,wire,size,root,received_us,0,0,random,
+            random_ctx,reply,capacity,written);
+    if (!read_mapping || (c->session.phase==LW_CLOSED && !root)) return LW_REJECT;
+    struct lw_wire_frame frame={0};
+    struct lw_pilot_mac_key key;
+    const int pending=c->session.phase==LW_PENDING;
+    memcpy(key.bytes,pending ? c->session.keys.c2b : root,sizeof(key.bytes));
+    int authenticated=lw_wire_decode(wire,size,0,lw_pilot_mac,&key,&frame)==0 &&
+        frame.kind==(pending ? 3 : 1) && frame.payload_len==(pending ? 16 : 32);
+    mbedtls_platform_zeroize(&key,sizeof(key));
+    mbedtls_platform_zeroize(&frame,sizeof(frame));
+    if (!authenticated) return LW_REJECT;
+    struct lw_pilot_channel mapping[5]={0};
+    if (read_mapping(mapping)!=0 ||
+        PIOS_LiteWing_GCSReceiver_BeginAdmission(1,&c->admission_guard)!=0) {
+        lw_controller_fault(c);
+        return LW_RETIRED;
+    }
+    enum lw_session_result result=LW_RETIRED;
+    if (read_mapping(mapping)==0) {
+        memcpy(c->mapping,mapping,sizeof(mapping));
+        result=lw_controller_receive(c,wire,size,root,received_us,1,1,random,
+            random_ctx,reply,capacity,written);
+    } else lw_controller_fault(c);
+    if (c->admission_guard) {
+        if (PIOS_LiteWing_GCSReceiver_EndAdmission(c->admission_guard)==0)
+            c->admission_guard=0;
+        else {
+            if (reply && *written) memset(reply,0,*written);
+            *written=0;
+            lw_controller_fault(c);
+            result=LW_RETIRED;
+        }
+    }
+    return result;
 }
 
 enum lw_session_result lw_controller_receive(struct lw_pilot_controller *c,

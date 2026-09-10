@@ -123,3 +123,27 @@ around synchronous snapshot/CLAIM work (never wait for packets while holding it)
 end on every path, and handle clock/cleanup failure explicitly. Mapping must be
 captured or checked inside this transaction, not trusted from a prior HELLO.
 The actual orchestrating task and local-settings-writer lifecycle remain pending.
+
+## Guarded observed receive transaction
+
+The guard at `4f20c6c` passed scoped source review. The observed controller entry
+now authenticates admission framing before invoking its platform mapping reader,
+checks Disarmed/mapping through that reader before acquiring the UART guard,
+then re-reads inside the guard before neutral/session validation and reservation.
+It releases the guard before returning a reply. A failed read retires admission
+and cleans up. If clock rollback prevents cleanup, the controller retains the
+token, refuses a new observed transaction, and retries cleanup through tick or
+fault handling. It never discards the token while the guard remains held.
+
+Forty pilot test methods pass with the pinned source and mbedTLS supplied.
+Twenty real controller scenarios include successful guarded capture from an
+initially absent mapping, failed guarded read with restored USB writes,
+rollback/token retry, and bad MAC causing zero mapping reads. The mapping reader
+fixture checks actual UART storage exclusion during capture; real generated
+UAVObject getter tests remain separate. No final real-flight task timing claim
+follows from these tests. Source review and target build for this entry pending.
+
+The runtime must pass PIOS_LiteWing_PilotReadAdmissionMapping as the reader and
+call only from a single owning task, after boot-time local settings work ends.
+Concurrent local settings setters are not excluded by the UART guard and remain
+a runtime lifecycle constraint. No AP/socket task or live caller is enabled yet.

@@ -18,6 +18,7 @@ struct lw_pilot_controller {
     uint8_t owner[16]; /* Kept after retirement to invalidate/release reservation. */
     int owned;
     struct lw_pilot_channel mapping[5];
+    uint64_t admission_guard; /* Retained if clock failure prevents cleanup. */
 };
 /* mapping is a validated persisted-settings snapshot; NULL disables admission.
  * Caller must prevent settings changes during admission/ownership, or fault the
@@ -27,6 +28,15 @@ void lw_controller_init(struct lw_pilot_controller *controller,
 enum lw_session_result lw_controller_receive(struct lw_pilot_controller *controller,
     const uint8_t *wire, size_t size, const uint8_t root[32], int64_t now_us,
     int disarmed, int neutral, lw_session_rng random, void *random_ctx,
+    uint8_t *reply, size_t capacity, size_t *written);
+/* Platform entry: read_mapping must return 0 only for current Disarmed and a
+ * validated mapping (PIOS_LiteWing_PilotReadAdmissionMapping satisfies this).
+ * Admission authenticates before reads, then re-reads inside the UART guard.
+ * Still requires one serialized owning task and no concurrent local setters. */
+typedef int (*lw_pilot_mapping_reader)(struct lw_pilot_channel out[5]);
+enum lw_session_result lw_controller_receive_observed(struct lw_pilot_controller *c,
+    const uint8_t *wire, size_t size, const uint8_t root[32], int64_t received_us,
+    lw_pilot_mapping_reader read_mapping, lw_session_rng random, void *random_ctx,
     uint8_t *reply, size_t capacity, size_t *written);
 /* Call periodically even without packets. Fault on socket/AP/task failure or
  * failed send. Neither operation releases ownership or writes PWM. */
