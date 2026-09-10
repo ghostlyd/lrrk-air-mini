@@ -110,3 +110,35 @@ For the SDK-specific checks also supply `LRRK_IDF_BUILD_DIR` pointing to the
 actual ESP-IDF build and `LRRK_NINJA` if Ninja is not on PATH. Build with the
 documented ESP-IDF 5.3.2 environment. Do not run the flashing commands printed
 by `idf.py build` as part of source verification.
+
+## Observed source/build evidence
+
+At source/test commit `709577d44a3b505315cc63e3328452a8f979ce14`:
+
+- The focused source-backed suite passes 19 tests with all three real SDK checks
+  supplied and no skips (13.485 seconds).
+- The complete local gates pass 341 tests: 83 offline AI-assistant tests and
+  258 port tests, with no skips (87.874 seconds for the port suite).
+- An ESP-IDF 5.3.2 incremental ESP32-S3 build passes after exact graph
+  regeneration. Persistence linkage passes; the application is `0x57830` bytes
+  with `0xa87d0` bytes (66%) free in the 1 MiB app partition.
+- The retained, private, **not installed** application is 358448 bytes, SHA-256
+  `c34bf894e78b5dca29048014dc0b7f261f96100d28b5b6daf5643bcb97718aaf`.
+  Its ELF is 6667176 bytes, SHA-256
+  `9ae220e65cfc06dca1f6d6a9bafa9a327a8f478262d9db8fa5b0c8745f5c9335`.
+  The generated outer loop is 18403 bytes, SHA-256
+  `6c8fcbd0f55d7c68fd686dc7697dd7c47c0365384ab7dd2e9af69738f57255f2`.
+- Follow-up independent review of the exact base-through-`709577d` range found
+  no Critical, Important or Minor findings and marked it ready to merge after
+  the parent full suite passed. The reviewer independently passed all 19
+  focused tests, including the three SDK/build-graph checks, and rechecked the
+  source hash and GPL retention. The parent, not the reviewer, ran the complete
+  341-test suite and ESP32 build above.
+
+The first complete run after the review change observed two persistence-graph
+dry-run failures because `build.ninja` was stale and correctly requested CMake
+regeneration. That run is not counted as a pass. A separate first reconfiguration
+attempt was blocked when the restricted execution environment denied the ESP-IDF
+component manager's process-metadata `sysctl()` call; that attempt is not a build
+result. With the already authorized process-metadata access, the exact graph and
+build then succeeded before the complete 341-test rerun.
