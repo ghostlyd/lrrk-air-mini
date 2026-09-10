@@ -30,3 +30,4 @@ ports/ninjapilot-litewing/esp-idf/sdkconfig
 
 # Local ESP-IDF source and toolchain cache.
 .toolchains/
+.pilot-idf-input/
