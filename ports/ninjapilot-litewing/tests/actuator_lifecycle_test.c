@@ -158,6 +158,9 @@ int32_t StabilizationStart(void) { return 0; }
 #define LATER(Name) int32_t Name##Initialize(void) { ++later_inits; return 0; } \
     int32_t Name##Start(void) { ++later_starts; return 0; }
 LATER(Receiver) LATER(ManualControl) LATER(Telemetry)
+/* Battery lifecycle has its own real-table and worker tests. */
+int32_t LiteWingBatteryInitialize(void) { return 0; }
+int32_t LiteWingBatteryStart(void) { return 0; }
 
 int main(int argc, char **argv) {
     CHECK(argc == 2); const char *s = argv[1];

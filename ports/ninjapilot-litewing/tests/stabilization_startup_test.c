@@ -105,6 +105,8 @@ int32_t AttitudeStart(void) { return 0; }
 #define LATER(Name) int32_t Name##Initialize(void) { ++later_inits; return 0; } \
     int32_t Name##Start(void) { ++later_starts; return 0; }
 LATER(Actuator) LATER(Receiver) LATER(ManualControl) LATER(Telemetry)
+int32_t LiteWingBatteryInitialize(void) { return 0; }
+int32_t LiteWingBatteryStart(void) { return 0; }
 
 static void initialize_existing_objects(void)
 {

@@ -157,6 +157,10 @@ MODULE(Actuator, 2)
 MODULE(Receiver, 3)
 MODULE(ManualControl, 4)
 MODULE(Telemetry, 5)
+/* Preserve this fixture's six flight-module counters; battery_table_test.c
+ * covers the seventh module and its failure propagation separately. */
+int32_t LiteWingBatteryInitialize(void) { return 0; }
+int32_t LiteWingBatteryStart(void) { return 0; }
 #endif
 void PIOS_LiteWing_BrushedPWM_Shutdown(void) { shutdowns++; }
 int32_t AlarmsSet(SystemAlarmsAlarmElem alarm, SystemAlarmsAlarmOptions severity)
