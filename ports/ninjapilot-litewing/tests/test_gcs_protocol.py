@@ -35,6 +35,7 @@ class GcsProtocolTests(unittest.TestCase):
             "-I", str(ROOT / "target/include"), "-I", str(cls.output),
             "-I", str(cls.source / "inc"), str(cls.output / "uavtalk.c"),
             str(ROOT / "target/pios_litewing_gcsrcvr.c"),
+            str(ROOT / "tests/gcs_session_unused.c"),
             str(ROOT / "target/litewing_battery_pack.c"),
             str(ROOT / "target/litewing_battery_voltage.c"),
             str(ROOT / "tests/gcs_protocol_test.c"), "-o", str(cls.binary)],
@@ -48,6 +49,8 @@ class GcsProtocolTests(unittest.TestCase):
 
     def test_real_parser_packet_and_ack_paths(self):
         for case in ("normal", "acked"): self.run_case(case)
+    def test_telemetry_request_remains_available_during_wireless_ownership(self):
+        self.run_case("request-wireless-owner")
     def test_connection_lock_cannot_refresh_already_parsed_input(self): self.run_case("connection-lock-delay")
     def test_lookup_lock_cannot_refresh_already_parsed_input(self): self.run_case("lookup-lock-delay")
     def test_pause_after_complete_parser_does_not_refresh(self): self.run_case("between-parse-and-receive")

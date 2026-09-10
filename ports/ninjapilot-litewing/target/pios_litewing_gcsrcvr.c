@@ -14,6 +14,7 @@
 #include "uavobjectmanager.h"
 #include "pios_gcsrcvr_priv.h"
 #include "pios_litewing_gcsrcvr.h"
+#include "litewing_pilot_session.h"
 
 #define LITEWING_GCS_ID UINT32_C(0x4c474353)
 #define LITEWING_GCS_TIMEOUT_US INT64_C(100000)
@@ -27,6 +28,82 @@ static int64_t received_us;
 static bool initialized;
 static bool have_timestamp;
 static bool valid;
+static bool wireless_owner;
+static uint8_t owner_session[16];
+static uint64_t owner_generation;
+static int64_t usb_fence_us = -1;
+static uint32_t usb_inflight;
+
+int32_t PIOS_LiteWing_GCSReceiver_ClaimWireless(const uint8_t session[16], int disarmed)
+{
+    if (!session || disarmed != 1) return -1;
+    int32_t result = -1;
+    portENTER_CRITICAL(&receiver_lock);
+    const int64_t now = esp_timer_get_time();
+    if (initialized && !wireless_owner && usb_inflight == 0 && now >= 0 &&
+        now >= usb_fence_us && owner_generation != UINT64_MAX &&
+        (!have_timestamp || now >= received_us)) {
+        if (valid && now - received_us >= LITEWING_GCS_TIMEOUT_US) valid = false;
+        if (!valid) {
+            memcpy(owner_session, session, sizeof(owner_session));
+            wireless_owner = true;
+            ++owner_generation;
+            usb_fence_us = now;
+            result = 0;
+        }
+    }
+    portEXIT_CRITICAL(&receiver_lock);
+    return result;
+}
+
+int32_t PIOS_LiteWing_GCSReceiver_ReleaseWireless(const uint8_t session[16], int disarmed)
+{
+    if (!session || disarmed != 1) return -1;
+    int32_t result = -1;
+    portENTER_CRITICAL(&receiver_lock);
+    const int64_t now = esp_timer_get_time();
+    if (initialized && wireless_owner && !memcmp(session, owner_session, 16) &&
+        now >= usb_fence_us && owner_generation != UINT64_MAX) {
+        valid = false;
+        wireless_owner = false;
+        memset(owner_session, 0, sizeof(owner_session));
+        ++owner_generation;
+        usb_fence_us = now;
+        result = 0;
+    }
+    portEXIT_CRITICAL(&receiver_lock);
+    return result;
+}
+
+int32_t PIOS_LiteWing_GCSReceiver_PublishWireless(const uint8_t owner[16],
+                                                struct lw_pilot_session *session)
+{
+    if (!session) return -1;
+    struct lw_pilot_candidate candidate = {0};
+    int32_t result = -1;
+    portENTER_CRITICAL(&receiver_lock);
+    const bool named_owner = initialized && wireless_owner && owner &&
+                             !memcmp(owner, owner_session, 16);
+    const bool state_owner = initialized && wireless_owner &&
+                             !memcmp(session->session, owner_session, 16);
+    const int64_t now = esp_timer_get_time();
+    if (!named_owner || !state_owner || session->phase != LW_ACTIVE || now < usb_fence_us) {
+        if (named_owner || state_owner) valid = false;
+        lw_session_retire(session);
+    } else {
+        const enum lw_session_result rc = lw_session_commit_control(
+            session, now, 1, &candidate);
+        if (rc == LW_PILOT_CANDIDATE) {
+            memcpy(receiver_data.Channel, candidate.channels, sizeof(candidate.channels));
+            received_us = candidate.origin_us;
+            have_timestamp = true;
+            valid = true;
+            result = 0;
+        } else if (rc == LW_RETIRED) valid = false;
+    }
+    portEXIT_CRITICAL(&receiver_lock);
+    return result;
+}
 
 /* The target-adapted parser supplies its immutable completion timestamp,
  * before receiveObject can wait on connection or object-manager locks. */
@@ -35,23 +112,26 @@ int32_t PIOS_LiteWing_GCSReceiver_Unpack(UAVObjHandle obj, uint16_t instance,
 {
     const bool receiver_packet = obj != NULL && obj == GCSReceiverHandle() &&
                                  instance == 0 && data != NULL;
-    if (!receiver_packet) {
-        return UAVObjUnpack(obj, instance, data);
-    }
-
     /* Retain the timestamp from packet completion. Copy this packet, not
      * whatever a delayed event callback happens to find in shared storage.
      * UAVTalk validates the complete object length/CRC before this API call. */
     const int64_t arrival_us = received_time;
-    GCSReceiverData packet;
-    memcpy(&packet, data, sizeof(packet));
-    const int32_t result = UAVObjUnpack(obj, instance, data);
-    if (result != 0) {
-        return result;
-    }
-
     portENTER_CRITICAL(&receiver_lock);
-    if (initialized && arrival_us >= 0 &&
+    const uint64_t generation = owner_generation;
+    const bool permitted = !wireless_owner && arrival_us > usb_fence_us &&
+                           usb_inflight != UINT32_MAX;
+    /* Reservation refuses while storage/events may still be in flight. Never
+     * hold the spinlock across the potentially blocking object-manager call. */
+    if (permitted) ++usb_inflight;
+    portEXIT_CRITICAL(&receiver_lock);
+    if (!permitted) return -1;
+    GCSReceiverData packet = {0};
+    if (receiver_packet) memcpy(&packet, data, sizeof(packet));
+    const int32_t result = UAVObjUnpack(obj, instance, data);
+    portENTER_CRITICAL(&receiver_lock);
+    --usb_inflight;
+    if (receiver_packet && result == 0 && initialized && !wireless_owner && generation == owner_generation &&
+        arrival_us > usb_fence_us && arrival_us >= 0 &&
         (!have_timestamp || arrival_us > received_us)) {
         /* Older (or equal-time) completions cannot replace a newer packet. */
         receiver_data = packet;

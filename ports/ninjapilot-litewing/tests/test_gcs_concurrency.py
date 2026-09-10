@@ -13,6 +13,7 @@ class GcsConcurrencyTests(unittest.TestCase):
             result = subprocess.run(["cc", "-std=c11", "-Wall", "-Wextra", "-Werror", "-pthread",
                 "-I", str(ROOT / "tests/gcs_stubs"), "-I", str(ROOT / "target/include"),
                 str(ROOT / "target/pios_litewing_gcsrcvr.c"),
+                str(ROOT / "tests/gcs_session_unused.c"),
                 str(ROOT / "tests/gcs_concurrency_test.c"), "-o", str(binary)],
                 capture_output=True, text=True, timeout=30)
             self.assertEqual(result.returncode, 0, result.stderr)

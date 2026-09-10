@@ -19,12 +19,18 @@ class GcsReceiverTests(unittest.TestCase):
         result = subprocess.run(["cc", "-std=c11", "-Wall", "-Wextra", "-Werror",
             "-Wno-unused-function", "-pthread", *flags,
             "-I", str(ROOT / "tests/gcs_stubs"), "-I", str(ROOT / "target/include"), source,
+            str(ROOT / "tests/gcs_session_unused.c"),
             str(ROOT / "tests/gcs_receiver_test.c"), "-o", str(cls.binary)],
             capture_output=True, text=True, timeout=30)
         if result.returncode:
             raise AssertionError(result.stderr)
 
     def run_case(self, case):
+        if "LRRK_GCS_TEST_SOURCE" in os.environ and case in (
+                "wireless-excludes-usb", "wireless-cannot-steal-fresh-usb",
+                "ownership-change-during-unpack", "wireless-excludes-all-object-writes",
+                "claim-during-other-object-unpack"):
+            self.skipTest("upstream baseline has no wireless ownership API")
         result = subprocess.run([str(self.binary), case], capture_output=True, text=True, timeout=5)
         self.assertEqual(result.returncode, 0, result.stderr)
 
@@ -42,3 +48,8 @@ class GcsReceiverTests(unittest.TestCase):
     def test_other_objects_and_instances_do_not_refresh(self): self.run_case("unrelated-object-instance")
     def test_old_completion_cannot_replace_newer_input(self): self.run_case("out-of-order-completion")
     def test_invalid_handles_channels_and_duplicate_initialization(self): self.run_case("handles-channels")
+    def test_wireless_ownership_excludes_usb_until_disarmed_release(self): self.run_case("wireless-excludes-usb")
+    def test_wireless_cannot_steal_fresh_usb_input(self): self.run_case("wireless-cannot-steal-fresh-usb")
+    def test_ownership_change_during_unpack_rejects_old_publication(self): self.run_case("ownership-change-during-unpack")
+    def test_wireless_blocks_all_uart_object_writes(self): self.run_case("wireless-excludes-all-object-writes")
+    def test_claim_waits_for_other_object_storage(self): self.run_case("claim-during-other-object-unpack")
