@@ -32,6 +32,8 @@ static unsigned system_creates, system_registers, system_unregisters, queue_crea
 static unsigned parked, module_inits;
 #ifdef TEST_MANUAL_MODULE
 static bool manual_real_start, manual_start_in_progress;
+/* The pinned implementation currently returns zero. This injection proves
+ * only that ManualControl propagates a future/reported interface error. */
 static bool manual_fail_configuration, manual_fail_alarm;
 static unsigned manual_fail_start_connection;
 static unsigned manual_configuration_checks, manual_alarm_clears, manual_frame_reads;

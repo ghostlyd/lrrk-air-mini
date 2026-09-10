@@ -115,9 +115,12 @@ class SystemSchedulerTests(unittest.TestCase):
         # Keep the complete ManualControl implementation and real scheduler;
         # only other module entry points and object/OS boundaries are fakes.
         manual_source = output / "manualcontrol.c"
-        if os.environ.get("LRRK_TEST_ORIGINAL_MANUAL") == "1":
-            manual_source = flight / "flight/modules/ManualControl/manualcontrol.c"
+        original_manual = os.environ.get("LRRK_TEST_ORIGINAL_MANUAL") == "1"
         manual_mutant = os.environ.get("LRRK_TEST_MANUAL_START_MUTANT")
+        if original_manual and manual_mutant:
+            raise AssertionError("original and mutant ManualControl controls are mutually exclusive")
+        if original_manual:
+            manual_source = flight / "flight/modules/ManualControl/manualcontrol.c"
         if manual_mutant:
             mutations = {
                 "start-order": ("if (!manualControlResourcesReady || manualControlStartAttempted) return -1;",
@@ -185,7 +188,7 @@ class SystemSchedulerTests(unittest.TestCase):
                     capture_output=True, text=True, timeout=5)
                 self.assertEqual(result.returncode, 0, result.stderr)
 
-    def test_manual_control_start_errors_reach_system_failure_gate(self):
+    def test_manual_control_reported_start_errors_reach_system_failure_gate(self):
         for case in ("configuration", "alarm", "connection-1", "connection-2", "connection-3"):
             with self.subTest(case=case):
                 result = subprocess.run([str(self.manual_binary), "manual-start-" + case],
@@ -196,11 +199,11 @@ class SystemSchedulerTests(unittest.TestCase):
         cases = {
             "start-order": "test_manual_control_start_rejects_premature_and_repeated_calls",
             "repeat-start": "test_manual_control_start_rejects_premature_and_repeated_calls",
-            "configuration-result": "test_manual_control_start_errors_reach_system_failure_gate",
-            "alarm-result": "test_manual_control_start_errors_reach_system_failure_gate",
-            "connection-system": "test_manual_control_start_errors_reach_system_failure_gate",
-            "connection-manual": "test_manual_control_start_errors_reach_system_failure_gate",
-            "connection-command": "test_manual_control_start_errors_reach_system_failure_gate",
+            "configuration-result": "test_manual_control_reported_start_errors_reach_system_failure_gate",
+            "alarm-result": "test_manual_control_reported_start_errors_reach_system_failure_gate",
+            "connection-system": "test_manual_control_reported_start_errors_reach_system_failure_gate",
+            "connection-manual": "test_manual_control_reported_start_errors_reach_system_failure_gate",
+            "connection-command": "test_manual_control_reported_start_errors_reach_system_failure_gate",
             "callback-wiring": "test_manual_control_start_rejects_premature_and_repeated_calls",
             "skip-dispatch": "test_manual_control_start_rejects_premature_and_repeated_calls",
             "check-dispatch-return": "test_manual_control_start_rejects_premature_and_repeated_calls",
@@ -213,6 +216,31 @@ class SystemSchedulerTests(unittest.TestCase):
                     capture_output=True, text=True, timeout=30)
                 self.assertNotEqual(result.returncode, 0)
                 self.assertIn("line ", result.stderr)
+                self.assertIn("Ran 1 test", result.stderr)
+                self.assertIn("FAILED (failures=", result.stderr)
+                self.assertNotIn("ERROR", result.stderr)
+
+    def test_original_manualcontrol_start_fails_regression(self):
+        result = subprocess.run([sys.executable, "-m", "unittest",
+            "test_system_scheduler.SystemSchedulerTests.test_manual_control_start_rejects_premature_and_repeated_calls",
+            "test_system_scheduler.SystemSchedulerTests.test_manual_control_reported_start_errors_reach_system_failure_gate"],
+            cwd=ROOT / "tests", env=dict(os.environ, LRRK_TEST_ORIGINAL_MANUAL="1"),
+            capture_output=True, text=True, timeout=30)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("FAILED (failures=7)", result.stderr)
+
+    def test_manualcontrol_test_controls_cannot_mutate_pinned_source(self):
+        source = (Path(os.environ["LRRK_TEST_FLIGHT_ROOT"]) /
+                  "flight/modules/ManualControl/manualcontrol.c")
+        before = source.read_bytes()
+        result = subprocess.run([sys.executable, "-m", "unittest",
+            "test_system_scheduler.SystemSchedulerTests.test_manual_control_start_rejects_premature_and_repeated_calls"],
+            cwd=ROOT / "tests", env=dict(os.environ, LRRK_TEST_ORIGINAL_MANUAL="1",
+                                         LRRK_TEST_MANUAL_START_MUTANT="start-order"),
+            capture_output=True, text=True, timeout=30)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("controls are mutually exclusive", result.stderr)
+        self.assertEqual(source.read_bytes(), before)
 
     def test_required_module_errors_reach_real_boot_callers(self):
         for prefix in ("", "early-"):
