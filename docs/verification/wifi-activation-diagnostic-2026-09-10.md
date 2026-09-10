@@ -58,6 +58,20 @@ known. The temporary console image remains installed and is not flight-qualified
 console text can interfere with binary telemetry. The original verified image
 is retained for recovery. No arming or motor-output command was issued.
 
+Subsequent return-code diagnostics narrowed this further. Adapter result `-3`
+confirmed that PWM and I2C adapter initialization succeeded but MPU6050
+initialization failed. The MPU6050 routine then reported `-2`: failure in the
+address probe or `configure_sensor()`, before queue allocation, registration,
+or task creation. Probe failure versus register configuration failure remains
+unresolved; this does not yet prove a defective physical sensor.
+
+The latest installed diagnostic is built from `1ff5726`, SHA-256
+`49552d1fd53c9758fac26dcdcdafbdc18e58f74f873885f2cede3bc489df30c6`.
+Its application-only write passed esptool hash verification. The two MPU6050
+contract tests and firmware/persistence-link checks passed before this flash;
+the five board-startup tests passed for the preceding adapter-code diagnostic.
+Raw boot captures remain private. No initialization failure was bypassed.
+
 ### Follow-up identity and persistence checks
 
 The installed esptool 4.12.0 `verify_flash` command exited successfully for the
@@ -88,6 +102,6 @@ remain a possible confounder.
 No credentials were resubmitted. No flash, saved-settings, arming or motor-output
 commands were issued. Raw UART captures remain private and outside Git.
 
-Next: distinguish the PWM, I2C and MPU6050 adapter return codes, fix the evidenced
+Next: distinguish MPU6050 address-probe and register-configuration failures, fix the evidenced
 cause, and validate a normal-console build before wireless qualification. Do not claim an Armed state, a
 working STOP path, or flight readiness from these observations.
