@@ -64,9 +64,10 @@ still-open startup, physical cutoff and flight acceptance gates.
 
 The [Stabilization startup correction](../../docs/verification/stabilization-startup-lifecycle-2026-09-09.md)
 checks its objects, loop schedulers, subscriptions, watchdog registration and
-initial state application through the real module table. It is built but not
-installed; synchronous startup acceptance does not establish asynchronous or
-flight readiness.
+initial state application through the real module table. Its exact merged
+application was subsequently [installed and observed over USB](../../docs/verification/stabilization-startup-usb-install-2026-09-09.md);
+synchronous startup and sampled disarmed telemetry do not establish complete
+asynchronous or flight readiness.
 
 The [checked module startup correction](../../docs/verification/checked-module-startup-2026-09-09.md)
 consumes reported module errors and checks ManualControl's required objects and
@@ -76,8 +77,11 @@ all physical gates remain separate; the built candidate is not installed.
 The [ManualControl start lifecycle correction](../../docs/verification/manual-control-start-lifecycle-2026-09-09.md)
 checks start ordering, its three subscriptions, the reported configuration
 result, alarm-clear result and the real scheduler's initially-full dispatch
-behavior. It is retained build evidence only; runtime-handler, complete-boot
-and physical gates remain open.
+behavior. Its exact merged application was subsequently [installed and
+observed over USB](../../docs/verification/manual-control-start-usb-install-2026-09-09.md),
+while runtime fault injection, complete-boot and physical gates remain open.
+The USB report also corrects the power model: USB-C can energize the motor
+path, so an absent battery is not evidence that motor power is unavailable.
 
 The selected upstream `litewing` branch currently includes a POSIX/Gazebo
 LiteWing twin, not a flashable ESP32-S3 target. The repository-owned target

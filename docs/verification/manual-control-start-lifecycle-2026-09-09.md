@@ -4,10 +4,13 @@ This follows the
 [checked module startup correction](checked-module-startup-2026-09-09.md) and
 addresses a bounded part of
 [issue 27](https://github.com/ghostlyd/lrrk-air-mini/issues/27). It is
-source/build evidence, **not installed firmware, BootFault-success publication,
-arming clearance or flight clearance**. The application installed by PR #44
-and its verified Always Disarmed setting were not changed or accessed during
-this work.
+source/build evidence at the time of review, **not BootFault-success
+publication, arming clearance or flight clearance**. The application installed
+by PR #44 and its verified Always Disarmed setting were not changed or accessed
+during that source slice. After merge, the exact merged application was
+separately [installed and observed over USB](manual-control-start-usb-install-2026-09-09.md)
+under the props-removed, battery-absent gate. Battery absence records the test
+configuration; it is not a claim that USB left the motor path de-energized.
 
 ## Corrected startup contract
 
@@ -87,7 +90,7 @@ OpenAI SDK/live-service skips) and 275 port tests with no port skips. The latter
 uses the actual compile commands and Ninja graph plus an explicitly supplied
 ELF/tool persistence check. No live API call is part of the firmware gate.
 
-## Retained private build — NOT INSTALLED
+## Retained source-review build — not the installed artifact
 
 Production source commit: `acc585c536be49df368a6309f755e6bf0b876993`.
 The clean build uses ESP-IDF 5.3.2 for ESP32-S3, NinjaPilot
@@ -103,10 +106,12 @@ The clean build uses ESP-IDF 5.3.2 for ESP32-S3, NinjaPilot
 | ELF | 6674844 | `614320d2eec8bb8522116a0ebf35d790c6450d62c393ef01359ba50dba97fa41` |
 | Generated ManualControl | 25741 | `cafa0f76f2b23d458c7db62256336ea1f77cc1b54d9bd379bebfabbf3472c00c` |
 
-The artifacts and build graph are retained privately with owner-only modes.
-They were not published or installed. The generated bootloader is not an
-installation candidate; any later board update remains a separate,
-application-only, pre-write/readback/recovery-reviewed gate.
+These source-review artifacts and their build graph remain private with
+owner-only modes; those exact bytes were not installed. The later clean build
+from the merged commit has different version metadata and is identified by the
+separate USB installation report. Its application-only write passed the
+pre-write/readback/recovery-reviewed gate. Neither build's generated bootloader
+was an installation candidate.
 
 ## Remaining boundaries
 
@@ -121,5 +126,8 @@ by this source slice.
 There is still no battery. Motor corner order, IMU orientation/calibration,
 receiver authority, measured electrical cutoff latency, battery/charger/
 connector compatibility and powered flight behavior remain separate gates.
+USB-C must be treated as motor-capable power even with that battery connector
+empty.
 No serial opening, reset, settings write, arming request or motor command
-occurred here.
+occurred during the source slice documented here. The later USB report records
+the separately authorized installation and read-only runtime observation.
