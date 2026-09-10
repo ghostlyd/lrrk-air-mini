@@ -38,3 +38,27 @@ and immediate receiver invalidation on challenge output-capacity failure. All 36
 pilot methods pass, including 14 controller scenarios with fatal ASan/UBSan.
 Challenge-adapter review and final-revision build/regression are pending.
 No hardware access or secret provisioning occurred.
+
+## Admission integration gap
+
+At `5bb8fd6`, challenge-adapter source review accepted the change with no
+Critical/Important findings; the ESP-IDF target build completed successfully.
+
+The current empty CLAIM payload cannot prove the requesting operator's controls
+are neutral. Do not substitute stale ManualControlCommand values, disconnected
+failsafe defaults, or a constant true observation. Before radio activation,
+extend the authenticated admission transcript with fresh channel samples and
+validate them against persisted settings, then update both C and Python peers
+and their transcript vectors. Empty legacy CLAIM must not gain live ownership
+through the runtime adapter. This is a correction needed to fulfill the approved
+neutral-admission requirement, not an optional enhancement.
+
+`litewing_pilot_neutral` provides the calibrated predicate for that integration:
+five unique one-based primary mappings, protocol-range calibration and samples,
+throttle at calibrated minimum (including reversal), axes and flight-mode at
+calibrated neutral. It deliberately uses exact neutral rather than guessing a
+deadband. Endpoint neutral calibration is supported, consistent with the pinned
+Receiver scaleChannel implementation's zero-denominator handling. The eventual
+platform adapter must additionally validate channel groups, unsupported inputs,
+current FlightStatus, and settings snapshot consistency. This predicate alone
+does not read settings, authenticate samples, reserve input, or activate radio.
