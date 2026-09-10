@@ -39,6 +39,24 @@ did not prove it would link with a real caller. A retained-entry-point link chec
 and enabled target dependency are required before this slice is accepted.
 Review also requested ACCEPT-phase expiry/rollback boundary coverage.
 
+### Review corrections at `cd6468d`
+
+- Retaining `lw_pilot_derive_keys` reproduced an actual undefined reference to
+  `mbedtls_hkdf` at `e3a8f1a`; this was not merely a configuration-text check.
+- Enabled `CONFIG_MBEDTLS_HKDF_C=y` in committed defaults and local generated
+  configuration. The corrected ESP32-S3 build passed with retained symbols:
+  `4200b574 T lw_pilot_derive_keys` and `42025d34 T mbedtls_hkdf` in the final ELF.
+- Corrected app size `0x5f810`, 63% partition space free; SHA256
+  `27e46ea567eca9c42bafc9010199c75c7bb9d00c6deae88f5114e1dbf152f202`.
+- Added ACCEPT deadline minus-one/exact/plus-one, rollback, credential-reference
+  retirement, and subsequent-use rejection tests. Six admission tests pass.
+- Full assistant suite after corrections: 200 run, 191 passed, 9 optional skips.
+- Scoped review accepted both source corrections with no new findings; retained
+  link evidence above satisfies the remaining build-verification condition.
+
+The retained linker entry checks availability only; it does not execute HKDF,
+authenticate a real session, or enable the AP.
+
 ## Remaining integration
 
 Firmware admission/challenge state, replay-protected candidate acceptance,
