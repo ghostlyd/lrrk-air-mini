@@ -86,12 +86,13 @@ int32_t PIOS_LiteWing_GCSReceiver_PublishWireless(const uint8_t owner[16],
                              !memcmp(owner, owner_session, 16);
     const bool state_owner = initialized && wireless_owner &&
                              !memcmp(session->session, owner_session, 16);
-    if (!named_owner || !state_owner || session->phase != LW_ACTIVE) {
+    const int64_t now = esp_timer_get_time();
+    if (!named_owner || !state_owner || session->phase != LW_ACTIVE || now < usb_fence_us) {
         if (named_owner || state_owner) valid = false;
         lw_session_retire(session);
     } else {
         const enum lw_session_result rc = lw_session_commit_control(
-            session, esp_timer_get_time(), 1, &candidate);
+            session, now, 1, &candidate);
         if (rc == LW_PILOT_CANDIDATE) {
             memcpy(receiver_data.Channel, candidate.channels, sizeof(candidate.channels));
             received_us = candidate.origin_us;

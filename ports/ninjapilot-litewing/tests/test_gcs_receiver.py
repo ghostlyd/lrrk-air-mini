@@ -19,6 +19,7 @@ class GcsReceiverTests(unittest.TestCase):
         result = subprocess.run(["cc", "-std=c11", "-Wall", "-Wextra", "-Werror",
             "-Wno-unused-function", "-pthread", *flags,
             "-I", str(ROOT / "tests/gcs_stubs"), "-I", str(ROOT / "target/include"), source,
+            str(ROOT / "tests/gcs_session_unused.c"),
             str(ROOT / "tests/gcs_receiver_test.c"), "-o", str(cls.binary)],
             capture_output=True, text=True, timeout=30)
         if result.returncode:

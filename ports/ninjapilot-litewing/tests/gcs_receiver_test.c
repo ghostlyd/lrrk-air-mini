@@ -2,7 +2,6 @@
 #include "uavobjectmanager.h"
 #include "pios_gcsrcvr_priv.h"
 #include "pios_litewing_gcsrcvr.h"
-#include "litewing_pilot_session.h"
 #include <stdio.h>
 #include <string.h>
 #include <limits.h>
@@ -16,12 +15,6 @@ static int64_t pre_unpack_delay;
 static uint32_t receiver_id = 1234;
 static int other_object;
 static bool inject_newer;
-/* Legacy USB-only regressions never call the wireless publication API.
- * End-to-end tests link the real session and SDK in pilot_receiver_integration.c. */
-void lw_session_retire(struct lw_pilot_session *state) { (void)state; assert(0); }
-enum lw_session_result lw_session_commit_control(struct lw_pilot_session *state,
-    int64_t now, int owner, struct lw_pilot_candidate *out)
-{ (void)state; (void)now; (void)owner; (void)out; assert(0); return LW_REJECT; }
 static unsigned unpacked_events;
 #ifndef LRRK_TEST_UPSTREAM
 static bool inject_claim;

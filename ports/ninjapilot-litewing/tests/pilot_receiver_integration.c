@@ -51,7 +51,7 @@ int main(int argc, char **argv)
     assert(lw_wire_encode(&frame, lw_pilot_mac, &key, wire, sizeof(wire), &size) == 0);
     assert(lw_session_receive(&session, wire, size, root.bytes, 1100, 1, 1,
         random_bytes, &counter, reply, sizeof(reply), &written) == LW_HANDSHAKE_REPLY);
-    clock_us = 1200;
+    clock_us = !strcmp(argv[1], "rollback") ? 5000 : 1200;
     assert(PIOS_LiteWing_GCSReceiver_ClaimWireless(owner, 1) == 0);
     frame.kind = 5; frame.sequence = 2; frame.payload_len = 16;
     const uint8_t channels[16] = {3,232,7,208,3,233,7,207,4,210,6,31,6,253,4,76};
@@ -69,8 +69,8 @@ int main(int argc, char **argv)
         assert(pios_gcsrcvr_rcvr_driver.read(receiver_id,0)==1600);
         assert(storage_writes==1);
         return 0;
-    } else if (!strcmp(argv[1], "delayed")) {
-        clock_us = 76001;
+    } else if (!strcmp(argv[1], "delayed") || !strcmp(argv[1], "rollback")) {
+        if (!strcmp(argv[1], "delayed")) clock_us = 76001;
         assert(PIOS_LiteWing_GCSReceiver_PublishWireless(owner, &session) == -1);
         assert(session.phase == LW_CLOSED);
     } else if (!strcmp(argv[1], "wrong-owner")) {

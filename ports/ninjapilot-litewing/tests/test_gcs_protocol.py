@@ -35,6 +35,7 @@ class GcsProtocolTests(unittest.TestCase):
             "-I", str(ROOT / "target/include"), "-I", str(cls.output),
             "-I", str(cls.source / "inc"), str(cls.output / "uavtalk.c"),
             str(ROOT / "target/pios_litewing_gcsrcvr.c"),
+            str(ROOT / "tests/gcs_session_unused.c"),
             str(ROOT / "target/litewing_battery_pack.c"),
             str(ROOT / "target/litewing_battery_voltage.c"),
             str(ROOT / "tests/gcs_protocol_test.c"), "-o", str(cls.binary)],
