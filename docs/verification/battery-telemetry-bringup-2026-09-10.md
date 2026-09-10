@@ -1,5 +1,9 @@
 # Battery telemetry implementation status
 
+Latest status: native ESP-IDF adapter compiles at `4f96dfd`; worker/startup and
+publication integration are pending. Sections below record incremental work
+and their then-current limitations, not independent current completion claims.
+
 Base: merged main `4626f90ae621d21ebcb33b5a55ce0fd32c8282e6`.
 
 ## Implemented in this branch
@@ -162,3 +166,24 @@ transaction before implementation. They verify bounded read arguments,
 stop-after-read-error, invalidation, lifecycle fault latching/no retry, and
 delayed-worker acquisition age. ADC handle creation and firmware lifecycle
 integration are the remaining implementation steps, not completed checks.
+
+## Native ESP-IDF adapter compiled
+
+At `4f96dfd`, `pios_litewing_battery.c` implements the acquisition operations
+against ESP-IDF 5.3.2. It checks GPIO2's ADC1/channel1 mapping, creates the
+continuous ADC and curve-fitting calibration handles, registers overflow
+notification, converts byte counts to frame word counts, and restricts reads
+to the initializing task/core. Initialization attempts once; failed cleanup
+does not authorize a retry. No guessed calibration fallback exists.
+
+The source list now compiles both battery C sources and declares `esp_adc`.
+The target build passed with the pinned source checkouts and IDF toolchain:
+application size `0x57d60`, within the `0x100000` application partition.
+The generated binary is not flashed. Unreferenced adapter functions can be
+discarded at final link: this is a compile/API check, not enabled battery
+telemetry. The worker must be non-migrating and allocate/read the ADC itself.
+
+Port tests: 161 run, 125 passed, 36 optional-fixture skips. The existing
+acquisition-core failure tests do not exercise SDK resource initialization.
+Native resource-failure tests, worker lifecycle, telemetry publication and
+publication-age handling remain required before this PR is ready.
