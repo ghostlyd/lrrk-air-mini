@@ -11,6 +11,66 @@ from .pilot_wire import Envelope, decode, encode
 from .telemetry_session import TelemetrySession
 
 
+class KeyboardInput:
+    """Single-owner input for the documented LiteWing GCS channel profile.
+
+    Channels 1..5 are throttle, roll, pitch, yaw, mode; endpoints 1000/2000,
+    neutral 1500. This does not discover or verify aircraft configuration.
+    Hold Space at minimum throttle to request existing yaw-right arming.
+    No returned sample proves arming. GUI/session owner must stop on focus loss.
+    Never share this mutable adapter across threads or expose it to AI tools.
+    """
+
+    def __init__(self):
+        self._keys = set()
+        self._last = None
+        self._throttle = 1000.0
+        self._enabled = False
+        self.closed = False
+
+    def press(self, key):
+        key = key.lower() if key in {'W','S','A','D'} else key
+        if key == 'Escape':
+            self.stop()
+        elif not self.closed and key in {'w','s','a','d','Left','Right','Up','Down','space'}:
+            self._keys.add(key)
+
+    def release(self, key):
+        key = key.lower() if key in {'W','S','A','D'} else key
+        self._keys.discard(key)
+
+    def stop(self):
+        self.closed = True
+        self._keys.clear()
+
+    def sample(self, now_us):
+        if (self.closed or type(now_us) is not int or not 0 <= now_us < 2**63
+                or (self._last is not None and not 0 <= now_us-self._last < 100_000)):
+            self.stop()
+            raise ValueError('keyboard input expired or stopped')
+        elapsed = 0 if self._last is None else (now_us-self._last)/1_000_000
+        self._last = now_us
+        neutral = (1000,1500,1500,1500,1500,1500,1500,1500)
+        if 'space' in self._keys and self._throttle == 1000:
+            self._enabled = True
+            return (1000,1500,1500,2000,1500,1500,1500,1500)
+        if not self._enabled:
+            return neutral
+        def axis(negative, positive):
+            return 1500 + 500 * ((positive in self._keys)-(negative in self._keys))
+        self._throttle = min(2000., max(1000., self._throttle +
+            250 * elapsed * (('w' in self._keys)-('s' in self._keys))))
+        throttle = round(self._throttle)
+        yaw = axis('a','d')
+        # This profile scales throttle below neutral 1500 to negative values.
+        # armhandler treats that entire range as low throttle, not just 1000.
+        # Only explicit Space may issue the low-throttle yaw-right gesture.
+        if throttle < 1500 and yaw > 1500:
+            yaw = 1500
+        return (throttle, axis('Left','Right'), axis('Up','Down'),
+                yaw, 1500,1500,1500,1500)
+
+
 class OperatorSession:
     def __init__(self, identity: bytes, keys: SessionKeys, now_us: int):
         if type(identity) is not bytes or len(identity)!=16 or type(keys) is not SessionKeys:
