@@ -116,9 +116,57 @@ The host AI package declares CPython **3.11 through 3.14**. Keep its environment
 separate from the ESP-IDF-managed Python environment. UART telemetry uses the
 pinned UAVTalk decoder; optional serial and OpenAI SDK dependencies are declared
 in [`ai_assistant/pyproject.toml`](../ai_assistant/pyproject.toml). OpenAI runs on
-the host, with no API credential or model on the board. Wi-Fi transport for this
-OpenPilot wrapper is unfinished; the stock firmware's Wi-Fi features below do
-not establish support in the selected port.
+the host, with no API credential or model on the board. The selected wrapper's
+authenticated Wi-Fi command runtime is now source-integrated; provisioning,
+wireless telemetry, physical operator input integration, and radio qualification
+remain unfinished. The stock firmware's Wi-Fi features below do not establish
+support in this port.
+
+### Authenticated Wi-Fi dependency checkpoint — 2026-09-10
+
+Source baseline: PR #62, merged as `62333acf7a4d65c0961d0c63837c182d14e63abb`.
+The dependency declarations below were checked against the wrapper's
+[`main/CMakeLists.txt`](../ports/ninjapilot-litewing/esp-idf/main/CMakeLists.txt),
+[`sources.cmake`](../ports/ninjapilot-litewing/target/sources.cmake),
+[`sdkconfig.defaults`](../ports/ninjapilot-litewing/esp-idf/sdkconfig.defaults),
+and the host package metadata. This is source dependency verification, not a
+fresh installation or live radio test.
+
+| Boundary | Required dependency | Implementation / remaining work |
+| --- | --- | --- |
+| Drone AP | ESP-IDF 5.3.2 `esp_wifi`, `esp_netif`, `esp_event` and SDK networking | AP lifecycle and bounded UDP command task are linked through System startup; no extra radio module |
+| Command authentication | IDF `mbedtls`, HKDF enabled by `CONFIG_MBEDTLS_HKDF_C` | Direction-separated keys, authenticated session and replay/freshness enforcement |
+| Credential loading | IDF `nvs_flash` | Dedicated `lw_pilot/config` blob, read-only loader; USB writer and rotation not implemented |
+| Timing/randomness | IDF `esp_timer`, `esp_hw_support` | Monotonic challenge age and platform RNG; radio-load timing still needs measurement |
+| Host pilot protocol | CPython 3.11–3.14 standard-library networking, HMAC and randomness | Protocol/operator APIs exist; physical input-device adapter and user-facing pilot launcher remain outstanding |
+| USB telemetry | Optional `uavtalk` extra: `pyserial>=3.5,<4` | Existing UAVTalk path retained; stock CRTP clients cannot operate LWPL |
+| Host advisory AI | Optional `openai` extra: `openai-agents==0.22.1` | Host-only API credential; no pilot key shared with AI tools; new Wi-Fi telemetry ingestion outstanding |
+| Windows private audit files | `oschmod==0.3.12`, `pywin32==312` | Declared Windows-only dependencies; not yet a credential-bundle storage implementation |
+
+No additional onboard AI computer, GPS, optical-flow sensor or range sensor is
+required by this attitude/rate pilot-link design. These exclusions do not imply
+position hold, autonomous navigation, or flight qualification. See the
+[integrated runtime record](verification/wifi-runtime-2026-09-10.md) for the
+build/test scope, and the [provisioning audit](verification/wifi-provisioning-boundary-2026-09-10.md)
+for the remaining credential lifecycle.
+
+#### Crash-dump and storage confidentiality prerequisite
+
+The current wrapper defaults enable ELF core dumps to flash. The inspected
+generated build configuration also has NVS encryption and flash encryption
+disabled. `pios_litewing_wifi_command.c` keeps its root and controller state in
+the owning task's stack frame. ESP-IDF 5.3.2's local core-dump documentation
+states that dumps include task stacks. Therefore crash dumps may contain
+credential/session material, even though routine logs do not print it and
+normal cleanup wipes buffers. Disabling optional DRAM capture does not exclude
+task stacks.
+
+Before provisioning real credentials, resolve the crash-dump policy explicitly
+and test the resulting build configuration. Treat any existing dump, full-flash
+backup or raw provisioning capture as potentially secret-bearing; do not commit
+or upload it. This audit has not read device storage, changed eFuses, erased
+dumps, or established encrypted storage. Disabling future dumps alone would
+not remove an old dump or encrypt the credential NVS record.
 
 ### Firmware baseline
 
