@@ -26,11 +26,17 @@ The accepted probe result was
 instruction, the probe did not restore `Always Disarmed`, did not send an
 application reset after arming, and did not write settings persistence. “Left
 armed” describes only the final telemetry received before the serial link was
-closed. Closing the serial link does not clear RAM state while USB power
-remains; later work must assume `Always Armed` remains active until a reset or
-power cycle is performed and disarmed telemetry is reverified. “RAM-only” means
-the transaction did not persist the setting and does not establish state after
-a verified reset or power cycle; it does not make link closure a disarm event.
+closed. A later investigation corrected the terminal-state interpretation:
+closing the link was not observed to disarm the controller, but a conventional
+pyserial reopen is not passive on this board. The CH340 DTR/RTS auto-reset
+circuit restarted the ESP32-S3; the first `SystemStats.FlightTime` after that
+reopen was 402 ms and the persisted `Always Disarmed` value was loaded. A later
+POSIX file-descriptor open that did not manipulate modem-control lines observed
+uptime continuing from 130,473 ms. Therefore, terminal RAM state must be checked
+in the original session or through a reset-neutral open. The earlier blanket
+claim that ordinary serial reconnection preserved the state is withdrawn.
+“RAM-only” still means the transaction did not persist the setting and does not
+establish arming state after a reset or power cycle.
 
 ## Reviewed transaction bounds
 
