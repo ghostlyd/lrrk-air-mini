@@ -25,6 +25,11 @@ enum lw_session_result lw_controller_receive(struct lw_pilot_controller *control
 /* Call periodically even without packets. Fault on socket/AP/task failure or
  * failed send. Neither operation releases ownership or writes PWM. */
 int lw_controller_tick(struct lw_pilot_controller *controller, int64_t now_us);
+/* Owning task calls this periodically; 20ms issuance limit is enforced by core.
+ * Never send non-reply output. Send failure must call controller_fault. */
+enum lw_session_result lw_controller_challenge(struct lw_pilot_controller *controller,
+    const uint8_t root[32], lw_session_rng random, void *random_ctx,
+    uint8_t *reply, size_t capacity, size_t *written);
 void lw_controller_fault(struct lw_pilot_controller *controller);
 /* Explicit local recovery only, with fresh disarmed AND neutral observations. */
 int lw_controller_release(struct lw_pilot_controller *controller,

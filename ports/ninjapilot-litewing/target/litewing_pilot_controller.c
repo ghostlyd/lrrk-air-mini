@@ -42,6 +42,19 @@ int lw_controller_release(struct lw_pilot_controller *c, int disarmed, int neutr
     return 0;
 }
 
+enum lw_session_result lw_controller_challenge(struct lw_pilot_controller *c,
+    const uint8_t root[32], lw_session_rng random, void *random_ctx,
+    uint8_t *reply, size_t capacity, size_t *written)
+{
+    if (written) *written = 0;
+    if (!c || !written) return LW_REJECT;
+    enum lw_session_result r = lw_session_issue_challenge(&c->session, root,
+        esp_timer_get_time(), random, random_ctx, reply, capacity, written);
+    if (r == LW_RETIRED || c->session.phase == LW_CLOSED)
+        lw_controller_fault(c);
+    return r;
+}
+
 enum lw_session_result lw_controller_receive(struct lw_pilot_controller *c,
     const uint8_t *wire, size_t size, const uint8_t root[32], int64_t now_us,
     int disarmed, int neutral, lw_session_rng random, void *random_ctx,

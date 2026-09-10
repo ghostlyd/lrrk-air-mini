@@ -69,6 +69,33 @@ int main(int argc, char **argv)
     assert(lw_controller_receive(&controller,wire,size,root.bytes,clock_us,0,0,
         random_bytes,&counter,reply,sizeof(reply),&written)==LW_PILOT_CANDIDATE);
     assert(written==0 && pios_gcsrcvr_rcvr_driver.read(receiver_id,0)==1500);
+    if (!strcmp(argv[1],"challenge") || !strcmp(argv[1],"challenge-failure")) {
+        clock_us=20999;
+        assert(lw_controller_challenge(&controller,root.bytes,random_bytes,&counter,
+            reply,sizeof(reply),&written)==LW_REJECT && written==0);
+        clock_us=21000;
+        size_t capacity=!strcmp(argv[1],"challenge-failure") ? 1 : sizeof(reply);
+        result=lw_controller_challenge(&controller,root.bytes,random_bytes,&counter,
+            reply,capacity,&written);
+        if (capacity==1) {
+            assert(result==LW_RETIRED && written==0);
+        } else {
+            assert(result==LW_HANDSHAKE_REPLY && written>0);
+            struct lw_wire_frame proof;
+            struct lw_pilot_mac_key b2c;
+            memcpy(b2c.bytes,controller.session.keys.b2c,32);
+            assert(lw_wire_decode(reply,written,1,lw_pilot_mac,&b2c,&proof)==0);
+            assert(proof.direction==1 && proof.kind==2 && proof.sequence==2);
+            assert(proof.payload_len==0);
+            /* Issuing proofs alone cannot refresh the last accepted input. */
+            clock_us=101000;
+            assert(lw_controller_challenge(&controller,root.bytes,random_bytes,&counter,
+                reply,sizeof(reply),&written)==LW_RETIRED && written==0);
+        }
+        assert(controller.owned && controller.session.phase==LW_CLOSED);
+        assert(pios_gcsrcvr_rcvr_driver.read(receiver_id,0)==PIOS_RCVR_TIMEOUT);
+        return 0;
+    }
     if (!strcmp(argv[1],"queued") || !strcmp(argv[1],"tick-queued") ||
         !strcmp(argv[1],"stale-queue") || !strcmp(argv[1],"future-receive") ||
         !strcmp(argv[1],"clock-rollback")) {
