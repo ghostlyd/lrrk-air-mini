@@ -83,7 +83,7 @@ source/output alias protection, selected-source preprocessing and CMake watch
 dependencies remain covered.
 
 The final build-backed host run passes 83 offline assistant tests (nine optional
-OpenAI SDK/live-service skips) and 274 port tests with no port skips. The latter
+OpenAI SDK/live-service skips) and 275 port tests with no port skips. The latter
 uses the actual compile commands and Ninja graph plus an explicitly supplied
 ELF/tool persistence check. No live API call is part of the firmware gate.
 

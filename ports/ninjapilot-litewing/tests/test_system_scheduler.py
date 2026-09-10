@@ -144,6 +144,8 @@ class SystemSchedulerTests(unittest.TestCase):
                 "check-dispatch-return": ("    (void)PIOS_CALLBACKSCHEDULER_Dispatch(callbackHandle);",
                     "    if (PIOS_CALLBACKSCHEDULER_Dispatch(callbackHandle) != pdTRUE) return -1;"),
             }
+            if manual_mutant not in mutations:
+                raise AssertionError("unknown ManualControl start mutant: " + manual_mutant)
             old, new = mutations[manual_mutant]
             code = manual_source.read_text()
             if code.count(old) != 1 or old == new:
@@ -212,7 +214,8 @@ class SystemSchedulerTests(unittest.TestCase):
             with self.subTest(mutant=mutant):
                 result = subprocess.run([sys.executable, "-m", "unittest",
                     "test_system_scheduler.SystemSchedulerTests." + method],
-                    cwd=ROOT / "tests", env=dict(os.environ, LRRK_TEST_MANUAL_START_MUTANT=mutant),
+                    cwd=ROOT / "tests", env=dict(os.environ, LRRK_TEST_ORIGINAL_MANUAL="0",
+                                                  LRRK_TEST_MANUAL_START_MUTANT=mutant),
                     capture_output=True, text=True, timeout=30)
                 self.assertNotEqual(result.returncode, 0)
                 self.assertIn("line ", result.stderr)
@@ -224,7 +227,8 @@ class SystemSchedulerTests(unittest.TestCase):
         result = subprocess.run([sys.executable, "-m", "unittest",
             "test_system_scheduler.SystemSchedulerTests.test_manual_control_start_rejects_premature_and_repeated_calls",
             "test_system_scheduler.SystemSchedulerTests.test_manual_control_reported_start_errors_reach_system_failure_gate"],
-            cwd=ROOT / "tests", env=dict(os.environ, LRRK_TEST_ORIGINAL_MANUAL="1"),
+            cwd=ROOT / "tests", env=dict(os.environ, LRRK_TEST_ORIGINAL_MANUAL="1",
+                                         LRRK_TEST_MANUAL_START_MUTANT=""),
             capture_output=True, text=True, timeout=30)
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("FAILED (failures=7)", result.stderr)
@@ -240,6 +244,21 @@ class SystemSchedulerTests(unittest.TestCase):
             capture_output=True, text=True, timeout=30)
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("controls are mutually exclusive", result.stderr)
+        self.assertEqual(source.read_bytes(), before)
+
+    def test_manualcontrol_test_controls_reject_unknown_mutants(self):
+        source = (Path(os.environ["LRRK_TEST_FLIGHT_ROOT"]) /
+                  "flight/modules/ManualControl/manualcontrol.c")
+        before = source.read_bytes()
+        result = subprocess.run([sys.executable, "-m", "unittest",
+            "test_system_scheduler.SystemSchedulerTests.test_manual_control_start_rejects_premature_and_repeated_calls"],
+            cwd=ROOT / "tests", env=dict(os.environ, LRRK_TEST_ORIGINAL_MANUAL="0",
+                                         LRRK_TEST_MANUAL_START_MUTANT="unexpected-ambient"),
+            capture_output=True, text=True, timeout=30)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("AssertionError: unknown ManualControl start mutant: unexpected-ambient",
+                      result.stderr)
+        self.assertNotIn("KeyError", result.stderr)
         self.assertEqual(source.read_bytes(), before)
 
     def test_required_module_errors_reach_real_boot_callers(self):
