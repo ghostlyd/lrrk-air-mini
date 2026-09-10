@@ -9,6 +9,9 @@ from test_pilot_crypto_vectors import PIN
 ROOT = Path(__file__).resolve().parents[1]
 
 class PilotReceiverTests(unittest.TestCase):
+    fixture = "pilot_receiver_integration.c"
+    extra_sources = ()
+    cases = ("publish","delayed","wrong-owner","stop","released","rollback")
     def test_real_session_publication_and_failure_cases(self):
         path = os.environ.get("LRRK_TEST_MBEDTLS_ROOT")
         if not path:
@@ -27,10 +30,11 @@ class PilotReceiverTests(unittest.TestCase):
             command += [str(source/"library"/name) for name in ("md.c","sha256.c","hkdf.c","platform_util.c")]
             command += [str(ROOT/"target"/name) for name in ("litewing_pilot_session.c",
                 "litewing_pilot_wire.c","pios_litewing_pilot_mac.c","pios_litewing_pilot_keys.c","pios_litewing_gcsrcvr.c")]
-            command += [str(ROOT/"tests/pilot_receiver_integration.c"),"-o",str(binary)]
+            command += [str(ROOT/"target"/name) for name in self.extra_sources]
+            command += [str(ROOT/"tests"/self.fixture),"-o",str(binary)]
             result = subprocess.run(command,capture_output=True,text=True,timeout=60)
             self.assertEqual(result.returncode,0,result.stderr)
-            for case in ("publish","delayed","wrong-owner","stop","released","rollback"):
+            for case in self.cases:
                 with self.subTest(case=case):
                     result = subprocess.run([str(binary),case],capture_output=True,text=True,timeout=10)
                     self.assertEqual(result.returncode,0,result.stderr)
