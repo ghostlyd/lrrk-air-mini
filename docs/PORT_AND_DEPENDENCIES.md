@@ -117,9 +117,10 @@ separate from the ESP-IDF-managed Python environment. UART telemetry uses the
 pinned UAVTalk decoder; optional serial and OpenAI SDK dependencies are declared
 in [`ai_assistant/pyproject.toml`](../ai_assistant/pyproject.toml). OpenAI runs on
 the host, with no API credential or model on the board. The selected wrapper's
-authenticated Wi-Fi command runtime is now source-integrated; provisioning,
-wireless telemetry, physical operator input integration, and radio qualification
-remain unfinished. The stock firmware's Wi-Fi features below do not establish
+authenticated Wi-Fi command runtime and USB provisioning workflow are now
+source-integrated. Physical provisioning/activation, wireless telemetry,
+physical operator input integration and radio qualification remain unfinished.
+The stock firmware's Wi-Fi features below do not establish
 support in this port.
 
 ### Authenticated Wi-Fi dependency checkpoint — 2026-09-10
@@ -136,12 +137,20 @@ fresh installation or live radio test.
 | --- | --- | --- |
 | Drone AP | ESP-IDF 5.3.2 `esp_wifi`, `esp_netif`, `esp_event` and SDK networking | AP lifecycle and bounded UDP command task are linked through System startup; no extra radio module |
 | Command authentication | IDF `mbedtls`, HKDF enabled by `CONFIG_MBEDTLS_HKDF_C` | Direction-separated keys, authenticated session and replay/freshness enforcement |
-| Credential loading | IDF `nvs_flash` | Dedicated `lw_pilot/config` blob, read-only loader; USB writer and rotation not implemented |
+| Credential loading/storage | IDF `nvs_flash` | Dedicated `lw_pilot/config`; integrated bounded USB worker, scoped writer and verified readback; private host rotation preserves old/pending copies |
 | Timing/randomness | IDF `esp_timer`, `esp_hw_support` | Monotonic challenge age and platform RNG; radio-load timing still needs measurement |
 | Host pilot protocol | CPython 3.11–3.14 standard-library networking, HMAC and randomness | Protocol/operator APIs exist; physical input-device adapter and user-facing pilot launcher remain outstanding |
 | USB telemetry | Optional `uavtalk` extra: `pyserial>=3.5,<4` | Existing UAVTalk path retained; stock CRTP clients cannot operate LWPL |
 | Host advisory AI | Optional `openai` extra: `openai-agents==0.22.1` | Host-only API credential; no pilot key shared with AI tools; new Wi-Fi telemetry ingestion outstanding |
 | Windows private audit files | `oschmod==0.3.12`, `pywin32==312` | Declared Windows-only dependencies; not yet a credential-bundle storage implementation |
+
+Provisioning update: the [operator commands](../ai_assistant/README.md#operator-provisioning)
+use the existing `uavtalk` extra for USB and standard-library UDP/HMAC/randomness
+for key reachability. macOS storage also checks descriptor ACLs through system
+libc; Linux rejects POSIX ACL attributes. No additional pip dependency is added.
+Windows provisioning and Linux serial opening are not implemented. The current
+source candidate was rebuilt at `daeb3bf` with ESP-IDF 5.3.2 and dump-disabled
+configuration; physical activation is not inferred from that build.
 
 No additional onboard AI computer, GPS, optical-flow sensor or range sensor is
 required by this attitude/rate pilot-link design. These exclusions do not imply
