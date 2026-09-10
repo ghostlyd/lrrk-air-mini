@@ -217,3 +217,30 @@ Snapshots are partial and labeled with receipt-time provenance. Link age stays
 unknown; a valid MAC or recent receipt is not a freshness or flight-readiness
 certificate. The firmware publisher and physical radio checks are not yet
 integrated. See the [lifecycle evidence](../docs/verification/wifi-telemetry-lifecycle-2026-09-10.md).
+## Wireless advisory handoff
+
+`AdvisoryTelemetryInbox` in `lrrk_litewing_ai.advisory_handoff` transfers an
+already-accepted `TelemetryObservation` from the local pilot owner to a separate
+assistant worker. It owns no key, socket, command method, API client or thread.
+The caller remains responsible for the operator loop and worker lifecycle:
+
+- Create a fresh inbox for each admitted session. After the pilot owner calls
+  `link.step(sample)` and `link.take_telemetry()`, offer any returned observation
+  with `inbox.offer(observation)`. An offer that finds the lock busy or the inbox
+  closed returns `False`; do not retry it in the control loop.
+- Only the assistant worker calls `inbox.ingest_latest(runtime)` and then performs
+  analysis or API work. Keep every use of that runtime serialized in this worker.
+  The handoff releases its lock before calling `runtime.ingest`.
+- In the pilot owner's cleanup, close the inbox on STOP, loss, socket failure or
+  maintenance retirement, alongside existing link cleanup. This discards pending
+  data and refuses new offers. It does not reopen a link or replace its failsafe.
+- Closing does not cancel previously drained analysis/API work or erase an already
+  loaded runtime snapshot. Such results are historical observations, not proof of
+  a connected aircraft. Do not use an assistant response as a live control token.
+
+The inbox holds **one latest partial observation**, not a complete five-object
+state: newer telemetry replaces older pending data. It deliberately does not merge
+old fields, renew capture times, infer link freshness, or synthesize battery values.
+Its returned observation retains serialization/sample-age metadata separately from
+the runtime snapshot. Python scheduling is not hard real-time. A complete operator
+launcher and board-side load/recovery qualification remain separate deliverables.
