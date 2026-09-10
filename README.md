@@ -23,9 +23,16 @@ The port boundary and dependency inventory are documented in
 [`docs/PORT_AND_DEPENDENCIES.md`](docs/PORT_AND_DEPENDENCIES.md). The first
 authorized [USB-only flash and telemetry check](docs/verification/usb-bringup-2026-09-09.md)
 has completed with propellers removed and no battery. The original full flash
-is backed up locally. The candidate remains configured `Always Disarmed`;
-powered motor tests, calibration, physical safety validation and flight remain
-pending.
+is backed up locally. A later [propeller-off USB transaction](docs/verification/armed-nonzero-motor-proof-2026-09-09.md)
+proved `FlightStatus=Armed` together with six nonzero motor-command samples,
+then 11 zero-command samples and receiver timeout while still Armed. It made no
+persistent settings write and, by operator request, did not restore
+`Always Disarmed`; the last observed `Always Armed` state was RAM-only and is
+not evidence of persistence across a verified reset or power cycle. Closing the
+serial link does not clear RAM state while USB power remains; later work must
+assume `Always Armed` remains active until a reset or power cycle is performed
+and disarmed telemetry is reverified. Electrical output, calibrated orientation,
+battery operation, physical flight safety and flight remain pending.
 
 The NinjaPilot target's [settings-persistence correction and USB reset
 verification](docs/verification/settings-recovery-2026-09-09.md) are also complete
@@ -37,7 +44,7 @@ records the source and protocol-integration checks.
 
 The reviewed receiver/thrust fixes are now [installed and checked over USB](docs/verification/control-fixes-usb-install-2026-09-09.md),
 with preserved settings and disarmed telemetry across a reset. Arming is still
-disabled. A [separate bounded USB trial](docs/verification/disarmed-receiver-completion-2026-09-09.md)
+disabled at that recorded checkpoint. A [separate bounded USB trial](docs/verification/disarmed-receiver-completion-2026-09-09.md)
 now passes the sampled disarmed receiver-loss/recovery checks with a complete
 capture. Exact timeout latency, electrical output, powered operation and flight
 remain unverified; this does not enable arming.
@@ -47,21 +54,24 @@ USB](docs/verification/stabilization-startup-usb-install-2026-09-09.md). The
 application, bootloader, partition table and settings passed separate live
 comparisons; sampled runtime state remained disarmed with zero commands on the
 four motor channels. Initial startup alarms and BootFault still prevent flight
-clearance, and arming remains `Always Disarmed`.
+clearance, and arming remained `Always Disarmed` at that checkpoint.
 
 The checked ManualControl start build is likewise [installed and observed over
 USB](docs/verification/manual-control-start-usb-install-2026-09-09.md). Its
 application and preserved regions passed independent comparisons and complete
 readbacks. Sampled ManualControl state ended disconnected, FlightStatus
 remained Disarmed, and motor channels 1..4 remained zero. This does not clear
-the persistent BootFault, startup-alarm, commanded-output or flight gates.
+the persistent BootFault, startup-alarm or flight gates. The later bounded
+arm/motor proof clears only the software-arming and commanded-output evidence
+gate.
 
 **USB-C is a motor-capable power source on this hardware.** Battery absence is
 not a motor de-energization gate: a user-supplied
 [LiteWing recording](https://x.com/d0tslash/status/2095720911743725618)
 shows the battery connector empty while USB-C powers rotating propellers. USB
-bench work must therefore use the same propeller-removal, containment,
-disarmed-state and zero-command controls as any other energized motor test.
+bench work must therefore use propeller removal, containment, explicit state
+observation, bounded commands, and a verified return to zero as controls for
+any energized motor test.
 
 ## Firmware build
 

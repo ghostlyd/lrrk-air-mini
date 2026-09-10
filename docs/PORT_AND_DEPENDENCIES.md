@@ -5,7 +5,10 @@ this repository and on the connected development host. The approved
 NinjaPilot/OpenPilot LiteWing target is pinned, and the ESP32-S3
 image builds successfully. A separately authorized [USB-only session](verification/usb-bringup-2026-09-09.md)
 verified an 8 MB recovery backup, flashed the candidate, and observed disarmed
-telemetry plus changing IMU/attitude values at 57600 baud. The full bench and
+telemetry plus changing IMU/attitude values at 57600 baud. A subsequent
+[USB software-arm proof](verification/armed-nonzero-motor-proof-2026-09-09.md)
+observed six bounded nonzero motor-command samples while Armed, followed by 11
+zero-command samples and receiver timeout while still Armed. The full bench and
 flight gates remain incomplete; no flight has been performed.
 
 ## Scope and target boundary
@@ -34,11 +37,14 @@ LiteWing contract and native simulator loopback patches.
 ## LiteWing hardware baseline
 
 Owner inventory update (2026-09-09): no battery is currently available.
-Motor-powered bench checks and flight verification therefore remain pending.
+Battery-powered checks and flight verification therefore remain pending. USB-C
+nevertheless powers the motor path: the bounded software-arm transaction has
+now produced nonzero flight-stack motor commands without a battery. That result
+does not establish electrical duty or physical rotation in the recorded trial.
 Source work, host simulation, and AI development can continue. A battery is a
 required outstanding purchase; verify cell count, voltage, current capability,
-mass, fit, and the physical connector/polarity before selecting a SKU. The BOM's
-connector designation alone is not proof of the assembled board's wiring.
+mass, fit, and the physical connector/polarity before selecting a SKU. The
+BOM's connector designation alone is not proof of the assembled board's wiring.
 
 The primary hardware evidence is the KiCad design and production BOM in
 `hardware/LieWingV2.6.C/` (the directory name preserves the upstream `LieWing`
@@ -143,9 +149,10 @@ only on the host:
 5. Dry-run and simulation tests that prove the agent cannot emit raw motor
    outputs or bypass the approval state machine.
 
-The OpenAI credential is a host secret. It is not present in this repository,
-and no credential was written during the initial setup. The service must run in
-offline/dry-run mode until a local secret destination is explicitly approved.
+The OpenAI credential is a host secret and is not present in this repository.
+Live mode requires `OPENAI_API_KEY` to be supplied at runtime from an approved
+host secret store; the service remains offline/dry-run by default and never
+places the credential on the flight controller.
 
 ## Required verification gates
 

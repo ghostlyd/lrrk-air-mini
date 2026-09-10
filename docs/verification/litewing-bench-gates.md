@@ -7,7 +7,24 @@ ESP-Drone firmware remains the recovery image.
 
 This is the acceptance checklist, not a record that every item has passed.
 See [the USB-only session report](usb-bringup-2026-09-09.md) for the verified
-backup/flash, telemetry observations and remaining limitations.
+backup/flash, telemetry observations and remaining limitations. See the later
+[software-arm and bounded nonzero-command report](armed-nonzero-motor-proof-2026-09-09.md)
+for the attained command-path gate and its narrower claim boundary.
+
+## Attained software arm/output gate
+
+- [x] Propellers removed, board contained, battery absent, and USB-C treated as
+  a live motor-power source.
+- [x] Exact installed application and pinned UAVObject source verified before
+  the one-shot transaction.
+- [x] `FlightStatus=Armed` observed with six bounded nonzero motor-command
+  samples; peak channels `[128, 0, 0, 118]` on the `0..1000` scale.
+- [x] Eleven later zero-command samples observed while Armed; the final sample
+  also had the receiver timed out and disconnected.
+- [x] No persistence write, post-arm reset, direct `ActuatorCommand` write,
+  flash, erase, or restore-to-`Always Disarmed` operation was sent.
+- [ ] Electrical PWM duty/cutoff timing, physical rotation in this transaction,
+  motor-corner mapping, and flight readiness remain unverified.
 
 ## Source and build
 

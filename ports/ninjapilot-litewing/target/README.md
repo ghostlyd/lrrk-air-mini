@@ -62,6 +62,12 @@ This is not physical zero-output measurement, fault-timing validation or flight
 clearance; critical Receiver/Actuator alarms and remaining bench gates are
 documented there.
 
+The later [bounded USB arm/motor transaction](../../../docs/verification/armed-nonzero-motor-proof-2026-09-09.md)
+observed this flight stack Armed with six nonzero motor-command samples and a
+peak of `[128, 0, 0, 118]`, followed by 11 zero samples. That is command-path
+telemetry, not a measurement of LEDC duty, electrical cutoff latency, physical
+rotation, or motor-corner mapping.
+
 For the pinned defaults, application UART telemetry is **57600 baud**. Board
 initialization and the tested bootloader connection use 115200, but the
 Telemetry module subsequently applies `HwSettings.TelemetrySpeed`. A saved
