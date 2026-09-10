@@ -35,7 +35,12 @@ class FirmwareAdmissionTests(unittest.TestCase):
         (out / "access.c").write_text(
             '#include "litewing_pilot_session.h"\n'
             'size_t state_size(void) {return sizeof(struct lw_pilot_session);}\n'
-            'int phase(struct lw_pilot_session *s) {return s->phase;}\n')
+            'int phase(struct lw_pilot_session *s) {return s->phase;}\n'
+            'int retired_keys(struct lw_pilot_session *s) {\n'
+            'const unsigned char *p=(const unsigned char *)&s->keys;\n'
+            'for(size_t i=0;i<sizeof(s->keys);++i) if(p[i]) return 0;\n'
+            'for(size_t i=0;i<16;++i) if(s->session[i] || s->challenge[i]) return 0;\n'
+            'return 1;}\n')
         command = ["cc", "-std=c11", "-Wall", "-Wextra", "-Werror", "-shared", "-fPIC",
                    '-DMBEDTLS_CONFIG_FILE="config.h"', "-I", str(out),
                    "-I", str(source / "include"), "-I", str(ROOT / "target/include")]
@@ -49,6 +54,7 @@ class FirmwareAdmissionTests(unittest.TestCase):
         cls.lib = C.CDLL(str(out / "session.so"))
         cls.lib.state_size.restype = C.c_size_t
         cls.lib.phase.argtypes = [C.c_void_p]
+        cls.lib.retired_keys.argtypes = [C.c_void_p]
         cls.lib.lw_session_init.argtypes = [C.c_void_p]
         cls.lib.lw_session_tick.argtypes = [C.c_void_p, C.c_int64]
         cls.lib.lw_session_receive.argtypes = [C.c_void_p, C.c_void_p, C.c_size_t,
@@ -61,10 +67,11 @@ class FirmwareAdmissionTests(unittest.TestCase):
         self.root, self.host = b"r" * 32, b"h" * 32
         self.rng_calls = 0
         self.fail_rng = False
+        self.fail_rng_at = 0
         def random(_ctx, dest, size):
             self.rng_calls += 1
             C.memset(dest, self.rng_calls, size)
-            return -1 if self.fail_rng else 0
+            return -1 if self.fail_rng or self.rng_calls == self.fail_rng_at else 0
         self.random = RNG(random)
 
     def receive(self, wire, now, disarmed=1, owner_free=1, capacity=594):
@@ -159,3 +166,22 @@ class FirmwareAdmissionTests(unittest.TestCase):
             self.assertEqual(self.receive(wire, 100)[0], 0)
             self.assertEqual(self.lib.phase(self.state), 0)
             self.assertEqual(self.rng_calls, 0)
+
+    def test_each_rng_failure_clears_partial_state(self):
+        hello = PilotAdmission(self.root, self.host).begin(100)
+        for failure in (1, 2, 3):
+            self.lib.lw_session_init(self.state)
+            self.rng_calls = 0
+            self.fail_rng_at = failure
+            self.assertEqual(self.receive(hello, 100)[0], 2)
+            self.assertEqual(self.lib.phase(self.state), 0)
+            self.assertEqual(self.lib.retired_keys(self.state), 1)
+
+    def test_failed_accept_encoding_retires_keys_and_cannot_reuse_claim(self):
+        client, challenge = self.start()
+        claim = client.receive_challenge(challenge, 200)
+        self.assertEqual(self.lib.retired_keys(self.state), 0)
+        self.assertEqual(self.receive(claim, 300, capacity=81)[0], 2)
+        self.assertEqual(self.lib.phase(self.state), 0)
+        self.assertEqual(self.lib.retired_keys(self.state), 1)
+        self.assertEqual(self.receive(claim, 301)[0], 0)
