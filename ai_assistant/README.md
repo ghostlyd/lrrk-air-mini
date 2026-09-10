@@ -35,11 +35,20 @@ provider content. See [lifecycle audit fields](../docs/AI_ASSISTANT.md#advisory-
 Audited proposal/approval creation cannot succeed if recording fails.
 Invalidation still clears approval and enters a terminal state before raising
 `ApprovalAuditError`; policy/observation updates also clear cached reports.
-A write error disables further grants from that machine, including retries
-after ambiguous writes. Inspect storage and replay before starting a new
-runtime with a new proposal. Terminal records cannot be aborted again.
-Sequential machines/log instances may share a file; callers must serialize
-access, since this is not a concurrent-writer or crash-atomic transaction log.
+A write error permanently disables further grants from that machine, while
+distinct abort/invalidation/rejection/expiry transitions still attempt their
+terminal event once. Native `AuditLog` rolls back partial or complete failed
+appends to the prior file bytes and existence, and validates replay before
+returning success. A custom recorder must provide the same failure-atomic
+contract; the state machine cannot undo arbitrary callback side effects.
+Terminal records cannot be aborted again.
+
+Audit records commit with a terminating LF (CRLF is readable). Unterminated
+tails are refused even if they contain valid JSON. Truncated-tail replay is
+read-only inspection of the committed prefix; it does not repair the file.
+Native logs and replay share a process-wide lock, so separate log instances
+can safely append concurrently within one process. Cross-process access still
+requires external serialization; this is not a crash-atomic transaction log.
 An audited `APPROVED` record remains advisory and grants no flight execution.
 
 The default mode is offline. It needs no API key, network, firmware change, or

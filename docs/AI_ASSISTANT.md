@@ -102,10 +102,14 @@ Attach an existing native log with `AssistantRuntime(audit=audit_log)`.
 The CLI passes its configured `--audit-log` to the runtime, including the
 real `propose_action` path. A standalone state machine accepts
 `ApprovalStateMachine(operator_session, transition_recorder=audit_log.append)`.
-The optional callback takes `(event_type, payload)` synchronously; it must
-complete its append before returning and raise on failure. The state machine
-does not choose a destination or import CLI behavior. Omitting the recorder
-keeps offline library use available without creating a file implicitly.
+The optional callback takes `(event_type, payload)` synchronously. It must be
+failure-atomic: return only after committing exactly one validated event, or
+restore its pre-append storage state before raising. Native `AuditLog.append`
+provides this exception-rollback contract. The state machine cannot roll back
+arbitrary custom callback side effects; a callback that appends and then raises
+without restoring storage violates the contract. The state machine does not
+choose a destination or import CLI behavior. Omitting the recorder keeps
+offline library use available without creating a file implicitly.
 
 Each actual transition produces exactly one native event, with an empty
 `source` and the existing event ID, UTC append timestamp, session ID,
@@ -153,23 +157,56 @@ terminal state and clear the token digest before attempting the append.
 Policy and telemetry updates still take effect and clear cached preflight
 reports if that append fails. Failed recording never restores approval.
 
-Any recorder failure disables subsequent grants from that machine because
-the append may have written some or all bytes before raising. There is no
-automatic retry or synthetic completion event. A failed terminal write can
-leave an older `APPROVED` event as the last disk record; it does not make the
-in-memory approval current. Stop using that runtime, inspect the storage
-failure and `validate_replay(path)`, and create a fresh proposal/runtime only
-after resolving it. Replay validates file integrity; it does not reconstruct
-or restore live approval, establish freshness, or prove an operation returned
-success after a crash or ambiguous append failure.
+Any recorder failure permanently disables subsequent grant transitions
+(`PROPOSAL_READY` and `APPROVED`) from that machine, even after native storage
+has been restored. A distinct terminal transition still attempts recording:
+after a failed approval write, an explicit abort or safety invalidation can
+record its terminal event if storage recovers. If storage still fails, the
+machine stays terminal with no approval digest and raises the generic error.
+There is no automatic retry of a failed terminal event, and repeated calls
+cannot duplicate it. A failed terminal write can leave an older `APPROVED`
+event as the last disk record; it does not make in-memory approval current.
+Resolve storage errors before starting a fresh runtime and proposal. Replay
+validates integrity; it does not restore live approval or establish freshness.
 
 Multiple machines can share one `AuditLog`, and independent log instances can
-append sequentially to the same session/file, including across repeated
-sessions. Each append revalidates the existing chain and refreshes its head.
-This costs a full-file replay per append. Callers must serialize operations;
-simultaneous writers require external locking. The existing JSONL writer is
-not a crash-atomic or fsync-backed transaction store. No cross-process
-concurrency or crash-recovery guarantee is added by this change.
+append concurrently within one process, including across repeated sessions.
+A shared process-wide lock serializes construction/replay and the entire
+append transaction: private descriptor setup, strict chain validation/head
+refresh, binary write, post-append replay validation and exception rollback.
+This also covers path aliases. Callers still serialize access to each mutable
+state machine; multiple processes and external file mutations require separate
+coordination. Validation before and after each append costs two full replays.
+
+The native writer submits one UTF-8 record plus LF as a single binary write,
+and checks the exact returned byte count. If it writes part or all of an event
+and then raises, or post-append validation fails, the held descriptor is
+truncated to its original length before the exception surfaces. Existing file
+bytes and length are restored, including an initially empty file. A file
+created by that failed append is removed after checking its identity; cleanup
+never unlinks a substituted destination. Existing permissions stay private
+(or are tightened), rather than restoring an unsafe earlier mode. macOS/Linux
+descriptor permissions and the existing Windows ACL backend run before any
+record bytes, with regular-file/identity checks before and after setup.
+Windows descriptors are opened in binary mode and closed before new-file
+cleanup. Native failed proposal/approval writes therefore leave no orphan
+success event under coordinated access and functioning rollback storage.
+
+Strict audit replay requires LF-terminated records; CRLF is also accepted,
+but a bare CR does not commit a record. Any nonempty file without its final LF
+is rejected even if its tail parses as complete JSON. Appending refuses that
+file without appending bytes. `validate_replay(path,
+allow_truncated_final_line=True)` ignores only the final unterminated suffix
+before decoding it, including valid JSON or partial UTF-8 bytes. It validates
+every terminated record and never edits the file. This inspection mode is not
+automatic recovery; resolve the tail explicitly before attempting more writes.
+The telemetry input adapter retains its existing final-newline behavior.
+
+Exception rollback is not crash recovery or a transaction across process
+memory and disk. Process termination, filesystem failure that prevents rollback,
+or uncoordinated destination replacement still requires manual storage/replay
+inspection. No fsync durability or cross-process lock is added, and replay
+cannot prove a method returned success before a process crash.
 
 Even a successfully recorded `APPROVED` state is only an advisory human-review
 record. It exposes no model approval tool, command sink, or flight execution.

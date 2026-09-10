@@ -52,7 +52,9 @@ class TransitionReason(str, Enum):
     SAFETY_REGRESSION = "SAFETY_REGRESSION"
 
 
-# A native AuditLog.append bound method satisfies this narrow callback contract.
+# Recorders must commit exactly one event on return and restore their prior
+# storage state before raising. Native AuditLog.append provides this contract;
+# a state machine cannot roll back an arbitrary custom callback's side effects.
 TransitionRecorder = Callable[[str, Dict[str, Any]], Any]
 
 
@@ -113,7 +115,7 @@ class ApprovalStateMachine:
     def _record_transition(
         self, from_state: str, state: str, proposal: ActionProposal, reason: TransitionReason,
     ) -> None:
-        if self._audit_failed:
+        if self._audit_failed and state in (PROPOSAL_READY, APPROVED):
             raise ApprovalAuditError("advisory transition audit write failed")
         if self._transition_recorder is not None:
             try:
@@ -129,8 +131,8 @@ class ApprovalStateMachine:
                     "action_kind": proposal.action_kind,
                 })
             except Exception:
-                # A failed append may have written bytes. Do not retry ambiguous
-                # grants or expose exception content from a storage backend.
+                # Block future grants permanently, but allow a distinct terminal
+                # transition to attempt recording. Never expose backend content.
                 self._audit_failed = True
                 raise ApprovalAuditError("advisory transition audit write failed") from None
 

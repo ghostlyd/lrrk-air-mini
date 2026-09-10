@@ -3,9 +3,12 @@
 import contextlib
 import hashlib
 import io
+import os
 import sys
 import tempfile
+import threading
 import unittest
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -362,17 +365,119 @@ class TransitionAuditTests(unittest.TestCase):
                     operation = lambda: self.approve(runtime, proposal)
                 else:
                     operation = lambda: propose_action(runtime, "open_manual", PRIVATE, PRIVATE)
+                before = self.path.read_bytes() if self.path.exists() else None
                 def ambiguous_write(path, record):
                     append_record(path, record)
                     raise OSError(ERROR)
                 with patch("lrrk_litewing_ai.audit.append_record", new=ambiguous_write):
                     self.assert_write_failure(operation)
-                before = self.path.read_bytes()
+                self.assertEqual(self.path.read_bytes() if self.path.exists() else None, before,
+                                 "native failed grant left an orphan success event")
                 self.assert_write_failure(operation)
-                self.assertEqual(self.path.read_bytes(), before)
+                self.assertEqual(self.path.read_bytes() if self.path.exists() else None, before)
                 self.assertNotEqual(runtime.approvals.state, "APPROVED")
                 self.assertIsNone(runtime.approvals._approval_digest)
-                validate_replay(self.path)
+                if self.path.exists():
+                    validate_replay(self.path)
+
+    def test_failed_approval_latches_grants_but_attempts_distinct_terminal_record(self):
+        for recovered in (False, True):
+            for terminal in ("abort", "snapshot", "policy", "expire", "reject"):
+                with self.subTest(recovered=recovered, terminal=terminal):
+                    runtime, proposal = self.ready()
+                    before = self.path.read_bytes()
+                    with patch("lrrk_litewing_ai.audit.append_record", side_effect=OSError(ERROR)):
+                        self.assert_write_failure(lambda: self.approve(runtime, proposal))
+                    self.assertEqual(self.path.read_bytes(), before)
+                    def terminate():
+                        if terminal == "abort":
+                            runtime.approvals.abort(PRIVATE)
+                        elif terminal == "snapshot":
+                            runtime.ingest(snapshot("changed"))
+                        elif terminal == "policy":
+                            runtime.policy = SafetyPolicy(min_battery_voltage_v=4.1)
+                        elif terminal == "expire":
+                            runtime.approvals.expire(now=NOW + timedelta(seconds=60))
+                        else:
+                            runtime.approvals.reject(proposal.proposal_id, PRIVATE)
+                    if recovered:
+                        try:
+                            terminate()
+                        except RuntimeError:
+                            self.fail("recovered recorder was suppressed for distinct terminal transition")
+                        rows = validate_replay(self.path)
+                        self.assertEqual(len(rows), before.count(b"\n") + 1)
+                        self.assertEqual(rows[-1]["payload"]["proposal_id"], proposal.proposal_id)
+                    else:
+                        attempts = []
+                        def still_failed(destination, record):
+                            attempts.append(record["event_type"])
+                            raise OSError(ERROR)
+                        with patch("lrrk_litewing_ai.audit.append_record", new=still_failed):
+                            self.assert_write_failure(terminate)
+                        self.assertEqual(len(attempts), 1, "terminal recorder was not attempted")
+                        self.assertEqual(self.path.read_bytes(), before)
+                    expected = "EXPIRED" if terminal == "expire" else "REJECTED" if terminal == "reject" else "ABORTED"
+                    self.assertEqual(runtime.approvals.state, expected)
+                    self.assertIsNone(runtime.approvals._approval_digest)
+                    after = self.path.read_bytes()
+                    self.assert_write_failure(lambda: runtime.approvals.create_proposal(
+                        snapshot(), "open_manual", PRIVATE, PRIVATE, now=NOW))
+                    with self.assertRaises(ApprovalError):
+                        runtime.approvals.abort(PRIVATE)
+                    self.assertEqual(self.path.read_bytes(), after)
+
+    def test_low_level_partial_and_complete_write_errors_leave_no_orphan_grants(self):
+        real_write = os.write
+        for target in ("proposal", "approval"):
+            for partial in (False, True):
+                with self.subTest(target=target, partial=partial):
+                    path = self.directory / (target + str(partial) + ".jsonl")
+                    runtime = AssistantRuntime(audit=AuditLog(path, "audit-session"), latest=snapshot())
+                    if target == "approval":
+                        proposal = runtime.approvals.create_proposal(
+                            snapshot(), "open_manual", PRIVATE, PRIVATE, now=NOW)
+                        operation = lambda: self.approve(runtime, proposal)
+                    else:
+                        operation = lambda: propose_action(runtime, "open_manual", PRIVATE, PRIVATE)
+                    before = path.read_bytes() if path.exists() else None
+                    def failed_write(descriptor, data):
+                        real_write(descriptor, data[:17] if partial else data)
+                        raise OSError(ERROR)
+                    with patch("lrrk_litewing_ai.jsonl.os.write", new=failed_write):
+                        self.assert_write_failure(operation)
+                    self.assertEqual(path.read_bytes() if path.exists() else None, before)
+                    self.assertEqual(runtime.approvals.state, "IDLE" if target == "proposal" else "PROPOSAL_READY")
+                    self.assertIsNone(runtime.approvals._approval_digest)
+                    if path.exists():
+                        self.assertEqual([r["event_type"] for r in validate_replay(path)], ["proposal_ready"])
+
+    def test_concurrent_machines_keep_each_proposal_lifecycle_in_one_valid_chain(self):
+        barrier = threading.Barrier(2)
+        logs = (self.log, AuditLog(self.path, "second-session"))
+        def lifecycle(log):
+            runtime = AssistantRuntime(audit=log, latest=snapshot())
+            barrier.wait(timeout=3)
+            for unused in range(3):
+                proposal = runtime.approvals.create_proposal(
+                    snapshot(), "open_manual", PRIVATE, PRIVATE, now=NOW)
+                self.approve(runtime, proposal)
+                runtime.approvals.abort(PRIVATE)
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            futures = [pool.submit(lifecycle, log) for log in logs]
+            for future in futures:
+                future.result(timeout=5)
+        rows = validate_replay(self.path)
+        self.assertEqual(len(rows), 18)
+        self.assertEqual({r["session_id"] for r in rows}, {"audit-session", "second-session"})
+        proposals = {}
+        for row in rows:
+            proposals.setdefault(row["payload"]["proposal_id"], []).append(row)
+        self.assertEqual(len(proposals), 6)
+        for events in proposals.values():
+            self.assertEqual([r["event_type"] for r in events],
+                             ["proposal_ready", "proposal_approved", "proposal_aborted"])
+            self.assertTrue(all(set(r["payload"]) == PAYLOAD_KEYS and r["source"] == {} for r in events))
 
     def test_cli_attaches_audit_to_real_advisory_tool_path(self):
         # Substitute only the offline text facade; execute the real proposal tool.

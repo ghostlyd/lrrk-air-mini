@@ -5,12 +5,16 @@ from __future__ import annotations
 import json
 import os
 import stat
+import threading
+from contextlib import contextmanager
 from pathlib import Path
-from typing import Any, Dict, Iterator
+from typing import Any, Dict, Iterator, Union
 
 
 _IS_WINDOWS = os.name == "nt"
 _PRIVATE_MODE = 0o600
+# One process-wide lock also covers path aliases and separately constructed logs.
+AUDIT_LOCK = threading.RLock()
 
 
 def canonical_json(value: Dict[str, Any]) -> str:
@@ -43,43 +47,89 @@ def _require_regular_target(path: Path, descriptor: int) -> None:
         raise ValueError("audit destination must be one regular file")
 
 
-def append_record(path: Path, record: Dict[str, Any]) -> None:
-    set_private_mode = _private_mode_setter()
+@contextmanager
+def append_transaction(path: Path) -> Iterator[int]:
+    """Hold a private descriptor and undo append bytes on any raised exception.
 
-    path.parent.mkdir(parents=True, exist_ok=True)
-    flags = os.O_WRONLY | os.O_APPEND | os.O_CREAT
-    if hasattr(os, "O_CLOEXEC"):
-        flags |= os.O_CLOEXEC
-    if hasattr(os, "O_NOFOLLOW"):
-        flags |= os.O_NOFOLLOW
+    The caller must append only, and validate before leaving this context.
+    This is exception rollback within one process, not crash recovery.
+    """
+    with AUDIT_LOCK:
+        set_private_mode = _private_mode_setter()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        flags = os.O_RDWR | os.O_APPEND
+        for option in ("O_CLOEXEC", "O_NOFOLLOW", "O_NONBLOCK", "O_BINARY"):
+            flags |= getattr(os, option, 0)
+        try:
+            descriptor = os.open(path, flags | os.O_CREAT | os.O_EXCL, _PRIVATE_MODE)
+            created = True
+        except FileExistsError:
+            descriptor = os.open(path, flags)
+            created = False
+        original_size = None
+        try:
+            _require_regular_target(path, descriptor)
+            original_size = os.fstat(descriptor).st_size
+            set_private_mode(descriptor, path)
+            _require_regular_target(path, descriptor)
+            yield descriptor
+            _require_regular_target(path, descriptor)
+        except BaseException:
+            # Truncate the held inode, never a newly resolved path. The only
+            # permitted data mutation inside the context is append.
+            if original_size is not None and os.fstat(descriptor).st_size != original_size:
+                os.ftruncate(descriptor, original_size)
+            if created:
+                _require_regular_target(path, descriptor)
+                original = os.fstat(descriptor)
+                os.close(descriptor)
+                descriptor = -1
+                # Windows needs the descriptor closed before unlink. Recheck
+                # identity so cleanup cannot remove a substituted destination.
+                current = os.stat(path, follow_symlinks=False)
+                if not stat.S_ISREG(current.st_mode) or not os.path.samestat(original, current):
+                    raise ValueError("audit destination changed during rollback")
+                path.unlink()
+            raise
+        finally:
+            if descriptor >= 0:
+                os.close(descriptor)
 
-    descriptor = os.open(path, flags, 0o600)
-    try:
-        _require_regular_target(path, descriptor)
-        set_private_mode(descriptor, path)
-        _require_regular_target(path, descriptor)
-        with os.fdopen(descriptor, "a", encoding="utf-8") as handle:
-            descriptor = -1
-            handle.write(canonical_json(record))
-            handle.write("\n")
-    finally:
-        if descriptor >= 0:
-            os.close(descriptor)
+
+def append_record(path: Union[Path, int], record: Dict[str, Any]) -> None:
+    """Write one binary record including its commit newline, checking the count.
+
+    AuditLog passes the descriptor held by its larger validation/rollback
+    transaction. A standalone path call retains the private-file protections.
+    """
+    if not isinstance(path, int):
+        with append_transaction(path) as descriptor:
+            append_record(descriptor, record)
+        return
+    data = (canonical_json(record) + "\n").encode("utf-8")
+    if os.write(path, data) != len(data):
+        raise OSError("short audit record write")
 
 
-def iter_records(path: Path, allow_truncated_final_line: bool = False) -> Iterator[Dict[str, Any]]:
-    raw = path.read_text(encoding="utf-8")
-    lines = raw.splitlines()
-    has_final_newline = raw.endswith(("\n", "\r"))
+def iter_records(
+    path: Path, allow_truncated_final_line: bool = False, *, require_final_newline: bool = False,
+) -> Iterator[Dict[str, Any]]:
+    data = path.read_bytes()
+    if data and not data.endswith(b"\n"):
+        if allow_truncated_final_line:
+            # Ignore the uncommitted suffix before decoding, even valid JSON
+            # or a partial UTF-8 character. Never modify the source file.
+            data = data[:data.rfind(b"\n") + 1]
+        elif require_final_newline:
+            raise ValueError("unterminated JSONL final line")
+    raw = data.decode("utf-8")
+    lines = raw.split("\n")[:-1] if require_final_newline else raw.splitlines()
     for index, line in enumerate(lines):
         if not line.strip():
             raise ValueError("blank JSONL line at %d" % (index + 1))
         try:
             record = json.loads(line)
         except json.JSONDecodeError:
-            is_final = index == len(lines) - 1 and not has_final_newline
-            if is_final and allow_truncated_final_line:
-                return
             raise ValueError("invalid JSONL at line %d" % (index + 1))
         if not isinstance(record, dict):
             raise ValueError("JSONL record at line %d is not an object" % (index + 1))
