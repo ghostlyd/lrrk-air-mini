@@ -7,6 +7,10 @@ import unittest
 ROOT=Path(__file__).resolve().parents[1]
 
 class WifiConfigTests(unittest.TestCase):
+    def test_scoped_store_and_uncertain_outcomes(self):
+        self.compile_run('wifi_config_store_test.c',[
+            str(ROOT/'target/pios_litewing_wifi_store.c')])
+
     def test_real_decoder(self):
         self.compile_run('wifi_config_test.c',[])
 
