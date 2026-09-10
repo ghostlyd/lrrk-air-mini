@@ -388,7 +388,9 @@ void PIOS_Board_Init(void)
             gcs_rcvr_id;
     }
 
-    if (PIOS_LiteWing_Board_Init() != 0) {
+    const int32_t adapter_result = PIOS_LiteWing_Board_Init();
+    if (adapter_result != 0) {
+        printf("[LiteWing] hardware adapter result %ld\n", (long)adapter_result);
         /* The target adapter has already forced zero duty before returning. */
         board_set_boot_fault();
         return;
