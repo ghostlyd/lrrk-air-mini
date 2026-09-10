@@ -31,7 +31,8 @@ static int fixture_random(void *ctx,uint8_t *out,size_t size)
 { memset(out,++*(unsigned *)ctx,size); return 0; }
 int main(int argc, char **argv)
 {
-    assert(argc==2 && (!strcmp(argv[1],"stop") || !strcmp(argv[1],"loss")));
+    assert(argc==2 && (!strcmp(argv[1],"stop") || !strcmp(argv[1],"loss") ||
+                      !strcmp(argv[1],"delayed-stop")));
     const int expect_loss=!strcmp(argv[1],"loss");
     uint32_t receiver;
     assert(PIOS_GCSRCVR_Init(&receiver)==0);
@@ -58,7 +59,13 @@ int main(int argc, char **argv)
             struct sockaddr_in sender; socklen_t sender_size=sizeof(sender);
             ssize_t size=recvfrom(fd,wire,sizeof(wire),0,(struct sockaddr *)&sender,&sender_size);
             assert(size>=0);
+            if (!strcmp(argv[1],"delayed-stop") && published && size>=7 && wire[6]==6) {
+                const struct timespec delay={.tv_sec=0,.tv_nsec=120000000};
+                assert(nanosleep(&delay,NULL)==0);
+            }
             int64_t received=esp_timer_get_time();
+            const int was_active=controller.session.phase==LW_ACTIVE;
+            const int64_t input_origin=controller.session.challenge_us;
             enum lw_session_result result=lw_controller_receive_observed(&controller,
                 wire,(size_t)size,root,received,mapping,fixture_random,&random_counter,
                 reply,sizeof(reply),&written);
@@ -74,6 +81,9 @@ int main(int argc, char **argv)
             if (result==LW_RETIRED && published) {
                 assert(!expect_loss);
                 assert(size>=7 && wire[6]==6); /* Expected test's STOP transition. */
+                const int64_t processed=esp_timer_get_time();
+                assert(was_active && processed>=input_origin &&
+                       processed-input_origin<100000 && "STOP input lease expired");
                 assert(controller.owned && controller.session.phase==LW_CLOSED);
                 assert(pios_gcsrcvr_rcvr_driver.read(receiver,0)==PIOS_RCVR_TIMEOUT);
                 puts("PILOT_AND_STOP_VERIFIED");

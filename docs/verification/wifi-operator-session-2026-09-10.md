@@ -101,3 +101,14 @@ The initial fixture compile exposed a macOS POSIX feature-macro visibility issue
 for INADDR_LOOPBACK, corrected by inet_pton of the explicit loopback address.
 Interoperability fixture review is pending; production AP/task integration,
 provisioning, physical input and telemetry-only assistance remain unfinished.
+
+## STOP attribution correction
+
+Review found the first C fixture could confuse expiry with STOP retirement. A
+deliberately delayed STOP (120 ms before processing) reproduced the false pass.
+The fixture now requires the session to have been active and its saved input
+origin to remain within the 100 ms lease through completion of STOP processing.
+The delayed case must fail with the specific expired-lease assertion; ordinary
+STOP and silence-expiry cases pass. Protocol deadlines remain unchanged.
+The pre-correction full port suite ran 371 tests with 12 skips; a fresh full
+regression and review of this correction are pending.

@@ -34,7 +34,7 @@ class InteropTests(unittest.TestCase):
             command += [str(ROOT/'tests/pilot_udp_board.c'),'-o',str(binary)]
             result=subprocess.run(command,capture_output=True,text=True,timeout=60)
             self.assertEqual(result.returncode,0,result.stderr)
-            for mode in ('stop','loss'):
+            for mode in ('stop','loss','delayed-stop'):
                 with self.subTest(mode=mode): self.exchange(binary,mode)
 
     def exchange(self,binary,mode):
@@ -59,10 +59,14 @@ class InteropTests(unittest.TestCase):
             for _ in range(4):
                 if link.step(samples): sent=True; break
             self.assertTrue(sent)
-            if mode=='stop': self.assertTrue(link.stop())
+            if mode!='loss': self.assertTrue(link.stop())
             # Loss mode deliberately sends nothing further. Keep the socket open
             # to avoid making this a platform-specific ICMP error test.
             stdout,stderr=proc.communicate(timeout=5)
+            if mode=='delayed-stop':
+                self.assertNotEqual(proc.returncode,0,'expired STOP was falsely attributed as success')
+                self.assertIn('STOP input lease expired',stderr)
+                return
             self.assertEqual(proc.returncode,0,stderr)
             self.assertIn('PILOT_AND_'+mode.upper()+'_VERIFIED',stdout)
         finally:
