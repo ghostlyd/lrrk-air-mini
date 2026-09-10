@@ -50,6 +50,15 @@ class EvidenceError(ValueError):
     """The evidence record is incomplete, inconsistent, or outside bounds."""
 
 
+def _strict_json_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    for name, value in pairs:
+        if name in result:
+            raise EvidenceError(f"duplicate JSON object name: {name}")
+        result[name] = value
+    return result
+
+
 def _require(condition: bool, message: str) -> None:
     if not condition:
         raise EvidenceError(message)
@@ -343,7 +352,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = parser.parse_args(argv)
     try:
         with args.record.open("r", encoding="utf-8") as stream:
-            record = json.load(stream)
+            record = json.load(stream, object_pairs_hook=_strict_json_object)
         result = validate_record(record)
     except (OSError, json.JSONDecodeError, EvidenceError) as exc:
         print(f"evidence rejected: {exc}", file=sys.stderr)

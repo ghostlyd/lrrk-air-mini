@@ -7,6 +7,7 @@ import copy
 import io
 import json
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -151,6 +152,24 @@ class ArmMotorEvidenceTests(unittest.TestCase):
 
         with self.assertRaises(evidence.EvidenceError):
             evidence.validate_record(candidate)
+
+    def test_cli_rejects_duplicate_json_object_names_before_hashing(self):
+        original = EVIDENCE_PATH.read_text(encoding="utf-8")
+        duplicate = (
+            '  "limitations": {"terminal_scope": "ignored", '
+            '"claims_not_established": ["flight readiness is established"]},\n'
+            '  "limitations": {'
+        )
+        hostile = original.replace('  "limitations": {', duplicate, 1)
+        self.assertNotEqual(hostile, original)
+
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "duplicate-object.json"
+            path.write_text(hostile, encoding="utf-8")
+            with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+                rc = evidence.main([str(path)])
+
+        self.assertEqual(rc, 2)
 
     def test_post_pulse_and_terminal_state_require_armed_zero_output(self):
         cases = []
