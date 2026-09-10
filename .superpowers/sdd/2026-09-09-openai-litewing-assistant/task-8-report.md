@@ -15,9 +15,14 @@ was added.
 - Implementation tree: `4fff37499c23bc6d7430e237bc76e01cfc7feccb`
 - Implementation delta: 7 files, 343 insertions, 21 deletions.
 - After the implementation commit, `git status --short` was empty.
-- This report is the only file in the separate report commit, intended subject
-  `docs: record Task 8 policy binding verification`. Its containing commit can
-  be resolved with `git log -1 --format=%H -- .superpowers/sdd/2026-09-09-openai-litewing-assistant/task-8-report.md`.
+- Initial report/review-round-1 base commit: `207a7dc4ceef66bccb2792f35e95e31bb40dfd27`
+- Initial report subject: `docs: record Task 8 policy binding verification`
+- Review-round-1 fix commit: `48b4329837b217943851fc7f4dc93f0a718b5161`
+- Review-round-1 fix subject: `fix: validate assistant safety policy lifecycle`
+- Review-round-1 fix tree: `158ee30427ef8e9d3e3a73a52d8ff62af9eb71d2`
+- Review-round-1 delta: 8 files, 184 insertions, 8 deletions.
+- Report updates remain report-only commits. The latest containing commit can be
+  resolved with `git log -1 --format=%H -- .superpowers/sdd/2026-09-09-openai-litewing-assistant/task-8-report.md`.
 
 The complete task brief, implementation plan, design, and progress ledger were
 read before editing. The supplied existing linked worktree and branch were
@@ -308,10 +313,10 @@ commit ID are deliberately not embedded in its content to avoid self-reference.
   but is now an ordinary class with an explicit constructor and policy property.
   Generated dataclass equality/repr/introspection are not preserved. Repository
   consumers use its operational API; the full assistant suite passed.
-- Policy inputs remain trusted host-side `SafetyPolicy` values under the existing
-  typed contract. This slice does not add policy editing through the model,
-  generalized configuration validation, concurrent lifecycle synchronization,
-  or an execution sink.
+- Numeric policy inputs are now normalized and validated under the host-side
+  `SafetyPolicy` contract. This slice does not add model policy editing,
+  generalized configuration parsing, concurrent lifecycle synchronization, or
+  an execution sink.
 - Analyzer behavior changes must continue to bump the analyzer version. The
   identity covers the declared version and all policy fields, not a hash of the
   Python source implementation.
@@ -319,3 +324,230 @@ commit ID are deliberately not embedded in its content to avoid self-reference.
   hashing is unchanged; raw human tokens are not retained or returned.
 - The review was local and performed by the implementing writer. No independent
   reviewer/subagent or remote integration gate was used or claimed.
+
+## Task 8 review round 1
+
+Round 1 reported one Important policy-input defect and one Minor cache defect.
+Both were reproduced against clean review base
+`207a7dc4ceef66bccb2792f35e95e31bb40dfd27`, fixed through strict behavioral
+TDD, and committed in
+`48b4329837b217943851fc7f4dc93f0a718b5161`. This report update is committed
+separately; its containing commit is intentionally resolved from Git rather
+than embedded in its own bytes.
+
+All commands in this section ran from the worktree root. Every Python test and
+behavioral check used macOS `sandbox-exec` profile
+`(version 1)(allow default)(deny network*)`, explicitly unset
+`OPENAI_API_KEY`, and used CPython 3.14.7. No dependency, provider, network,
+hardware, firmware, transport, push, PR, merge, or subagent operation occurred.
+
+### Review-round baseline
+
+Exact command:
+
+```sh
+/usr/bin/sandbox-exec -p '(version 1)(allow default)(deny network*)' /usr/bin/env -u OPENAI_API_KEY PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=ai_assistant/src TMPDIR=/private/tmp/lrrk-air-mini-provider-audit-chain/.superpowers/sdd/2026-09-09-openai-litewing-assistant/tmp /opt/homebrew/bin/python3 -m unittest discover -s ai_assistant/tests -p 'test_*.py'
+```
+
+Result: exit 0, `Ran 128 tests in 0.047s`, `OK (skipped=9)`: 119 passed,
+9 optional SDK tests skipped, and no failures or errors.
+
+### Review cycle 1: reject invalid numeric safety policies
+
+The RED tests covered every numeric `SafetyPolicy` field:
+`max_link_age_ms`, `max_future_skew_ms`, `min_battery_voltage_v`, and
+`warn_battery_percent`. For each field they exercised NaN, positive infinity,
+and negative infinity at construction and, using a deliberately malformed
+immutable-object fixture, at policy identity, preflight, and proposal creation.
+Additional cases covered booleans, null/non-numeric values, negative timing
+budgets, non-positive minimum voltage, warning percentages outside 0..100,
+integer/float identity equivalence, standards-valid canonical JSON, and the
+reviewer's exact NaN policy/3.0 V approval path.
+
+Exact RED command:
+
+```sh
+/usr/bin/sandbox-exec -p '(version 1)(allow default)(deny network*)' /usr/bin/env -u OPENAI_API_KEY PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=ai_assistant/src TMPDIR=/private/tmp/lrrk-air-mini-provider-audit-chain/.superpowers/sdd/2026-09-09-openai-litewing-assistant/tmp /opt/homebrew/bin/python3 -m unittest -v ai_assistant.tests.test_safety.SafetyTests.test_nonfinite_policy_values_are_rejected_at_construction ai_assistant.tests.test_safety.SafetyTests.test_nonfinite_policy_values_cannot_be_hashed_analyzed_or_proposed ai_assistant.tests.test_safety.SafetyTests.test_policy_numeric_types_and_ranges_are_validated ai_assistant.tests.test_safety.SafetyTests.test_equivalent_integer_and_float_policy_values_share_identity ai_assistant.tests.test_safety.SafetyTests.test_canonical_json_rejects_nonstandard_numeric_constants ai_assistant.tests.test_tools.ToolTests.test_nan_battery_policy_cannot_approve_three_volt_snapshot
+```
+
+Result: exit 1, `Ran 6 tests in 0.008s`, `FAILED (failures=75)`. The failures
+were all expected behavior gaps:
+
+- 12 non-finite construction cases were accepted.
+- 36 non-finite identity/preflight/proposal boundary cases proceeded.
+- 16 boolean/null/string field cases and 6 invalid-range cases were accepted.
+- Numerically equivalent integer and float policies produced different hashes.
+- Three canonical JSON cases emitted NaN or infinity instead of rejecting it.
+- The reproduced NaN minimum policy approved the 3.0 V snapshot.
+
+No RED was an import, syntax, fixture, or environment error.
+
+Minimal GREEN implementation:
+
+- `SafetyPolicy.__post_init__()` accepts only non-boolean integers/floats,
+  normalizes them to floats, requires finite values, and enforces non-negative
+  timing budgets, positive minimum battery voltage, and warning percentage in
+  0..100 inclusive.
+- `SafetyPolicy.validate()` is re-run before policy hashing, preflight, state
+  machine construction, and public replacement, so a malformed/tampered policy
+  cannot become an identity, analyzer policy, or proposal policy.
+- `canonical_json()` now uses `allow_nan=False`. Constructor/use validation is
+  the analyzer boundary; strict serialization is an additional wire-format
+  guarantee, not the sole fix.
+
+Exact GREEN command was the same six-test command. Result: exit 0,
+`Ran 6 tests in 0.001s`, `OK`.
+
+### Review cycle 2: invalidate cached preflight on either public replacement path
+
+The existing direct-state-machine policy test was strengthened to create a
+real cached PASS, assign 4.10 V through `runtime.approvals.policy`, require the
+cache to become `None`, then require a fresh preflight to return BLOCKED for
+the same 3.90 V snapshot.
+
+Exact RED command:
+
+```sh
+/usr/bin/sandbox-exec -p '(version 1)(allow default)(deny network*)' /usr/bin/env -u OPENAI_API_KEY PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=ai_assistant/src TMPDIR=/private/tmp/lrrk-air-mini-provider-audit-chain/.superpowers/sdd/2026-09-09-openai-litewing-assistant/tmp /opt/homebrew/bin/python3 -m unittest -v ai_assistant.tests.test_tools.ToolTests.test_runtime_and_state_machine_share_policy_updates
+```
+
+Result: exit 1, `Ran 1 test in 0.001s`, `FAILED (failures=1)`. The assertion
+showed the previous `PreflightReport(overall='PASS', ...)` remained cached
+after direct public state-machine replacement.
+
+Minimal GREEN implementation: `ApprovalStateMachine` accepts an optional
+policy-change notification. `AssistantRuntime` registers a narrow callback
+that sets `last_report` to `None`; both `runtime.policy = ...` and
+`runtime.approvals.policy = ...` pass through the same setter and callback.
+Standalone state machines remain compatible because the callback defaults to
+`None`.
+
+Exact GREEN command was the same one-test command. Result: exit 0,
+`Ran 1 test in 0.001s`, `OK`.
+
+### Review cycle 3: reject malformed public replacement before mutation
+
+The state-machine setter's input validation received its own strict cycle. The
+test begins with a real cached report, attempts direct replacement with a
+deliberately malformed NaN policy, and requires rejection before either the
+valid policy or its corresponding cached report changes.
+
+Exact RED command:
+
+```sh
+/usr/bin/sandbox-exec -p '(version 1)(allow default)(deny network*)' /usr/bin/env -u OPENAI_API_KEY PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=ai_assistant/src TMPDIR=/private/tmp/lrrk-air-mini-provider-audit-chain/.superpowers/sdd/2026-09-09-openai-litewing-assistant/tmp /opt/homebrew/bin/python3 -m unittest -v ai_assistant.tests.test_tools.ToolTests.test_direct_policy_replacement_rejects_malformed_policy_before_installing_it
+```
+
+Result: exit 1, `Ran 1 test in 0.001s`, `FAILED (failures=1)` because no
+`ValueError` was raised. Adding validation before setter mutation was the
+minimal fix. The identical GREEN command returned exit 0,
+`Ran 1 test in 0.001s`, `OK`.
+
+### Focused and full verification
+
+Exact focused command:
+
+```sh
+/usr/bin/sandbox-exec -p '(version 1)(allow default)(deny network*)' /usr/bin/env -u OPENAI_API_KEY PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=ai_assistant/src TMPDIR=/private/tmp/lrrk-air-mini-provider-audit-chain/.superpowers/sdd/2026-09-09-openai-litewing-assistant/tmp /opt/homebrew/bin/python3 -m unittest -v ai_assistant.tests.test_safety ai_assistant.tests.test_approval ai_assistant.tests.test_tools
+```
+
+Result: exit 0, `Ran 53 tests in 0.009s`, `OK`, with no skips.
+
+Exact final full-suite command:
+
+```sh
+/usr/bin/sandbox-exec -p '(version 1)(allow default)(deny network*)' /usr/bin/env -u OPENAI_API_KEY PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=ai_assistant/src TMPDIR=/private/tmp/lrrk-air-mini-provider-audit-chain/.superpowers/sdd/2026-09-09-openai-litewing-assistant/tmp /opt/homebrew/bin/python3 -m unittest discover -s ai_assistant/tests -p 'test_*.py'
+```
+
+Result: exit 0, `Ran 135 tests in 0.048s`, `OK (skipped=9)`: 126 passed,
+9 unchanged optional SDK tests skipped, zero failures/errors. Expected generic
+CLI failure-path messages and stale replay preflight findings appeared on the
+test streams and were not failures. Seven test methods were added; one existing
+runtime test was strengthened.
+
+### Static scope, leak, and canonical-format verification
+
+`git diff --check` and the following allowlist diff against the review base
+both returned exit 0 with no output:
+
+```sh
+git diff --exit-code 207a7dc4ceef66bccb2792f35e95e31bb40dfd27 -- . ':(exclude)ai_assistant/src/lrrk_litewing_ai/approval.py' ':(exclude)ai_assistant/src/lrrk_litewing_ai/jsonl.py' ':(exclude)ai_assistant/src/lrrk_litewing_ai/safety.py' ':(exclude)ai_assistant/src/lrrk_litewing_ai/tools.py' ':(exclude)ai_assistant/tests/test_safety.py' ':(exclude)ai_assistant/tests/test_tools.py' ':(exclude)ai_assistant/README.md' ':(exclude)docs/AI_ASSISTANT.md'
+```
+
+The changed production-file scope scan returned the expected ripgrep no-match
+status (exit 1, no output):
+
+```sh
+rg -n 'socket|requests|urllib|httpx|subprocess|os\.system|\bexec\(|\beval\(|\bserial\b|OPENAI_API_KEY|\b(arm|disarm|takeoff|land|write_actuator|set_gain|set_failsafe)\(' ai_assistant/src/lrrk_litewing_ai/approval.py ai_assistant/src/lrrk_litewing_ai/jsonl.py ai_assistant/src/lrrk_litewing_ai/safety.py ai_assistant/src/lrrk_litewing_ai/tools.py
+```
+
+The changed-file credential-pattern scan also returned exit 1 with no output:
+
+```sh
+rg -n 'sk-[A-Za-z0-9_-]{16,}|AKIA[A-Z0-9]{16}|-----BEGIN ([A-Z ]+ )?PRIVATE KEY-----|Bearer [A-Za-z0-9._-]{16,}' ai_assistant/src/lrrk_litewing_ai/approval.py ai_assistant/src/lrrk_litewing_ai/jsonl.py ai_assistant/src/lrrk_litewing_ai/safety.py ai_assistant/src/lrrk_litewing_ai/tools.py ai_assistant/tests/test_safety.py ai_assistant/tests/test_tools.py ai_assistant/README.md docs/AI_ASSISTANT.md
+```
+
+This deny-network behavioral check returned exit 0 and printed
+`strict canonical JSON and normalized policy identity: OK`:
+
+```sh
+/usr/bin/sandbox-exec -p '(version 1)(allow default)(deny network*)' /usr/bin/env -u OPENAI_API_KEY PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=ai_assistant/src /opt/homebrew/bin/python3 -c 'import json, os; from lrrk_litewing_ai.jsonl import canonical_json; from lrrk_litewing_ai.safety import SafetyPolicy; assert "OPENAI_API_KEY" not in os.environ; encoded=canonical_json({"policy": {"value": 4.1}}); json.loads(encoded, parse_constant=lambda value: (_ for _ in ()).throw(ValueError(value))); assert SafetyPolicy(min_battery_voltage_v=4).policy_hash() == SafetyPolicy(min_battery_voltage_v=4.0).policy_hash(); print("strict canonical JSON and normalized policy identity: OK")'
+```
+
+Manual review confirmed that the change adds no flight execution authority and
+does not alter firmware, UAVTalk, provider execution, API-key handling, motor
+or actuator writes, arm/disarm commands, gains, failsafes, or allowed assistant
+actions. The shared canonical serializer now rejects non-finite audit payloads
+instead of emitting non-standard JSON; the full audit/assistant suite passed.
+
+### AssistantRuntime compatibility self-check
+
+Repository search found no consumer of `AssistantRuntime` generated dataclass
+repr, value equality, `asdict`, `is_dataclass`, or `__dataclass_fields__`.
+Runtime construction sites use named/default arguments and operational fields.
+The live introspection check reported this compatible constructor shape:
+
+```text
+(policy: 'SafetyPolicy' = SafetyPolicy(...), operator_session: 'str' =
+'offline-session', latest: 'Optional[TelemetrySnapshot]' = None, previous:
+'Optional[TelemetrySnapshot]' = None, last_report: 'Optional[PreflightReport]'
+= None)
+```
+
+It also confirmed `is_dataclass(AssistantRuntime) == False` and distinct runtime
+instances compare unequal. Those repr/equality/introspection differences were
+introduced by the original Task 8 explicit runtime class, are already recorded
+above, and have no concrete repository consumer. Round 1 therefore made no
+compatibility refactor beyond the requested policy-change notification.
+
+### Review-round changed files and hashes
+
+These SHA-256 values were recorded from clean implementation commit
+`48b4329837b217943851fc7f4dc93f0a718b5161`:
+
+| File | SHA-256 |
+| --- | --- |
+| `ai_assistant/README.md` | `1b36eb8a2cca182af3cca2f09aef7fb5b4399c31a6958de9cd5a945b0228fbdd` |
+| `ai_assistant/src/lrrk_litewing_ai/approval.py` | `6cb9a49d6c25dfea992fdbbf9e26d9137bca5283cca90a25ad378432f286c784` |
+| `ai_assistant/src/lrrk_litewing_ai/jsonl.py` | `2aa1b2ce19e1abe333166da502c622c929e32e9f67d7726348a70d450d0c6846` |
+| `ai_assistant/src/lrrk_litewing_ai/safety.py` | `8cf2cd64e0d87a2bc028e959fe2d3fe30842bba81aa97d99cb4b2aa5e5fd5af3` |
+| `ai_assistant/src/lrrk_litewing_ai/tools.py` | `00038fef0527012c23490875bc74a531a3527a49c79c95343d1b5e1505f679bc` |
+| `ai_assistant/tests/test_safety.py` | `b93fb9893d1522871c23675e07aed9fc4f8f246a761465766f9fbe03b41e386e` |
+| `ai_assistant/tests/test_tools.py` | `8c21ed6c78e011e982da6989e61aefcce124f76bd3673e9088899f5185c03bab` |
+| `docs/AI_ASSISTANT.md` | `92a13381e45f4b1c56a87f4be8549dc240fecbcf90657d29eed92d8fb62a45b3` |
+
+### Remaining concerns after round 1
+
+- Nine optional SDK tests remain skipped exactly as at the review baseline; no
+  live provider or hardware proof is claimed.
+- The valid numeric ranges are explicit: timing budgets may be zero, minimum
+  battery voltage must be greater than zero, and warning percentage is 0..100
+  inclusive. No upper cap was invented for finite timing or voltage thresholds.
+- `canonical_json(allow_nan=False)` affects every canonical audit/proposal path:
+  a non-finite payload now fails closed. Existing normalized models already
+  reject non-finite values, and all audit regressions passed.
+- The state-machine notification retains `runtime.approvals` as a documented
+  compatible public access path. Its optional callback is host lifecycle state,
+  not proposal identity, model authority, or execution authority.
+- Review round 1 was fixed and verified by the sole implementing writer. A later
+  independent re-review remains a separate gate.
