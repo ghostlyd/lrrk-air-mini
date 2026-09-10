@@ -100,6 +100,23 @@ self.assertNotEqual(keys.c2b, derive_keys(b"r"*32,b"h"*32,b"b"*32,b"t"*16).c2b)
 
 ## Task 2: Admission state and challenge ownership
 
+Execution status (2026-09-10): initial admission is implemented in `6269e3d`,
+failure retirement coverage in `0c9133c`, and rolling challenges in `50670dc`.
+The header now specifies the encoded receive and timed challenge-issuance APIs.
+The host admission peer and role-key derivation landed in PR #57. Twenty-five
+session tests pass with real pinned mbedTLS, including fatal ASan/UBSan admission
+buffer checks, active controls, pending ring rollover, and session-level KDF/MAC
+failure injection (`7c5799b`). Independent review approved that failure fixture
+and closed the prior SDK-failure coverage gap. Independent review approved the
+initial, rolling-challenge, and acceptance-core slices;
+additional tests cover its collision/capacity/sequence-exhaustion coverage note.
+Task 3's encoded prepare/commit and STOP core is implemented in `9cc3a49`, with
+active-control sanitizer coverage and mixed-channel decoding in `a7048a3`.
+Actual atomic receiver publication is not implemented or proven. Commit requires
+the future adapter to hold its ownership/receiver lock through publication,
+recheck owner identity, and retire on publication failure. No runtime caller,
+AP, provisioning, or hardware operation is introduced by this source slice.
+
 **Files:** create `ports/ninjapilot-litewing/target/include/litewing_pilot_session.h`,
 `ports/ninjapilot-litewing/target/litewing_pilot_session.c`, and
 `ports/ninjapilot-litewing/tests/test_pilot_session.py`.

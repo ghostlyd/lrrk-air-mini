@@ -23,6 +23,7 @@ set(LITEWING_TARGET_SRCS
     ${CMAKE_CURRENT_LIST_DIR}/litewing_pilot_wire.c
     ${CMAKE_CURRENT_LIST_DIR}/pios_litewing_pilot_mac.c
     ${CMAKE_CURRENT_LIST_DIR}/pios_litewing_pilot_keys.c
+    ${CMAKE_CURRENT_LIST_DIR}/litewing_pilot_session.c
 )
 
 set(LITEWING_TARGET_INCLUDE_DIRS
