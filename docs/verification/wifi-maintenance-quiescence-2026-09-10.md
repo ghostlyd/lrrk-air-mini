@@ -40,3 +40,26 @@ interruption. The USB worker must enforce the approved bounded wait, Disarmed
 checks, receiver reservation and no-write-on-timeout policy before calling the
 store. The new stop API is not yet called by a USB provisioning path. PR #65
 remains draft; no physical provisioning or flight qualification is implied.
+
+## Dedicated receiver maintenance reservation
+
+`3ba2880` adds separate BeginMaintenance/MaintenanceHeld/EndMaintenance APIs.
+The existing handshake token's contract forbids waiting across network work,
+so the maintenance worker must not reuse it for AP shutdown. Both token types
+share a monotonic generation counter and exclude each other. Maintenance also
+blocks direct wireless claims, USB unpack and persistence loads, and refuses
+fresh receiver input, existing owners and in-flight writes/loads. No spinlock
+is held across the caller's wait or storage operation. Checked release failure
+retains exclusion; Held reports false during a regressed clock.
+
+The new actual-receiver ASan/UBSan fixture failed before the APIs existed, then
+passed wrong/stale/cross-kind token cases, startup/disarmed rejection, nested
+reservation, in-flight write/load rejection, clock rollback/recovery, fresh
+USB input, and existing ownership. All 20 previous receiver tests and seven
+Wi-Fi methods also pass. ESP-IDF 5.3.2 build passes at `3ba2880`, app size
+`0xd4030` with 17% free and persistence-link validation passing.
+
+The reservation does not itself observe FlightStatus or police arbitrary local
+setters. The worker must establish and recheck Disarmed and maintain its token
+through storage. The worker/parser/host integration and independent review of
+this reservation remain pending. No device operation occurred.
