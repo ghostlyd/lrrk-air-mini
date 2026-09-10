@@ -15,6 +15,12 @@ include($ENV{IDF_PATH}/tools/cmake/project.cmake)
 
 project(lrrk_litewing_ninjapilot)
 
+# Retain the session KDF while admission integration is in progress, so the
+# target link checks its SDK dependencies instead of garbage-collecting them.
+# This does not invoke the function or enable wireless operation.
+target_link_options(${CMAKE_PROJECT_NAME}.elf PRIVATE
+    "-Wl,--undefined=lw_pilot_derive_keys")
+
 # Inspect the linked artifact on every build, including no-op rebuilds.
 # This catches accidental removal of the persistence archive anchor; it is
 # not a settings-durability or hardware-readiness claim.
