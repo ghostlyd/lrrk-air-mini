@@ -14,6 +14,19 @@ class Sample(ctypes.Structure):
                 ("captured_us", ctypes.c_int64), ("valid", ctypes.c_bool)]
 
 
+Simple = ctypes.CFUNCTYPE(ctypes.c_int, ctypes.c_void_p)
+Clock = ctypes.CFUNCTYPE(ctypes.c_int64, ctypes.c_void_p)
+Calibrate = ctypes.CFUNCTYPE(ctypes.c_int, ctypes.c_void_p, ctypes.c_int,
+                            ctypes.POINTER(ctypes.c_int))
+Read = ctypes.CFUNCTYPE(ctypes.c_int, ctypes.c_void_p, ctypes.POINTER(ctypes.c_uint32),
+                       ctypes.c_size_t, ctypes.POINTER(ctypes.c_size_t), ctypes.c_uint32)
+
+
+class AcquisitionOps(ctypes.Structure):
+    _fields_ = [("flush", Simple), ("start", Simple), ("read", Read), ("stop", Simple),
+                ("overflowed", Simple), ("clock", Clock), ("calibrate", Calibrate)]
+
+
 class BatteryVoltageTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -165,6 +178,68 @@ class BatteryVoltageTests(unittest.TestCase):
             self.update(1950)
             self.assertFalse(self.process_dma(captured=captured, now=now))
             self.assertEqual(self.read(1000), (False, 0))
+
+    def acquire(self, failure=None, elapsed=16000, latched=False):
+        self.assertTrue(hasattr(self.lib, "litewing_battery_acquire"),
+                        "bounded acquisition transaction is missing")
+        events = []
+        def simple(name):
+            def invoke(context):
+                events.append(name)
+                return -1 if failure == name else 0
+            return Simple(invoke)
+        ticks = iter((1000, 1000 + elapsed))
+        def read(context, words, capacity, count, timeout):
+            events.append(("read", capacity, timeout))
+            for i in range(min(16, capacity)):
+                words[i] = 0x2028
+            count[0] = 15 if failure == "partial" else 16
+            return -1 if failure == "read" else 0
+        def calibrate(context, raw, output):
+            output[0] = 1950
+            return -1 if failure == "calibration" else 0
+        callbacks = (simple("flush"), simple("start"), Read(read), simple("stop"),
+                     Simple(lambda _: int(failure == "overflow")),
+                     Clock(lambda _: next(ticks)), Calibrate(calibrate))
+        ops = AcquisitionOps(*callbacks)
+        fault = ctypes.c_bool(latched)
+        function = self.lib.litewing_battery_acquire
+        function.argtypes = [ctypes.POINTER(Sample), ctypes.POINTER(ctypes.c_bool),
+                             ctypes.POINTER(AcquisitionOps), ctypes.c_void_p]
+        function.restype = ctypes.c_bool
+        result = function(ctypes.byref(self.sample), ctypes.byref(fault),
+                          ctypes.byref(ops), None)
+        return result, fault.value, events
+
+    def test_acquisition_bounded_read_and_stop_before_publishing(self):
+        self.assertEqual(self.acquire(), (True, False,
+                         ["flush", "start", ("read", 16, 20), "stop"]))
+        self.assertEqual(self.read(17000), (True, 3900))
+        self.assertEqual(self.read(501001), (False, 0))
+
+    def test_acquisition_read_failures_still_stop_and_invalidate(self):
+        for failure in ("read", "partial", "overflow", "calibration"):
+            self.update(1950)
+            result, fault, events = self.acquire(failure)
+            self.assertFalse(result)
+            self.assertFalse(fault)
+            self.assertEqual(events[-1], "stop")
+            self.assertEqual(self.read(17000), (False, 0))
+
+    def test_acquisition_lifecycle_failure_latches_no_retry(self):
+        for failure in ("flush", "start", "stop"):
+            self.update(1950)
+            result, fault, events = self.acquire(failure)
+            self.assertFalse(result)
+            self.assertTrue(fault)
+            self.assertEqual(self.read(17000), (False, 0))
+            self.assertEqual(self.acquire(latched=fault), (False, True, []))
+        self.assertEqual(self.acquire("flush")[2], ["flush"])
+        self.assertEqual(self.acquire("start")[2], ["flush", "start", "stop"])
+
+    def test_acquisition_delayed_worker_cannot_refresh_old_batch(self):
+        self.assertFalse(self.acquire(elapsed=500001)[0])
+        self.assertEqual(self.read(501001), (False, 0))
 
 
 if __name__ == "__main__":

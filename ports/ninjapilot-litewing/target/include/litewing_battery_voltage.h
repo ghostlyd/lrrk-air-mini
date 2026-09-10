@@ -39,4 +39,28 @@ bool litewing_battery_process_dma(struct litewing_battery_sample *sample,
                                   int64_t captured_us, int64_t now_us,
                                   litewing_battery_calibrate_fn calibrate,
                                   void *context);
+
+/* Operations for an initialized, stopped ADC owned by one worker. Zero return
+ * means success, except overflowed (zero means no overflow). flush must empty
+ * stale data and reset overflow state while stopped; read uses word counts.
+ * Clock is monotonic microseconds. No operation may publish telemetry itself.
+ */
+struct litewing_battery_acquisition_ops {
+    int (*flush)(void *context);
+    int (*start)(void *context);
+    int (*read)(void *context, uint32_t *words, size_t capacity,
+                size_t *count, uint32_t timeout_ms);
+    int (*stop)(void *context);
+    int (*overflowed)(void *context);
+    int64_t (*clock)(void *context);
+    litewing_battery_calibrate_fn calibrate;
+};
+/* One bounded burst. Lifecycle failure permanently sets faulted: the owner
+ * must not retry or release ambiguously running ADC resources. A read failure
+ * with successful stop may be retried in a new, flushed burst. All pointers
+ * and callbacks are required and must outlive the call.
+ */
+bool litewing_battery_acquire(struct litewing_battery_sample *sample, bool *faulted,
+                              const struct litewing_battery_acquisition_ops *ops,
+                              void *context);
 #endif

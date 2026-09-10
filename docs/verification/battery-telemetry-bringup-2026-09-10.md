@@ -133,3 +133,32 @@ Focused suite: 11/11 passed, including five new batch-processing tests observed
 failing for the missing implementation before it was added. The nonlinear
 calibration fixture specifically detects averaging raw counts before calibration.
 The raw decoder is host-tested; ADC resources and startup remain unimplemented.
+
+## Bounded acquisition transaction implemented
+
+The worker-facing `litewing_battery_acquire` transaction now flushes a stopped
+ADC, records the start-time lower bound, starts acquisition, requests at most
+16 words with a 20 ms read timeout, stops, checks overflow, and only then
+calibrates/processes the batch. Read/overflow/calibration failures invalidate
+voltage; flush/start/stop failures latch a persistent fault and prohibit retries.
+A failed start receives one best-effort stop but remains latched regardless.
+
+This intentionally replaces the earlier proposed always-running acquisition
+with bounded bursts: the timestamp before each start conservatively dates
+every sample without reconstructing timestamps across the driver's two queues.
+The planned low-rate voltage worker can delay between bursts. Resource handles
+are still created once, not reallocated on every burst. Actual sample cadence,
+resource cost, and target build must be measured before qualification.
+
+The operation interface is hardware-independent and tested against explicit
+driver-boundary failures. It is not yet an ESP-IDF driver. Its stop contract
+requires quiesced callbacks before overflow inspection. The native adapter
+must satisfy this, for example by allocating the interrupt and running the
+owning worker on the same pinned core, rather than assuming a cross-core
+callback barrier from `adc_continuous_stop` alone.
+
+Focused tests: 15/15 passed; four acquisition tests failed for the absent
+transaction before implementation. They verify bounded read arguments,
+stop-after-read-error, invalidation, lifecycle fault latching/no retry, and
+delayed-worker acquisition age. ADC handle creation and firmware lifecycle
+integration are the remaining implementation steps, not completed checks.

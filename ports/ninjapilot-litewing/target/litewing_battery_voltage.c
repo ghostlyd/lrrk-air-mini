@@ -78,3 +78,41 @@ bool litewing_battery_process_dma(struct litewing_battery_sample *sample,
     litewing_battery_update(sample, (int)((sum_mv + 8u) / 16u), true, captured_us);
     return sample->valid;
 }
+
+bool litewing_battery_acquire(struct litewing_battery_sample *sample, bool *faulted,
+                              const struct litewing_battery_acquisition_ops *ops,
+                              void *context)
+{
+    *sample = (struct litewing_battery_sample){0};
+    if (*faulted) {
+        return false;
+    }
+    if (ops->flush(context) != 0) {
+        *faulted = true;
+        return false;
+    }
+    /* Start time is a conservative lower bound for every sample in this burst.
+     * It remains valid even when the worker resumes long after DMA completes.
+     */
+    int64_t captured_us = ops->clock(context);
+    if (ops->start(context) != 0) {
+        *faulted = true;
+        (void)ops->stop(context);  /* best effort, never permits a retry */
+        return false;
+    }
+    uint32_t words[16];
+    size_t count = 0;
+    int read_result = ops->read(context, words, 16, &count, 20);
+    if (ops->stop(context) != 0) {
+        *faulted = true;
+        return false;
+    }
+    /* Stop must quiesce callbacks before overflow inspection. No completion
+     * callback is treated as acceptance of a ring-buffer frame.
+     */
+    if (read_result != 0 || ops->overflowed(context) != 0) {
+        return false;
+    }
+    return litewing_battery_process_dma(sample, words, count, captured_us,
+                                        ops->clock(context), ops->calibrate, context);
+}
