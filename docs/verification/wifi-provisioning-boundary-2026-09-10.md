@@ -44,6 +44,36 @@ All `target` paths above are relative to `ports/ninjapilot-litewing`.
 3. Raw NVS partition image: not selected. Overwriting the shared partition
    risks unrelated settings and bypasses normal namespace-scoped persistence.
 
+### Bounded shutdown and reservation cleanup
+
+The current command task's cleanup retries until its socket, AP resources, and
+admission guard are released. That loop can remain live indefinitely on a
+persistent platform failure. The proposed maintenance worker must therefore
+wait at most 2 seconds for an explicit service-exited acknowledgement; a clock
+regression or invalid time also fails the wait. This is an initial software
+deadline to test, not a measured radio-stop guarantee.
+
+The USB parser only validates and submits one bounded request. It must release
+its connection lock before the maintenance worker waits or accesses NVS.
+Concurrent requests receive a busy status; they do not replace the pending
+request or reserve additional secret buffers. A late service exit cannot revive
+a timed-out request or cause its credentials to be written.
+
+On timeout, shutdown failure, changed flight state, or failed reservation,
+deny the write, wipe the pending credential buffers, and return a bounded status
+without force-deleting the Wi-Fi task or clearing retained wireless ownership.
+Release only a maintenance reservation acquired by this transaction, through
+its checked token API. If token release fails (including clock rollback), retain
+the token and cleanup context for retries; do not report recovery complete or
+accept another provisioning transaction. USB read-only telemetry and bootloader
+recovery remain available, although mutating USB commands can remain blocked
+until cleanup succeeds or the operator explicitly reboots.
+
+After successful commit/readback, wipe pending buffers and use the same checked
+reservation cleanup. Keep radio startup inhibited for the rest of that boot.
+Persistence status and cleanup/reboot-required status must be distinguishable:
+a cleanup failure after commit does not mean credentials were not stored.
+
 ## Required implementation evidence
 
 - New independent CSPRNG application root and AP password; no hardware-derived
