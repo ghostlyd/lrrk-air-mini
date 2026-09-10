@@ -6,6 +6,7 @@
  * every failure path therefore has already-established zero outputs.
  */
 #include "pios.h"
+#include <stdio.h>
 
 #include <pios_esp32_priv.h>
 
@@ -33,8 +34,10 @@ int32_t PIOS_LiteWing_Board_Init(void)
         return -2;
     }
 
-    if (PIOS_LiteWing_MPU6050_Init(litewing_i2c_id,
-                                   LITEWING_MPU6050_I2C_ADDRESS) != 0) {
+    const int32_t imu_result = PIOS_LiteWing_MPU6050_Init(litewing_i2c_id,
+                                   LITEWING_MPU6050_I2C_ADDRESS);
+    if (imu_result != 0) {
+        printf("[LiteWing] MPU6050 initialization result %ld\n", (long)imu_result);
         PIOS_LiteWing_BrushedPWM_SetFailsafe(true);
         return -3;
     }
