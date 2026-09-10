@@ -161,3 +161,13 @@ behavior and flight acceptance remain separate unpassed gates. Authorization
 to arm or drive outputs does not establish any of them. USB-C is treated as a
 live motor-power source throughout those gates. Arming therefore
 remains `Always Disarmed`, and no motor-output or flight action was attempted.
+
+## Later bounded command-path evidence
+
+After this installation report, a separately authorized
+[USB software-arm and bounded nonzero-command transaction](armed-nonzero-motor-proof-2026-09-09.md)
+observed the same application Armed with six nonzero `ActuatorCommand` samples,
+then 11 zero samples and receiver timeout while still Armed. That later record
+clears only the narrow software-arming/commanded-output gate. It does not alter
+this report's installation evidence or clear BootFault, electrical timing,
+orientation, battery, airworthiness, or flight gates.

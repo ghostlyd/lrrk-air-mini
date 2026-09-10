@@ -1,0 +1,236 @@
+{
+  "schema": "lrrk.litewing.armed-motor-evidence.v1",
+  "evidence_id": "litewing-usb-armed-nonzero-2026-09-09",
+  "scope": "USB-C powered, propeller-off software arming and bounded nonzero ActuatorCommand proof",
+  "capture": {
+    "bytes": 31912,
+    "sha256": "cce31d2ef701a230827b7b1cf54ca09124a9839ecb669f87a6144c5150b3fcf8",
+    "file_closed_at": "2026-09-09T20:28:01-07:00",
+    "raw_capture_published": false
+  },
+  "provenance": {
+    "installed_application_sha256": "d7392031e9e06c39bcb503e0feb834942588b10b99cdfeeaa3248fbedae0ff31",
+    "probe_sha256": "0fea2cbcfba9bece72e2b62dd5f848386b4aeb5bec4c8ee6e2817aceefe62290",
+    "probe_test_sha256": "6c3c6337f461bb2ff884544ab041e96baed147acc8cb60c5d69d90a709988755",
+    "probe_tests": {
+      "passed": 23,
+      "failed": 0
+    },
+    "flight_source_revision": "ac77304a58de6c8bd552f94668b46903adb71cb2",
+    "decoder_boundary": "checksum-valid frames decoded with byte-verified NinjaPilot source and UAVObject XML at the pinned flight revision"
+  },
+  "physical_conditions": {
+    "propellers_removed": true,
+    "contained": true,
+    "battery_connected": false,
+    "power_source": "USB-C",
+    "usb_motor_power_acknowledged": true,
+    "battery_absence_used_as_safety_interlock": false
+  },
+  "transaction": {
+    "persistent_write_sent": false,
+    "restoration_skipped_by_request": true,
+    "reset_sent_after_arm": false,
+    "arming_field_before": "Always Disarmed",
+    "arming_field_terminal": "Always Armed",
+    "arming_scope": "RAM-only FlightModeSettings.Arming",
+    "receiver_low": [1000, 1500, 1500, 1500, 1000, 1500, 1500, 1500],
+    "receiver_pulse": [1510, 1500, 1500, 1500, 1000, 1500, 1500, 1500],
+    "receiver_period_ms": 40,
+    "pulse_deadline_ms": 800,
+    "command_scale": [0, 1000],
+    "command_ceiling": 200
+  },
+  "decode": {
+    "valid_frames": 857,
+    "object_samples": {
+      "FlightStatus": 34,
+      "ActuatorCommand": 36,
+      "FlightModeSettings": 30,
+      "ManualControlCommand": 51,
+      "SystemAlarms": 37
+    },
+    "nonzero_actuator_samples": [
+      {
+        "valid_frame": 533,
+        "motors": [71, 0, 0, 64],
+        "flight_status": "Armed",
+        "arming": "Always Armed",
+        "receiver_connected": true,
+        "throttle": 0.02,
+        "thrust": 0.02
+      },
+      {
+        "valid_frame": 538,
+        "motors": [74, 0, 0, 66],
+        "flight_status": "Armed",
+        "arming": "Always Armed",
+        "receiver_connected": true,
+        "throttle": 0.02,
+        "thrust": 0.02
+      },
+      {
+        "valid_frame": 543,
+        "motors": [80, 0, 0, 70],
+        "flight_status": "Armed",
+        "arming": "Always Armed",
+        "receiver_connected": true,
+        "throttle": 0.02,
+        "thrust": 0.02
+      },
+      {
+        "valid_frame": 567,
+        "motors": [113, 0, 0, 103],
+        "flight_status": "Armed",
+        "arming": "Always Armed",
+        "receiver_connected": true,
+        "throttle": 0.02,
+        "thrust": 0.02
+      },
+      {
+        "valid_frame": 596,
+        "motors": [127, 0, 0, 114],
+        "flight_status": "Armed",
+        "arming": "Always Armed",
+        "receiver_connected": true,
+        "throttle": 0.02,
+        "thrust": 0.02
+      },
+      {
+        "valid_frame": 601,
+        "motors": [128, 0, 0, 118],
+        "flight_status": "Armed",
+        "arming": "Always Armed",
+        "receiver_connected": true,
+        "throttle": 0.02,
+        "thrust": 0.02
+      }
+    ],
+    "post_nonzero_zero_samples": [
+      {
+        "valid_frame": 606,
+        "motors": [0, 0, 0, 0],
+        "flight_status": "Armed",
+        "arming": "Always Armed",
+        "receiver_connected": true,
+        "throttle": -1.0,
+        "thrust": -1.0
+      },
+      {
+        "valid_frame": 650,
+        "motors": [0, 0, 0, 0],
+        "flight_status": "Armed",
+        "arming": "Always Armed",
+        "receiver_connected": true,
+        "throttle": -1.0,
+        "thrust": -1.0
+      },
+      {
+        "valid_frame": 702,
+        "motors": [0, 0, 0, 0],
+        "flight_status": "Armed",
+        "arming": "Always Armed",
+        "receiver_connected": true,
+        "throttle": -1.0,
+        "thrust": -1.0
+      },
+      {
+        "valid_frame": 707,
+        "motors": [0, 0, 0, 0],
+        "flight_status": "Armed",
+        "arming": "Always Armed",
+        "receiver_connected": true,
+        "throttle": -1.0,
+        "thrust": -1.0
+      },
+      {
+        "valid_frame": 712,
+        "motors": [0, 0, 0, 0],
+        "flight_status": "Armed",
+        "arming": "Always Armed",
+        "receiver_connected": true,
+        "throttle": -1.0,
+        "thrust": -1.0
+      },
+      {
+        "valid_frame": 739,
+        "motors": [0, 0, 0, 0],
+        "flight_status": "Armed",
+        "arming": "Always Armed",
+        "receiver_connected": true,
+        "throttle": -1.0,
+        "thrust": -1.0
+      },
+      {
+        "valid_frame": 746,
+        "motors": [0, 0, 0, 0],
+        "flight_status": "Armed",
+        "arming": "Always Armed",
+        "receiver_connected": true,
+        "throttle": -1.0,
+        "thrust": -1.0
+      },
+      {
+        "valid_frame": 758,
+        "motors": [0, 0, 0, 0],
+        "flight_status": "Armed",
+        "arming": "Always Armed",
+        "receiver_connected": true,
+        "throttle": -1.0,
+        "thrust": -1.0
+      },
+      {
+        "valid_frame": 761,
+        "motors": [0, 0, 0, 0],
+        "flight_status": "Armed",
+        "arming": "Always Armed",
+        "receiver_connected": true,
+        "throttle": -1.0,
+        "thrust": -1.0
+      },
+      {
+        "valid_frame": 810,
+        "motors": [0, 0, 0, 0],
+        "flight_status": "Armed",
+        "arming": "Always Armed",
+        "receiver_connected": true,
+        "throttle": -1.0,
+        "thrust": -1.0
+      },
+      {
+        "valid_frame": 857,
+        "motors": [0, 0, 0, 0],
+        "flight_status": "Armed",
+        "arming": "Always Armed",
+        "receiver_connected": false,
+        "throttle": -1.0,
+        "thrust": -1.0
+      }
+    ],
+    "terminal": {
+      "valid_frame": 857,
+      "motors": [0, 0, 0, 0],
+      "flight_status": "Armed",
+      "arming": "Always Armed",
+      "receiver_connected": false,
+      "throttle": -1.0,
+      "thrust": -1.0
+    },
+    "summary": {
+      "nonzero_motor_samples": 6,
+      "max_observed_motor_command": 128,
+      "peak_motor_channels": [128, 0, 0, 118],
+      "post_nonzero_zero_samples": 11,
+      "terminal_state": "ARMED_ZERO_RECEIVER_TIMED_OUT"
+    }
+  },
+  "limitations": {
+    "terminal_scope": "last in-session telemetry; RAM-only and not a current-state claim after link closure",
+    "claims_not_established": [
+      "electrical PWM duty or cutoff timing",
+      "physical motor rotation during this transaction",
+      "persistent arming state after reset or reconnect",
+      "battery-powered operation or flight readiness"
+    ]
+  }
+}

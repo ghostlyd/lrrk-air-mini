@@ -5,7 +5,10 @@ specific battery or replacement assembly was fitted or tested. The owner has
 no battery. Owner photos confirm a printed **V1.2** marking; the source
 directory `LieWingV2.6.C` also contains this same silkscreen text. See the
 [photo identification record](verification/board-photo-identification-2026-09-09.md)
-for observations and the remaining electrical/connector checks.
+for observations and the remaining electrical/connector checks. USB-C has
+since supported a [bounded Armed/nonzero-command bench proof](verification/armed-nonzero-motor-proof-2026-09-09.md),
+but that does not remove the flight-battery requirement or resolve battery
+connector, polarity, fit, mass, charge-current, or discharge-current selection.
 
 ## Required versus optional
 

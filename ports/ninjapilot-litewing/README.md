@@ -83,6 +83,13 @@ while runtime fault injection, complete-boot and physical gates remain open.
 The USB report also corrects the power model: USB-C can energize the motor
 path, so an absent battery is not evidence that motor power is unavailable.
 
+A later [USB software-arm and bounded nonzero-command proof](../../docs/verification/armed-nonzero-motor-proof-2026-09-09.md)
+observed six nonzero `ActuatorCommand` samples while `FlightStatus=Armed`, then
+11 zero samples and receiver timeout while still Armed. The operator requested
+that the RAM-only `Always Armed` value not be restored; no persistence write or
+post-arm reset was sent. That record clears only the software arm/command path,
+not electrical timing, motor orientation, battery, airworthiness, or flight.
+
 The selected upstream `litewing` branch currently includes a POSIX/Gazebo
 LiteWing twin, not a flashable ESP32-S3 target. The repository-owned target
 work therefore proceeds in gates:
