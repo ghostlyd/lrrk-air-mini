@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import hashlib
 import json
 import sys
 from pathlib import Path
@@ -51,7 +52,9 @@ def _print_report(report: dict, json_output: bool) -> None:
         print("- %s: %s (%s)" % (finding["finding_id"], finding["status"], finding["evidence"]))
 
 
-def _live_prompt(agent: object, prompt: str) -> str:
+def _live_prompt(runtime: AssistantRuntime, prompt: str) -> str:
+    agent = create_assistant(runtime, live_agent=True)
+
     async def run() -> str:
         from agents import Runner
         result = await Runner.run(agent, prompt)
@@ -134,13 +137,38 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
 
     if args.prompt:
         try:
-            assistant = create_assistant(runtime, live_agent=args.live_agent)
             if args.live_agent:
-                answer = _live_prompt(assistant, args.prompt)
+                if audit:
+                    prompt_bytes = args.prompt.encode("utf-8")
+                    audit.append("provider_request", {
+                        "mode": "openai",
+                        "snapshot_hash": runtime.latest.snapshot_hash(),
+                        "prompt_bytes": len(prompt_bytes),
+                        "prompt_sha256": hashlib.sha256(prompt_bytes).hexdigest(),
+                    })
+                try:
+                    answer = _live_prompt(runtime, args.prompt)
+                except Exception as exc:
+                    if audit:
+                        audit.append("provider_result", {
+                            "outcome": "blocked",
+                            "snapshot_hash": runtime.latest.snapshot_hash(),
+                            "error_class": type(exc).__name__,
+                        })
+                    raise
+                if audit:
+                    response_bytes = answer.encode("utf-8")
+                    audit.append("provider_result", {
+                        "outcome": "completed",
+                        "snapshot_hash": runtime.latest.snapshot_hash(),
+                        "response_bytes": len(response_bytes),
+                        "response_sha256": hashlib.sha256(response_bytes).hexdigest(),
+                    })
             else:
+                assistant = create_assistant(runtime)
                 answer = assistant.respond(args.prompt)
-        except Exception as exc:
-            print("assistant request blocked: %s" % exc, file=sys.stderr)
+        except Exception:
+            print("assistant request blocked", file=sys.stderr)
             return 3
         if args.json_output:
             print(json.dumps({"assistant": answer}, sort_keys=True))
@@ -149,8 +177,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     elif args.live_agent:
         try:
             create_assistant(runtime, live_agent=True)
-        except Exception as exc:
-            print("live-agent mode blocked: %s" % exc, file=sys.stderr)
+        except Exception:
+            print("live-agent mode blocked", file=sys.stderr)
             return 3
     return 0
 

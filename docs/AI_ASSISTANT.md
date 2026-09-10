@@ -68,6 +68,41 @@ Approval requires an operator-provided token, the same current snapshot hash,
 a short expiry, and a clear deterministic preflight report. Link loss, state
 drift, alarm escalation, or expiry invalidates approval.
 
+### Provider audit events
+
+When `--live-agent --prompt` and `--audit-log` are configured, the CLI writes
+`provider_request` immediately before provider setup/execution, then one
+`provider_result` for a completed run or a caught provider/setup exception.
+Both use the existing private, hash-chained `AuditLog.append()` format. Their
+`source` is empty; their payloads use this exact metadata schema:
+
+| Event | Payload fields |
+| --- | --- |
+| `provider_request` | `mode: "openai"`, `snapshot_hash`, `prompt_bytes`, `prompt_sha256` |
+| Successful `provider_result` | `outcome: "completed"`, `snapshot_hash`, `response_bytes`, `response_sha256` |
+| Failed `provider_result` | `outcome: "blocked"`, `snapshot_hash`, `error_class` |
+
+Byte counts and SHA-256 digests refer to UTF-8 encodings. The snapshot hash
+identifies the latest observation at each event; it does not establish
+freshness, preflight success, or approval. `error_class` is only the exception
+class name, never its message or traceback. There is no raw prompt, response,
+credential, authorization data, environment data, raw serial data, or hidden
+reasoning in a provider event. Metadata hashes are not encryption and may
+permit guessing short known texts; keep audit files private.
+
+Successful human-readable and JSON stdout retain the final answer. Retained
+stdout is separate sensitive material. Failures emit generic stderr and exit
+3; no-prompt validation also suppresses exception details. Offline prompts,
+no-prompt validation, and runs without `--audit-log` add no provider events.
+An audit write failure blocks normal completion; a process interruption or
+storage failure may leave an unmatched request, which is not completion proof.
+
+Offline real-CLI tests verify metadata, ordering, replay, and privacy using only
+a substituted external provider runner. These tests do not import the SDK or
+exercise a live provider. The historical September 9 smoke predates these
+events; a future separately authorized live-provider smoke must produce its
+own evidence. This addition supplies no flight-control or proposal authority.
+
 ## Protocol boundary
 
 The JSONL and saved-capture adapters are deterministic replay paths.

@@ -77,12 +77,21 @@ committed.
 
 ## Audit limitation discovered
 
-The provider's final text is not currently a native hash-chained audit event;
+At the recorded source revision, the provider's final text was not a native hash-chained audit event;
 the third artifact above is explicitly a post-call transcription of CLI
 stdout. Consequently, the provider response is evidence-backed but weaker
 than the deterministic snapshot/preflight chain. A production follow-up must
 append redacted provider request/result metadata to the audit without recording
 the API key, raw authorization header, hidden reasoning, or raw serial bytes.
+
+The Task 7 implementation follow-up adds metadata-only `provider_request` and
+`provider_result` events with text lengths/hashes and completed/blocked outcomes.
+Raw prompt and response text remain outside the native chain. Offline tests
+exercise the real CLI and audit log with only the provider runner substituted;
+they do not import the SDK, use a key, access hardware, or call the network.
+This closes the implementation gap without altering the historical artifacts
+above. A future live-provider smoke needs separate authorization and evidence;
+the earlier smoke does not validate the new events against a live provider.
 
 ## Control boundary
 

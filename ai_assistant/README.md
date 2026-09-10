@@ -44,6 +44,22 @@ a missing SDK. Ordinary offline tests still need no third-party packages.
 Local tool tests do **not** verify API credentials, model replies, latency,
 provider billing, or live flight telemetry.
 
+With `--live-agent --prompt ... --audit-log ...`, the CLI appends native
+hash-chained `provider_request` and `provider_result` events. They contain only
+provider mode, the current snapshot hash, UTF-8 text byte counts and SHA-256
+digests, and a completed/blocked outcome (only the exception class on failure).
+Raw prompts, responses, exception messages, credentials, authorization and
+environment data, raw serial bytes, and hidden reasoning are excluded from
+these events. Successful response stdout is unchanged; provider-failure stderr
+is generic. Treat stdout separately if retaining a response transcript.
+
+Offline prompts, no-prompt validation, and runs without an audit destination
+produce no provider events. The offline CLI integration tests substitute only
+the external provider runner and exercise the real audit chain without the
+SDK, a key, or network access. They establish implementation behavior; a
+future live-provider smoke requires separate authorization and evidence.
+See [provider event fields](../docs/AI_ASSISTANT.md#provider-audit-events).
+
 UAVTalk is an adapter boundary, not a flight-command channel. Deterministic
 JSONL and saved-capture replay keep safety behavior testable without a board.
 The optional `uavtalk` extra also enables one bounded live aggregate from the
