@@ -30,6 +30,10 @@ class OperatorSession:
         self._identity = self._keys = None
         self._challenge = None
 
+    def check_time(self, now_us):
+        """Transport must call during silence; no input or lifetime renewal."""
+        self._time(now_us)
+
     def _time(self, now):
         if self.closed: raise ValueError("operator session closed")
         if (type(now) is not int or not 0<=now<2**63 or now<self._last

@@ -39,3 +39,24 @@ both PILOT and STOP, prevent subsequent command generation, and prove a cached
 STOP cannot receive a new lifetime from a falsely refreshed receive timestamp.
 The full assistant suite passes: 209 run, 200 passed, 9 skipped. Scoped re-review
 is pending; no networking or hardware operations were performed.
+
+## Connected UDP transport
+
+Scoped re-review accepted the initial-clock fix and independently ran seven
+operator tests. OperatorUDP now owns an explicitly supplied connected UDP socket
+and accepted OperatorSession. It reads at most one datagram per step with a 20ms
+socket timeout, rejects oversized datagrams using a maximum-plus-one buffer,
+checks session expiry during silence, and sends no command for invalid proofs.
+Kernel peer filtering supplements, but does not replace, authentication. Input,
+clock or socket errors close credentials/socket; there is no automatic resend or
+reconnect. STOP uses the cached live proof and closes after one send attempt.
+
+Six real loopback tests cover PILOT/STOP bytes, oversized/bad authentication with
+no sampling or response, silence expiry, sampler failure, send failure without
+retry and wrong-peer filtering. Keys are synthetic fixtures. Full assistant
+suite: 215 run, 206 passed, 9 optional SDK skips. The missing transport test failed
+before implementation. UDP review pending; this exercised only local loopback.
+
+Admission over UDP, physical input-device integration and board AP/socket tasks
+are still absent. The transport requires an already accepted session; these tests
+do not claim a full handshake with board firmware, radio performance, or flight.
