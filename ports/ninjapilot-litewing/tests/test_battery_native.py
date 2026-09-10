@@ -20,13 +20,15 @@ class NativeBatteryTests(unittest.TestCase):
             header.parent.mkdir(parents=True, exist_ok=True)
             header.write_text('#include "battery_sdk.h"\n')
         cls.binary = out / "battery-native"
-        subprocess.run(["cc", "-std=c11", "-Wall", "-Wextra", "-Werror",
+        result = subprocess.run(["cc", "-std=c11", "-Wall", "-Wextra", "-Werror",
                         "-I", str(out), "-I", str(ROOT / "tests"),
                         "-I", str(ROOT / "target/include"),
                         str(ROOT / "tests/battery_native_test.c"),
                         str(ROOT / "target/pios_litewing_battery.c"),
                         str(ROOT / "target/litewing_battery_voltage.c"),
-                        "-o", str(cls.binary)], check=True, capture_output=True, text=True)
+                        "-o", str(cls.binary)], capture_output=True, text=True)
+        if result.returncode:
+            raise AssertionError(result.stderr)
 
     def test_native_lifecycle_and_acquisition(self):
         for case in ("success", "mapping", "allocate", "configure", "calibration-init",

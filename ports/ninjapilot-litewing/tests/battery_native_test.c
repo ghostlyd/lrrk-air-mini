@@ -29,7 +29,11 @@ int adc_continuous_config(adc_continuous_handle_t h, const adc_continuous_config
 }
 int adc_cali_create_scheme_curve_fitting(const adc_cali_curve_fitting_config_t *c, adc_cali_handle_t *h) {
     assert(c->unit_id==0 && c->chan==1 && c->atten==3 && c->bitwidth==12);
-    if(fail("calibration-init")) return -1; *h=(void *)2; return 0;
+    if(fail("calibration-init")) {
+        return -1;
+    }
+    *h=(void *)2;
+    return 0;
 }
 int adc_continuous_register_event_callbacks(adc_continuous_handle_t h, const adc_continuous_evt_cbs_t *c, void *v) {
     assert(h && !v && !c->on_conv_done && c->on_pool_ovf);
