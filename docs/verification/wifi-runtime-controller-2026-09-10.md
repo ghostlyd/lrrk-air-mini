@@ -83,3 +83,23 @@ Source review, final build and full regression for this change remain pending.
 Actual persisted-settings snapshot capture, group validation and settings-drift
 exclusion remain required in the platform adapter; this change does not pretend
 the test-supplied mapping is a live settings observation.
+
+## Settings observation adapter
+
+At `25c1285`, scoped admission review found no Critical/Important issues. Target
+build passed and the full port regression completed: 368 run, 356 passed,
+12 skipped (132.726 seconds). The assistant suite ran 201 with 9 skips.
+
+`PIOS_LiteWing_PilotReadAdmissionMapping` now reads current ManualControlSettings
+through its real generated getter and validates primary GCS groups, disabled
+collective/accessory groups, calibration, bounds and unique mappings. It checks
+FlightStatus Disarmed before and after the settings read. Every failure clears
+the output; it never rewrites settings or assumes persisted defaults. Eleven
+standalone cases using the pinned checkout's real generated UAVObject headers
+pass fatal ASan/UBSan, including failures at each getter and arming during reads.
+
+This getter alone is not an atomic admission transaction. The pending runtime
+must exclude settings writers across capture/initialization/admission, recheck
+flight state at CLAIM, and invalidate on settings changes. Observed RAM settings
+are not proof that the corresponding values have been saved to flash. No live
+runtime caller or hardware operation is introduced. Adapter review/build pending.
