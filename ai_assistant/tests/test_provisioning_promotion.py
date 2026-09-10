@@ -50,3 +50,37 @@ class PromotionTests(unittest.TestCase):
             with self.assertRaises(BundleError):
                 record_stored(self.path,ProvisioningStatus(6,4,self.tx))
         self.assertEqual(load_pending(self.path),(self.tx,self.blob))
+
+    def test_existing_valid_but_different_copy_and_public_mode_are_not_repaired(self):
+        status = ProvisioningStatus(6,4,self.tx)
+        stored = record_stored(self.path,status)
+        alternate = self.root / 'alternate'
+        alternate.mkdir(mode=0o700)
+        other = save_pending(alternate,self.tx,encode_config('other','q'*24,b'z'*32))
+        stored.write_bytes(other.read_bytes())
+        different = stored.read_bytes()
+        with self.assertRaises(BundleError):
+            record_stored(self.path,status)
+        self.assertEqual(stored.read_bytes(),different)
+        stored.write_bytes(self.path.read_bytes())
+        stored.chmod(0o644)
+        with self.assertRaises(BundleError):
+            record_stored(self.path,status)
+        self.assertEqual(stored.stat().st_mode & 0o777,0o644)
+
+    def test_existing_copy_directory_sync_failure_is_not_success(self):
+        status = ProvisioningStatus(6,4,self.tx)
+        stored = record_stored(self.path,status)
+        sync = os.fsync
+        calls = 0
+        def fail_directory(fd):
+            nonlocal calls
+            calls += 1
+            if calls == 2:
+                raise OSError('synthetic')
+            return sync(fd)
+        with patch('os.fsync',side_effect=fail_directory):
+            with self.assertRaises(BundleError):
+                record_stored(self.path,status)
+        self.assertEqual(calls,2)
+        self.assertEqual(stored.read_bytes(),self.path.read_bytes())

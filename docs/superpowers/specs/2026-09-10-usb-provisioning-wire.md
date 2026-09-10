@@ -113,6 +113,10 @@ SSID on the host. Durably save a private pending bundle outside repositories
 before serial transmission. Keep the previous bundle during rotation. A timeout,
 disconnect or mismatched status means unknown outcome, not permission to delete
 either bundle. Promote only after verified persistence and completed cleanup.
+Promotion retains an exclusive private `.stored` copy; pending and older copies
+remain available. This records the local storage workflow, not active radio
+credentials. Repeat reconciliation validates the existing copy without replacing
+it. A local promotion failure must not trigger another credential submission.
 An explicit reboot and authenticated connection separately verify activation.
 
 Do not route outbound submissions through audit capture or model tools. Wipe
