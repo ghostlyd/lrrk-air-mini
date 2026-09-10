@@ -193,3 +193,27 @@ are complete for the documented paths; physical provisioning/activation is not
 yet established. See [operator CLI evidence](../docs/verification/provisioning-operator-cli-2026-09-10.md),
 [storage promotion](../docs/verification/credential-storage-promotion-2026-09-10.md)
 and [key probe limits](../docs/verification/application-key-probe-2026-09-10.md).
+## Pilot-owned wireless telemetry (source integration)
+
+The admitted `OperatorUDP` client can now receive authenticated telemetry on
+its existing connected socket. Its serialized owner can drain the latest
+observation and pass only its snapshot to the advisory runtime:
+
+```python
+observation = link.take_telemetry()
+if observation is not None:
+    runtime.ingest(observation.snapshot)
+```
+
+Keep `link`, the operator session and all credentials outside model tools.
+The owner still runs the normal bounded `step` loop and samples physical pilot
+inputs only after authenticated challenges. Telemetry itself sends nothing
+and never extends the pilot-input deadline. Closing the link closes the
+consumer and clears pending telemetry. Do not process model requests on the
+time-sensitive pilot loop; hand key-free snapshots to a separate advisory
+worker. Returned observations are historical, not live-session tokens.
+
+Snapshots are partial and labeled with receipt-time provenance. Link age stays
+unknown; a valid MAC or recent receipt is not a freshness or flight-readiness
+certificate. The firmware publisher and physical radio checks are not yet
+integrated. See the [lifecycle evidence](../docs/verification/wifi-telemetry-lifecycle-2026-09-10.md).

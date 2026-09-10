@@ -8,6 +8,7 @@ Python close drops references; it does not guarantee physical key zeroization.
 import struct
 from .pilot_keys import SessionKeys
 from .pilot_wire import Envelope, decode, encode
+from .telemetry_session import TelemetrySession
 
 
 class OperatorSession:
@@ -18,6 +19,7 @@ class OperatorSession:
             raise ValueError("invalid operator keys")
         if type(now_us) is not int or not 0<=now_us<2**63:
             raise ValueError("invalid monotonic time")
+        self._telemetry = TelemetrySession(identity, keys.telemetry)
         self._identity, self._keys = identity, keys
         self._last = self._proof_time = now_us
         self._board_sequence = self._sequence = 1
@@ -27,12 +29,22 @@ class OperatorSession:
     def closed(self): return self._keys is None
 
     def close(self):
+        self._telemetry.close()
         self._identity = self._keys = None
         self._challenge = None
 
     def check_time(self, now_us):
         """Transport must call during silence; no input or lifetime renewal."""
         self._time(now_us)
+
+    def observe_telemetry(self, datagram, received_us, received_at):
+        """Return only key-free observations; telemetry never renews pilot proof.
+
+        Like other operator methods, the owner must serialize calls. Receipt
+        times are captured by that owner before processing the datagram.
+        """
+        self._time(received_us)
+        return self._telemetry.receive(datagram, received_us, received_at)
 
     def _time(self, now):
         if self.closed: raise ValueError("operator session closed")
