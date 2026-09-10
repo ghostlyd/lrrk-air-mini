@@ -7,7 +7,7 @@ enum { HEADER = 50, TAG = 32, PAYLOAD_MAX = 512 };
 static int valid_kind(uint8_t direction, uint8_t kind)
 {
     if (direction == 0) return kind == 1 || kind == 3 || kind == 5 || kind == 6;
-    if (direction == 1) return kind == 2 || kind == 4 || kind == 7;
+    if (direction == 1) return kind == 2 || kind == 4 || kind == 7 || kind == 8;
     return 0;
 }
 

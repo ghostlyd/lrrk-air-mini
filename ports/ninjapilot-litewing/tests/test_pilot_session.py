@@ -12,6 +12,7 @@ sys.path.insert(0, str(ROOT.parents[1] / "ai_assistant/src"))
 from lrrk_litewing_ai.pilot_admission import PilotAdmission
 from lrrk_litewing_ai.pilot_keys import derive_keys
 from lrrk_litewing_ai.pilot_wire import Envelope, encode, decode
+from lrrk_litewing_ai.telemetry_wire import TelemetryRecord, encode_telemetry
 from test_pilot_crypto_vectors import PIN
 
 RNG = C.CFUNCTYPE(C.c_int, C.c_void_p, C.c_void_p, C.c_size_t)
@@ -148,6 +149,18 @@ class FirmwareAdmissionTests(unittest.TestCase):
         self.assertEqual(self.prepare(self.control_wire(frame, keys, 3), 900), 3)
         self.assertEqual(self.commit(1000)[1].origin_us, 100)
         self.assertEqual(self.lib.lw_session_tick(self.state, 100100), -1)
+
+    def test_telemetry_cannot_create_control_or_renew_input_age(self):
+        frame, keys = self.active()
+        self.assertEqual(self.prepare(self.control_wire(frame, keys), 500), 3)
+        self.assertEqual(self.commit(600)[1].origin_us, 100)
+        record = TelemetryRecord(0xEF69B6BC, 90000, None, bytes(8))
+        for now, key in ((90000, keys.telemetry), (90002, keys.c2b)):
+            wire = encode_telemetry(record, frame.session, 999, key)
+            self.assertEqual(self.prepare(wire, now), 0)
+            self.assertEqual(self.commit(now + 1)[0], 0)
+        self.assertEqual(self.lib.lw_session_tick(self.state, 100100), -1)
+        self.assertEqual(self.lib.retired_keys(self.state), 1)
 
     def test_channel_order_endianness_and_inclusive_endpoints(self):
         frame, keys = self.active()

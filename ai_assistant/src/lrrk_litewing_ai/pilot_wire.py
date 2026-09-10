@@ -8,7 +8,7 @@ import hmac
 import struct
 
 _HEADER = struct.Struct("!4sBBBB16sQ16sH")
-_KINDS = {0: frozenset((1, 3, 5, 6)), 1: frozenset((2, 4, 7))}
+_KINDS = {0: frozenset((1, 3, 5, 6)), 1: frozenset((2, 4, 7, 8))}
 _MAX_PAYLOAD = 512
 _TAG_SIZE = 32
 
