@@ -27,8 +27,16 @@ static TaskFunction_t system_entry;
 static int system_token, persistence_queue;
 static unsigned module_starts, after_scheduler, fault_alarms, shutdowns, system_deletes;
 static unsigned readiness_checks;
-static jmp_buf system_loop;
+static unsigned wifi_launches;
 static bool lifecycle, early_system, executing_system, system_live, system_monitored, queue_live;
+int lw_wifi_command_start(void)
+{
+    CHECK(readiness_checks==1 && after_scheduler==3 && system_live);
+    CHECK(strcmp(scenario,"boot-readiness"));
+    ++wifi_launches;
+    return !strcmp(scenario,"wifi-task-failure") ? -1 : 0;
+}
+static jmp_buf system_loop;
 static unsigned system_creates, system_registers, system_unregisters, queue_creates, queue_deletes, object_inits;
 static unsigned parked, module_inits;
 #ifdef TEST_MANUAL_MODULE
@@ -269,7 +277,7 @@ int32_t UAVObjSetData(UAVObjHandle handle, const void *in)
     (void)handle; (void)in; CHECK(!"unexpected object write"); return -1;
 }
 int32_t UAVObjConnectQueue(UAVObjHandle obj, xQueueHandle queue, uint8_t mask)
-{ (void)mask; CHECK(obj == ObjectPersistenceHandle() && queue == &persistence_queue); after_scheduler++; return 0; }
+{ (void)mask; CHECK(obj == ObjectPersistenceHandle() && queue == &persistence_queue); after_scheduler++; return !strcmp(scenario,"wifi-queue") ? -1 : 0; }
 int32_t UAVObjConnectCallback(UAVObjHandle obj, UAVObjEventCallback cb, uint8_t mask)
 {
     (void)obj; (void)cb; (void)mask;
@@ -295,6 +303,8 @@ int32_t UAVObjConnectCallback(UAVObjHandle obj, UAVObjEventCallback cb, uint8_t 
     }
 #endif
     after_scheduler++;
+    if ((!strcmp(scenario,"wifi-hw-callback") && obj==HwSettingsHandle()) ||
+        (!strcmp(scenario,"wifi-system-callback") && obj==SystemSettingsHandle())) return -1;
     return 0;
 }
 UAVObjHandle UAVObjGetByID(uint32_t id) { (void)id; CHECK(!"unexpected lookup"); return NULL; }
@@ -508,6 +518,14 @@ int main(int argc, char **argv)
         if (!strncmp(scenario, "early-", 6)) { early_system = true; scenario += 6; }
     }
     CHECK(PIOS_CALLBACKSCHEDULER_Initialize() == 0);
+    if (!strncmp(scenario,"wifi-",5)) {
+        CHECK(SystemModInitialize()==0 && system_entry);
+        run_system();
+        CHECK(system_live && after_scheduler==3 && shutdowns==0 && fault_alarms==0);
+        CHECK(wifi_launches==(!strcmp(scenario,"wifi-ready") ||
+                             !strcmp(scenario,"wifi-task-failure") ? 1u : 0u));
+        return 0;
+    }
 #ifdef TEST_MODULE_TABLE
 #ifdef TEST_MANUAL_MODULE
     if (!strncmp(scenario, "manual-start-", 13)) {
@@ -605,6 +623,7 @@ int main(int argc, char **argv)
     CHECK(module_starts == 1);
     CHECK(readiness_checks == (!strcmp(scenario, "task") || !strcmp(scenario, "monitor") ? 0u : 1u));
     if (strcmp(scenario, "nominal")) {
+        CHECK(wifi_launches==0);
         CHECK(shutdowns == 1 && fault_alarms == 1 && system_deletes == 1);
         CHECK(after_scheduler == 0);
         if (!strcmp(scenario, "boot-readiness")) {

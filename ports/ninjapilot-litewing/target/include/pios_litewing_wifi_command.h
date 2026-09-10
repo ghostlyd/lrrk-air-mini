@@ -6,7 +6,7 @@
 #endif
 
 /* Trusted boot caller only, after checked board/receiver/settings readiness.
- * No startup hook calls this yet. Returns 0 for task creation, NOT AP/link
+ * Called by checked System startup. Returns 0 for task creation, NOT AP/link
  * readiness. Creation failure starts no AP and permits retry. After successful
  * creation every further launch is refused until reboot, including after exit.
  * The task alone owns AP, root, controller and socket. No caller receives keys.

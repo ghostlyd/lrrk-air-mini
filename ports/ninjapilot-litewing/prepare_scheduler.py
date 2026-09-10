@@ -46,7 +46,7 @@ def prepare(source, output):
         scheduler = replace_function(scheduler, signature, (ROOT / "target/startup" / fragment).read_text())
     codes["pios_callbackscheduler.c"] = scheduler
     system = replace_exact(codes["systemmod.c"], "#include <openpilot.h>",
-        "#include <openpilot.h>\n#include <pios_litewing_brushed_pwm.h>\n#include <pios_litewing_modules.h>\n#include <pios_litewing_readiness.h>")
+        "#include <openpilot.h>\n#include <pios_litewing_brushed_pwm.h>\n#include <pios_litewing_modules.h>\n#include <pios_litewing_readiness.h>\n#include <pios_litewing_wifi_command.h>")
     # The copy lives in the build directory; retain the pinned public header
     # through the existing System/inc include path, not a copied header.
     system = replace_exact(system, '#include "inc/systemmod.h"', '#include <systemmod.h>')
@@ -84,6 +84,14 @@ static bool systemResourcesReady;""")
         stopSystemBeforeConnections(true);
         return;
     }""")
+    system = replace_exact(system, "    ObjectPersistenceConnectQueue(objectPersistenceQueue);",
+        "    bool wifi_connections_ready = (ObjectPersistenceConnectQueue(objectPersistenceQueue) == 0);")
+    system = replace_exact(system, "    HwSettingsConnectCallback(checkSettingsUpdatedCb);",
+        "    wifi_connections_ready &= (HwSettingsConnectCallback(checkSettingsUpdatedCb) == 0);")
+    system = replace_exact(system, "    SystemSettingsConnectCallback(checkSettingsUpdatedCb);", """    wifi_connections_ready &= (SystemSettingsConnectCallback(checkSettingsUpdatedCb) == 0);
+    /* Optional network task failure must not stop System or USB recovery.
+     * Creation is not AP readiness; the task validates credentials first. */
+    if (wifi_connections_ready) (void)lw_wifi_command_start();""")
     codes["systemmod.c"] = replace_exact(system, "#if defined(PIOS_INCLUDE_IAP)", """    if (PIOS_LiteWing_ConfirmBootReady() != 0) {
         stopSystemBeforeConnections(true);
         return;
