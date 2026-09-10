@@ -44,9 +44,27 @@ a missing SDK. Ordinary offline tests still need no third-party packages.
 Local tool tests do **not** verify API credentials, model replies, latency,
 provider billing, or live flight telemetry.
 
-UAVTalk is an adapter boundary, not a command channel. The first implemented
-adapter is deterministic JSONL replay so safety behavior can be tested without
-the board or a radio link.
+UAVTalk is an adapter boundary, not a flight-command channel. Deterministic
+JSONL and saved-capture replay keep safety behavior testable without a board.
+The optional `uavtalk` extra also enables one bounded live aggregate from the
+exact CH340 USB identity and location selected by the operator:
+
+```sh
+PYTHONPATH=ai_assistant/src python3 -m lrrk_litewing_ai.cli \
+  --input-format uavtalk-live \
+  --device /dev/cu.wchusbserial410 \
+  --usb-location 4-1 \
+  --private-capture /path/to/new-private-capture.uavtalk \
+  --duration 2 --json
+```
+
+The destination must not already exist. It is created mode `0600`, capped at
+1 MiB, and never committed automatically. Live transport deasserts DTR/RTS
+before opening the port, uses exclusive 57600-baud access, and matches USB
+`1A86:7522` plus the exact topology location before opening. Its outbound
+allowlist contains only telemetry handshake states, five selected object-read
+requests, and required acknowledgements. There is no receiver, arming,
+settings, persistence, actuator, navigation, or flight-command write API.
 
 Version 0.2 emits snapshot schema 2. Missing/null alarm telemetry remains
 unknown; only an explicit empty alarm array reports clear. Schema 1 input is
@@ -59,3 +77,5 @@ Saved UAVTalk captures can report named SystemAlarms and four-channel
 ActuatorCommand observations through the same advisory tools. These remain
 partial snapshots: no missing battery, sensor health, timestamp freshness or
 physical output measurement is inferred from a successfully decoded frame.
+The live aggregate likewise identifies the USB bridge in `source.transport`
+while leaving `source.board` unknown; a CH340 identity is not aircraft identity.

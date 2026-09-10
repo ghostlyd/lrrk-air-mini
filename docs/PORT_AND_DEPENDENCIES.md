@@ -121,8 +121,9 @@ The connected macOS host currently exposes the WCH serial device as:
 ```
 
 The observed bridge identity is USB vendor/product `1A86:7522`. The device is
-available for later bench diagnostics; no firmware flash is implied by its
-presence.
+available to the bounded live AI telemetry adapter when its exact topology
+location also matches. USB enumeration does not identify the aircraft and no
+firmware flash is implied by its presence.
 
 The local ESP-IDF 5.3.2 installation now builds the wrapper through compile,
 link, image generation, and partition sizing. Homebrew CMake, Ninja, and Qt 5
@@ -208,6 +209,9 @@ The selected wrapper needs these dependencies before its build gate can pass:
   physics simulation; these are not flight-controller firmware dependencies.
 - No OpenAI package or API key on the flight controller. The optional OpenAI
   Agents SDK is host-only and remains behind the advisory/approval boundary.
+- Python `pyserial>=3.5,<4` for the optional exclusive 57600-baud live UAVTalk
+  adapter. The unused `cflib` client remains a separate host-only `crazyflie`
+  extra and is not pulled into this serial path.
 
 The board-level parts evidenced by the V2.6.C production BOM are the ESP32-S3-
 WROOM-1 (U8), MPU-6050 (U7), CH340K (U5), TP4056 (IC1), SPX3819M5-L-3-3/TR
