@@ -22,6 +22,14 @@ SCHEMA = "lrrk.litewing.armed-motor-evidence.v1"
 SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 EXPECTED_LOW = [1000, 1500, 1500, 1500, 1000, 1500, 1500, 1500]
 EXPECTED_PULSE = [1510, 1500, 1500, 1500, 1000, 1500, 1500, 1500]
+EXPECTED_EVIDENCE_ID = "litewing-usb-armed-nonzero-2026-09-09"
+EXPECTED_CAPTURE_BYTES = 31912
+EXPECTED_CAPTURE_SHA256 = "cce31d2ef701a230827b7b1cf54ca09124a9839ecb669f87a6144c5150b3fcf8"
+EXPECTED_APPLICATION_SHA256 = "d7392031e9e06c39bcb503e0feb834942588b10b99cdfeeaa3248fbedae0ff31"
+EXPECTED_PROBE_SHA256 = "0fea2cbcfba9bece72e2b62dd5f848386b4aeb5bec4c8ee6e2817aceefe62290"
+EXPECTED_PROBE_TEST_SHA256 = "6c3c6337f461bb2ff884544ab041e96baed147acc8cb60c5d69d90a709988755"
+EXPECTED_FLIGHT_REVISION = "ac77304a58de6c8bd552f94668b46903adb71cb2"
+EXPECTED_PROBE_TESTS = 23
 
 
 class EvidenceError(ValueError):
@@ -105,8 +113,8 @@ def validate_record(record: Any) -> dict[str, Any]:
         "record",
     )
     _require(record["schema"] == SCHEMA, "unsupported evidence schema")
-    _require(isinstance(record["evidence_id"], str) and record["evidence_id"],
-             "evidence_id is required")
+    _require(record["evidence_id"] == EXPECTED_EVIDENCE_ID,
+             "evidence_id does not identify the reviewed transaction")
     _require(isinstance(record["scope"], str) and record["scope"],
              "scope is required")
 
@@ -115,8 +123,11 @@ def validate_record(record: Any) -> dict[str, Any]:
         {"bytes", "sha256", "file_closed_at", "raw_capture_published"},
         "capture",
     )
-    _require_int(capture["bytes"], "capture.bytes", 1)
+    _require(capture["bytes"] == EXPECTED_CAPTURE_BYTES,
+             "capture byte count does not match the reviewed transaction")
     _require_sha256(capture["sha256"], "capture.sha256")
+    _require(capture["sha256"] == EXPECTED_CAPTURE_SHA256,
+             "capture digest does not match the reviewed transaction")
     _require(capture["raw_capture_published"] is False,
              "the raw private capture must not be published")
     _require(isinstance(capture["file_closed_at"], str),
@@ -141,15 +152,24 @@ def validate_record(record: Any) -> dict[str, Any]:
         "installed_application_sha256", "probe_sha256", "probe_test_sha256"
     ):
         _require_sha256(provenance[field], f"provenance.{field}")
+    _require(provenance["installed_application_sha256"] == EXPECTED_APPLICATION_SHA256,
+             "installed application digest does not match the reviewed image")
+    _require(provenance["probe_sha256"] == EXPECTED_PROBE_SHA256,
+             "probe digest does not match the reviewed transaction")
+    _require(provenance["probe_test_sha256"] == EXPECTED_PROBE_TEST_SHA256,
+             "probe-test digest does not match the reviewed transaction")
     _require(isinstance(provenance["flight_source_revision"], str) and
              re.fullmatch(r"[0-9a-f]{40}", provenance["flight_source_revision"]) is not None,
              "flight source revision must be a full Git object id")
+    _require(provenance["flight_source_revision"] == EXPECTED_FLIGHT_REVISION,
+             "flight source revision does not match the reviewed UAVObject schema")
     _require(isinstance(provenance["decoder_boundary"], str) and
              provenance["decoder_boundary"], "decoder boundary is required")
     probe_tests = _require_keys(
         provenance["probe_tests"], {"passed", "failed"}, "provenance.probe_tests"
     )
-    _require_int(probe_tests["passed"], "probe tests passed", 1)
+    _require(probe_tests["passed"] == EXPECTED_PROBE_TESTS,
+             "probe test count does not match the reviewed run")
     _require(probe_tests["failed"] == 0, "probe tests must have zero failures")
 
     conditions = _require_keys(

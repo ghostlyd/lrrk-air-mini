@@ -66,6 +66,33 @@ class ArmMotorEvidenceTests(unittest.TestCase):
             with self.subTest(label=label), self.assertRaises(evidence.EvidenceError):
                 evidence.validate_record(candidate)
 
+    def test_exact_capture_firmware_source_and_probe_provenance_are_pinned(self):
+        cases = []
+
+        wrong_capture = copy.deepcopy(self.record)
+        wrong_capture["capture"]["sha256"] = "0" * 64
+        cases.append(("capture digest", wrong_capture))
+
+        wrong_application = copy.deepcopy(self.record)
+        wrong_application["provenance"]["installed_application_sha256"] = "0" * 64
+        cases.append(("installed application digest", wrong_application))
+
+        wrong_probe = copy.deepcopy(self.record)
+        wrong_probe["provenance"]["probe_sha256"] = "0" * 64
+        cases.append(("probe digest", wrong_probe))
+
+        wrong_probe_test = copy.deepcopy(self.record)
+        wrong_probe_test["provenance"]["probe_test_sha256"] = "0" * 64
+        cases.append(("probe-test digest", wrong_probe_test))
+
+        wrong_source = copy.deepcopy(self.record)
+        wrong_source["provenance"]["flight_source_revision"] = "0" * 40
+        cases.append(("flight source revision", wrong_source))
+
+        for label, candidate in cases:
+            with self.subTest(label=label), self.assertRaises(evidence.EvidenceError):
+                evidence.validate_record(candidate)
+
     def test_post_pulse_and_terminal_state_require_armed_zero_output(self):
         cases = []
 
