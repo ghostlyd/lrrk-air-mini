@@ -188,6 +188,13 @@ automatic network association, activation or reset.
 
 Opening serial is a hardware operation: DTR/RTS are deasserted before opening,
 but driver line transients remain possible. Use a secured props-removed bench;
+Alignment polls only the status request at most ten times, at least 200 ms
+apart, within the original two-second deadline. A lost initial query does not
+authorize a credential retransmission or extend that deadline. Credentials
+become available to the write guard only after a canonical status reply.
+The exchange ignores only an exact canonical duplicate of that recorded
+alignment status for a different transaction. Such duplicates never confirm
+storage or extend the deadline; other mismatches remain unresolved.
 USB-C can power motors without a battery. Source and simulated integration tests
 are complete for the documented paths; physical provisioning/activation is not
 yet established. See [operator CLI evidence](../docs/verification/provisioning-operator-cli-2026-09-10.md),

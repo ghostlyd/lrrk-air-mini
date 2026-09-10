@@ -24,6 +24,7 @@ class ProvisioningSerial:
         self._port = None
         self._request = None
         self._attempted = False
+        self._alignment_status = None
         try:
             if (type(device) is not str or not device.startswith('/dev/cu.')
                     or type(location) is not str or not location):
@@ -57,8 +58,8 @@ class ProvisioningSerial:
         start = previous = clock()
         if type(start) not in (int, float) or not math.isfinite(start) or start < 0:
             raise ValueError()
-        if self.write(status_request()) != len(status_request()):
-            raise ValueError()
+        next_poll = start
+        polls = 0
         sync = _Synchronizer()
         for _ in range(4096):
             now = clock()
@@ -66,6 +67,14 @@ class ProvisioningSerial:
                     or now < previous or now - start >= 2):
                 raise ValueError()
             previous = now
+            # A query immediately after port opening can be lost. Only repeat
+            # this read-only status request; credentials remain unavailable
+            # until alignment returns. Polling never renews the deadline.
+            if now >= next_poll and polls < 10:
+                if self.write(status_request()) != len(status_request()):
+                    raise ValueError()
+                polls += 1
+                next_poll = now + .2
             data = self.read(1)  # consume the alignment query's status, not just telemetry
             now = clock()
             if (type(now) not in (int, float) or not math.isfinite(now)
@@ -84,8 +93,14 @@ class ProvisioningSerial:
                 # Any transaction (including zero) is allowed for alignment
                 # only. It is not returned as a persistence result.
                 sync.finish()
+                self._alignment_status = payload
                 return
         raise ValueError()
+
+    @property
+    def alignment_status(self):
+        """Validated pre-submission payload; never evidence of new storage."""
+        return self._alignment_status
 
     def read(self, maximum):
         try:
@@ -114,6 +129,7 @@ class ProvisioningSerial:
     def close(self):
         port, self._port = self._port, None
         self._request = None
+        self._alignment_status = None
         if port is not None:
             try:
                 port.close()
