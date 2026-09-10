@@ -37,7 +37,7 @@
 - C `int lw_telemetry_payload_encode(const struct lw_telemetry_record *, uint8_t *, size_t, size_t *)` and `int lw_telemetry_payload_decode(const uint8_t *, size_t, struct lw_telemetry_record *)`.
 - C `int lw_telemetry_frame_validate(const struct lw_wire_frame *, struct lw_telemetry_record *)` validates a previously authenticated envelope; it never authenticates or authorizes on its own. All decoders zero output on error, all encoders zero written on error. Caller buffers/structures must not overlap.
 
-- [ ] Write the independent byte-layout test before creating implementation modules:
+- [x] Write the independent byte-layout test before creating implementation modules:
 
 ```python
 def test_frozen_payload(self):
@@ -49,16 +49,16 @@ def test_frozen_payload(self):
     self.assertEqual(decode_record(expected), record)
 ```
 
-- [ ] Run `/opt/homebrew/bin/python3 -m unittest discover -s ai_assistant/tests -p test_telemetry_wire.py -v` with `PYTHONPATH=ai_assistant/src`; require failure due to missing module before implementation.
-- [ ] Implement payload helpers around `struct.Struct('!BBHIQQ')`, exact allowlist `{0xD7E0D964:28, 0xEF69B6BC:8, 0x26962352:30, 0x6B7639EC:25, 0xB8229FE4:29}` and explicit integer/type bounds. Reject bool integers and mutable/non-byte payloads. Use UINT64_MAX only as unknown, not a timestamp.
-- [ ] Implement the same field layout with explicit shifts in C, bounded copies after all validation, and no packed-struct casts or allocation. Encode/decode data bytes unchanged; leave numeric/enum interpretation to existing object snapshot parsing.
-- [ ] Compile actual C sources using the existing ctypes harness pattern (`cc -std=c11 -Wall -Wextra -Werror -shared -fPIC`). Bind the record struct and functions with exact ctypes argument types. For each allowlisted object and ages `0`, serialization timestamp and unknown, compare C encoded bytes with Python and decode each side's bytes on the other side.
-- [ ] Exercise every truncated length, one trailing byte, wrong schema/reserved field, all wrong object lengths, unknown IDs, sample age greater than serialization time, timestamp INT64_MAX+1, NULL output/input and every undersized C output capacity. Assert unchanged buffer canaries and zero error outputs.
-- [ ] Wrap the frozen payload in direction 1/kind 8, sequence 1, nonzero synthetic session and zero challenge. Check every-byte tampering, wrong keys/direction, zero session/sequence and nonzero challenge. Use existing `pilot_keys.py` derived keys to prove a telemetry tag rejects under c2b/b2c/root; test keys are synthetic and public.
-- [ ] Add a standalone C sanitizer harness for payload boundaries and NULL contracts following `pilot_wire_memory_test.c`; run ASan/UBSan with `-fno-sanitize-recover=all`.
-- [ ] Run both full host suites with Homebrew Python on PATH. Require existing pilot controller/session tests still reject non-command traffic and preserve freshness. Do not weaken tests to accommodate kind 8 outside the framing layer.
-- [ ] Record exact tests, failures fixed, limitations and source revision in `docs/verification/wifi-telemetry-codec-2026-09-10.md`; obtain code review before merge.
-- [ ] Commit only the enumerated files and verification record with `git commit -m "feat: add bounded authenticated telemetry wire codecs"`; no target activation in this commit.
+- [x] Run `/opt/homebrew/bin/python3 -m unittest discover -s ai_assistant/tests -p test_telemetry_wire.py -v` with `PYTHONPATH=ai_assistant/src`; require failure due to missing module before implementation.
+- [x] Implement payload helpers around `struct.Struct('!BBHIQQ')`, exact allowlist `{0xD7E0D964:28, 0xEF69B6BC:8, 0x26962352:30, 0x6B7639EC:25, 0xB8229FE4:29}` and explicit integer/type bounds. Reject bool integers and mutable/non-byte payloads. Use UINT64_MAX only as unknown, not a timestamp.
+- [x] Implement the same field layout with explicit shifts in C, bounded copies after all validation, and no packed-struct casts or allocation. Encode/decode data bytes unchanged; leave numeric/enum interpretation to existing object snapshot parsing.
+- [x] Compile actual C sources using the existing ctypes harness pattern (`cc -std=c11 -Wall -Wextra -Werror -shared -fPIC`). Bind the record struct and functions with exact ctypes argument types. For each allowlisted object and ages `0`, serialization timestamp and unknown, compare C encoded bytes with Python and decode each side's bytes on the other side.
+- [x] Exercise every truncated length, one trailing byte, wrong schema/reserved field, all wrong object lengths, unknown IDs, sample age greater than serialization time, timestamp INT64_MAX+1, NULL output/input and every undersized C output capacity. Assert unchanged buffer canaries and zero error outputs.
+- [x] Wrap the frozen payload in direction 1/kind 8, sequence 1, nonzero synthetic session and zero challenge. Check every-byte tampering, wrong keys/direction, zero session/sequence and nonzero challenge. Use existing `pilot_keys.py` derived keys to prove a telemetry tag rejects under c2b/b2c/root; test keys are synthetic and public.
+- [x] Add a standalone C sanitizer harness for payload boundaries and NULL contracts following `pilot_wire_memory_test.c`; run ASan/UBSan with `-fno-sanitize-recover=all`.
+- [x] Run both full host suites with Homebrew Python on PATH. Require existing pilot controller/session tests still reject non-command traffic and preserve freshness. Do not weaken tests to accommodate kind 8 outside the framing layer.
+- [x] Record exact tests, failures fixed, limitations and source revision in `docs/verification/wifi-telemetry-codec-2026-09-10.md`; obtain code review before merge.
+- [x] Commit only the enumerated files and verification record with `git commit -m "feat: add bounded authenticated telemetry wire codecs"`; no target activation in this commit.
 
 ## Next integration deliverables (not completed by this plan)
 

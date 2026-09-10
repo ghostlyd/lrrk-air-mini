@@ -61,7 +61,7 @@ class PilotWireCTests(unittest.TestCase):
         return rc, out
 
     def test_cross_language_round_trip_and_capacity_guards(self):
-        for direction, kind in ((0, 1), (0, 3), (0, 5), (0, 6), (1, 2), (1, 4), (1, 7)):
+        for direction, kind in ((0, 1), (0, 3), (0, 5), (0, 6), (1, 2), (1, 4), (1, 7), (1, 8)):
             for payload in (b"", b"ab", bytes(range(256))*2):
                 env = Envelope(direction, kind, b"s"*16, 2**64-1, b"c"*16, payload)
                 packet = encode(env, self.key)

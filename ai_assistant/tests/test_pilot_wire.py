@@ -80,7 +80,7 @@ class PilotWireTests(unittest.TestCase):
                     encode(self.envelope(**{field: value}), self.key)
 
     def test_valid_kind_direction_pairs(self):
-        for direction, kinds in ((0, (1, 3, 5, 6)), (1, (2, 4, 7))):
+        for direction, kinds in ((0, (1, 3, 5, 6)), (1, (2, 4, 7, 8))):
             for kind in kinds:
                 expected = self.envelope(direction=direction, kind=kind)
                 self.assertEqual(decode(encode(expected, self.key), self.key, direction), expected)
