@@ -354,7 +354,8 @@ target_linker_script(${COMPONENT_LIB} INTERFACE "uavo_handles.ld")
 # upstream file untouched, rename only its unchecked entry point, and bind
 # callers to the checked repository-owned UAVObjDelete implementation.
 set_source_files_properties("${FLIGHT}/uavobjects/uavobjectpersistence.c"
-    PROPERTIES COMPILE_DEFINITIONS "UAVObjDelete=UAVObjDelete_unchecked")
+    PROPERTIES COMPILE_DEFINITIONS
+        "UAVObjDelete=UAVObjDelete_unchecked;UAVObjLoad=UAVObjLoad_unserialized")
 
 target_compile_definitions(${COMPONENT_LIB} PRIVATE
     USE_ESP32=1
