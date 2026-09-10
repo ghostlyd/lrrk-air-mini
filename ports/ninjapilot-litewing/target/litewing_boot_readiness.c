@@ -4,6 +4,7 @@
 #include <stdbool.h>
 #include <stddef.h>
 
+#include <openpilot.h>
 #include <alarms.h>
 #include <pios_task_monitor.h>
 #include <systemalarms.h>
