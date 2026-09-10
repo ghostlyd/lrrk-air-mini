@@ -30,9 +30,15 @@ Sources:
 - [CircuitDigest LiteWing assembly guide](https://circuitdigest.com/articles/assembling-litewing-drone)
 - [Racerstar 8520 motor listing](https://www.racerstar.com/racerstar-8520-8_5x20mm-53500rpm-coreless-motor-red-for-eachine-qx80-diy-micro-fpv-quadcopter-p-240.html)
 
-This establishes net, corner, fitted motor class, and intended rotation. A
-bounded sequential low-duty run is still the final assembled-continuity check;
-it must end with every command and output at zero.
+This establishes net, corner, fitted motor class, and intended rotation. The
+user-supplied private four-corner recording then establishes fitted-assembly
+continuity and observed shaft direction. Its 12.886-second H.264 source has
+SHA-256 `61894decd5d1fba15ed06aa58a3b2e25409157496334c1216f57e7968aafee54`.
+Separate deceleration intervals show front-right CCW, rear-right CW, rear-left
+CCW and front-left CW, matching channels 1..4 above. The video is not claimed
+to be time-synchronized with the current UART arming transaction; source/PCB
+evidence maps channels to corners, while the recording independently verifies
+the physical fitted rotations.
 
 ## IMU body transform
 
@@ -57,19 +63,25 @@ The pinned comparison source is NinjaPilot commit
 
 ## Live stationary evidence and calibration boundary
 
-A 15-second read-only UAVTalk capture produced 131 accelerometer, 128 gyro,
-and 329 attitude samples. Capture SHA-256:
-`791ceb0667463ba794a31c346adb21ff9d7aa948147e49da3f58585d69f84663`.
+A later request-only reset-neutral capture produced a closing stationary set
+of 18 accelerometer and 44 gyro samples. Capture SHA-256:
+`586da78dbd3a9aa2983b8d3821544f25d60b49b499a825557adeb4c6f885ea12`.
 
-Stationary means were approximately `(0.022, 0.641, -9.434) m/s²`; gravity is
-on negative body Z as required and the small body-Y component is consistent
-with a slightly tilted resting board. Stored board rotation and level trim are
-zero. Stored accelerometer/gyro biases are zero and scale terms are one. The
-Attitude module is configured to estimate gyro bias during startup and again
-during arming.
+Accelerometer mean was `(0.0184, 0.6545, -9.4300) m/s²`; gravity is on negative
+body Z as required. Its gravity-derived roll/pitch `(-3.971°, 0.111°)` agreed
+with live attitude `(-3.938°, 0.117°)` within 0.033°/0.006°. Gyro mean was
+`(0.0152, -0.0103, 0.0314) deg/s`, with population deviations below
+`0.075 deg/s` on every axis. Stored board rotation and level trim are zero.
+Stored accelerometer/gyro biases are zero and scale terms are one. The Attitude
+module is configured to estimate gyro bias during startup and again during
+arming.
 
 No guessed persistent accelerometer correction was written from this single
 pose. One stationary orientation cannot separate per-axis offset from scale;
 a true six-face calibration requires physically repositioning the board. The
-current live data establishes correct orientation, stable sampling, and usable
-factory-scale behavior, but it is not represented as a six-face calibration.
+current live data establishes correct orientation, stable sampling, stationary
+rate behavior, and acceptable attitude/rate readiness for an initial controlled
+flight. It is not represented as a six-face precision calibration.
+
+The consolidated record and exact direction intervals are in
+[final-flight-configuration-2026-09-10.md](final-flight-configuration-2026-09-10.md).

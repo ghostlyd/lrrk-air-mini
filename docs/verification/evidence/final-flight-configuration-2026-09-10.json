@@ -1,0 +1,216 @@
+{
+  "schema": "lrrk.litewing.final-flight-configuration.v1",
+  "evidence_id": "litewing-final-flight-configuration-2026-09-10",
+  "source": {
+    "wrapper_commit": "37f2476c6984f15dfe2b9ecd2861321652497804",
+    "ninjapilot_commit": "ac77304a58de6c8bd552f94668b46903adb71cb2",
+    "main_merge_commit": "dc3345dab633557de72e901627e31b7ffaea78b0",
+    "wrapper_commit_in_main_history": true,
+    "firmware_marker": "LRRK37f2476c6984f15d",
+    "application_bytes": 359776,
+    "application_built_sha256": "98214708fcf511b3ccfb3a5511784791dda4166d87cd809102393e395d37f013",
+    "application_readback_sha256": "98214708fcf511b3ccfb3a5511784791dda4166d87cd809102393e395d37f013"
+  },
+  "gates": {
+    "current_image_identity": "PASS",
+    "startup_alarms": "PASS",
+    "motor_corner_direction_mapping": "PASS",
+    "imu_orientation_calibration": "PASS_FOR_INITIAL_ATTITUDE_RATE_FLIGHT"
+  },
+  "physical_conditions": {
+    "propellers_removed": true,
+    "contained": true,
+    "battery_connected": false,
+    "power_source": "USB-C"
+  },
+  "startup": {
+    "boot_fault": "OK",
+    "critical_or_error_alarms": [],
+    "active_advisory_alarms": ["Receiver:Warning"],
+    "unused_optional_sensors_uninitialised": true,
+    "advisory_explanation": "No receiver was attached during the USB bench capture."
+  },
+  "arming_configuration": {
+    "policy": "Yaw Right",
+    "pre_write_flight_status": "Disarmed",
+    "pre_write_motor_channels": [0, 0, 0, 0],
+    "persistence_operation": "Completed",
+    "post_reset_readback_confirmed": true,
+    "armed_timeout_ms": 30000
+  },
+  "normal_arming_proof": {
+    "policy": "Yaw Right",
+    "persistent_write_sent": false,
+    "reached_armed": true,
+    "connected_low_samples_before_arm": 3,
+    "connected_arming_samples": 21,
+    "nonzero_motor_samples": 4,
+    "peak_motor_channels": [59, 0, 0, 62],
+    "command_scale": [0, 1000],
+    "command_ceiling": 200,
+    "zero_samples_after_nonzero": 12,
+    "terminal": {
+      "flight_status": "Armed",
+      "motor_channels": [0, 0, 0, 0],
+      "receiver_connected": false
+    }
+  },
+  "final_idle": {
+    "reset_neutral_open": true,
+    "request_only": true,
+    "flight_time_ms": 854743,
+    "automatic_disarm_interpretation": "consistent with configured timeout; not a continuous trace",
+    "arming_policy": "Yaw Right",
+    "flight_status": "Disarmed",
+    "motor_channels": [0, 0, 0, 0],
+    "boot_fault": "OK",
+    "critical_or_error_alarms": [],
+    "unused_optional_sensors_uninitialised": true
+  },
+  "motor_mapping": [
+    {
+      "channel": 1,
+      "gpio": 5,
+      "corner": "front-right",
+      "motor_class": "B",
+      "wires": "black/white",
+      "observed_rotation": "CCW",
+      "mixer_yaw": -127
+    },
+    {
+      "channel": 2,
+      "gpio": 6,
+      "corner": "rear-right",
+      "motor_class": "A",
+      "wires": "red/blue",
+      "observed_rotation": "CW",
+      "mixer_yaw": 127
+    },
+    {
+      "channel": 3,
+      "gpio": 3,
+      "corner": "rear-left",
+      "motor_class": "B",
+      "wires": "black/white",
+      "observed_rotation": "CCW",
+      "mixer_yaw": -127
+    },
+    {
+      "channel": 4,
+      "gpio": 4,
+      "corner": "front-left",
+      "motor_class": "A",
+      "wires": "red/blue",
+      "observed_rotation": "CW",
+      "mixer_yaw": 127
+    }
+  ],
+  "motor_video": {
+    "source": "user-supplied private recording",
+    "bytes": 6020451,
+    "sha256": "61894decd5d1fba15ed06aa58a3b2e25409157496334c1216f57e7968aafee54",
+    "duration_seconds": 12.885617,
+    "codec": "H.264",
+    "resolution": [1920, 1080],
+    "average_frame_rate": "115800/3863",
+    "raw_video_published": false,
+    "synchronized_with_uart_capture": false,
+    "direction_observations": [
+      {
+        "channel": 1,
+        "corner": "front-right",
+        "interval_seconds": [6.533, 6.700],
+        "axis_angles_deg_mod_180": [14.3, 144.3, 102.8, 77.3, 66.9, 62.3],
+        "rotation": "CCW"
+      },
+      {
+        "channel": 2,
+        "corner": "rear-right",
+        "interval_seconds": [12.067, 12.200],
+        "axis_angles_deg_mod_180": [48.4, 58.8, 79.6, 87.3, 94.7],
+        "rotation": "CW"
+      },
+      {
+        "channel": 3,
+        "corner": "rear-left",
+        "interval_seconds": [0.633, 0.733],
+        "axis_angles_deg_mod_180": [165.3, 142.0, 124.6, 116.9],
+        "rotation": "CCW"
+      },
+      {
+        "channel": 4,
+        "corner": "front-left",
+        "interval_seconds": [3.533, 3.833],
+        "axis_angles_deg_mod_180": [70.4, 140.3, 9.5, 71.5, 125.5, 158.0, 3.1, 23.6, 37.6, 43.9],
+        "rotation": "CW"
+      }
+    ]
+  },
+  "imu": {
+    "transform": {
+      "body_x": "sensor_y",
+      "body_y": "sensor_x",
+      "body_z": "-sensor_z"
+    },
+    "accel_samples": 18,
+    "stationary_accel_mean_mps2": [0.0183555465, 0.6545481450, -9.4300288094],
+    "stationary_accel_pstdev_mps2": [0.0217976110, 0.0151714479, 0.0272306269],
+    "gravity_norm_mps2": 9.4527357705,
+    "gravity_relative_to_standard_percent": -3.6089207781,
+    "gyro_samples": 44,
+    "stationary_gyro_mean_dps": [0.0152227926, -0.0103093602, 0.0313501507],
+    "stationary_gyro_pstdev_dps": [0.0740044687, 0.0572655884, 0.0725200956],
+    "gravity_inferred_roll_deg": -3.9705914188,
+    "gravity_inferred_pitch_deg": 0.1112583732,
+    "attitude_roll_deg": -3.9381446838,
+    "attitude_pitch_deg": 0.1167451888,
+    "bias_correct_gyro": true,
+    "zero_gyro_during_arming": true,
+    "stored_accel_bias": [0.0, 0.0, 0.0],
+    "stored_accel_scale": [1.0, 1.0, 1.0],
+    "six_face_accelerometer_calibration_performed": false,
+    "acceptance_scope": "initial controlled attitude/rate flight"
+  },
+  "evidence_handling": {
+    "raw_captures_published": false,
+    "hardware_serial_or_mac_published": false,
+    "capture_records": [
+      {
+        "purpose": "merged-image identity and settled startup",
+        "bytes": 43704,
+        "sha256": "eaee4ab6e69b304ccba25e4f9cadd1747e545e98679012336bca772bd77631c6",
+        "report_sha256": "4bf16358b8826c18603bad3661bd715e0af71ea8a48159ae970a09102e438fd6"
+      },
+      {
+        "purpose": "persist normal Yaw Right arming policy",
+        "bytes": 29374,
+        "sha256": "84b4d73c12d3db1a83c2325222fa9ef6130275efa3ec9595bbe25d8457eb2b0c",
+        "report_sha256": "84af12b3bb87fc542e636b6775cd1d699003840532ef6c25283b229957ad8466"
+      },
+      {
+        "purpose": "post-reset policy and boot verification",
+        "bytes": 43546,
+        "sha256": "e0da41417d7c6399016e142cee1088a7cd6cf3b466ecf462d2441906fe23afd7",
+        "report_sha256": "d20c8e250126608aecfce304a6ec4d8fd4cf414112fdb33dee62e32ceade805a"
+      },
+      {
+        "purpose": "normal arming and bounded motor command",
+        "bytes": 47198,
+        "sha256": "369484118eba2569f7aea04ed3e2f6535a0b2f4fdd15fe3a535b441aae14e885",
+        "report_sha256": "40bafd1b27252208627b08de09b894b3f04fb64d69da2f9a4bd72279d88e57d0"
+      },
+      {
+        "purpose": "closing reset-neutral idle state",
+        "bytes": 81566,
+        "sha256": "586da78dbd3a9aa2983b8d3821544f25d60b49b499a825557adeb4c6f885ea12",
+        "report_sha256": "053111d231e912d9516ef51b0c7a91fb328cd691056b844fcfea95a2b3cb994c"
+      }
+    ]
+  },
+  "not_established": [
+    "battery-powered operation or battery, charger, and connector validation",
+    "six-face accelerometer precision calibration",
+    "propeller selection, fitting, balance, and clearance",
+    "airworthiness, controlled hover, or free flight"
+  ]
+}

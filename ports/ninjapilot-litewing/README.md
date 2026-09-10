@@ -90,6 +90,16 @@ that the RAM-only `Always Armed` value not be restored; no persistence write or
 post-arm reset was sent. That record clears only the software arm/command path,
 not electrical timing, motor orientation, battery, airworthiness, or flight.
 
+The subsequent [final flight-configuration record](../../docs/verification/final-flight-configuration-2026-09-10.md)
+supersedes the temporary arming configuration: normal `Yaw Right` arming was
+persisted and verified after reboot, reached Armed with four bounded nonzero
+flight-stack motor samples, and was later observed Disarmed with all channels
+zero, consistent with the configured timeout. The installed source is in merged
+`main` history. A private
+operator recording confirms all four fitted directions, and stationary IMU
+orientation/rate evidence is accepted for an initial controlled attitude/rate
+flight. Battery-system, propeller and actual hover checks remain separate.
+
 The selected upstream `litewing` branch currently includes a POSIX/Gazebo
 LiteWing twin, not a flashable ESP32-S3 target. The repository-owned target
 work therefore proceeds in gates:

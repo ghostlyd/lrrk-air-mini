@@ -68,6 +68,14 @@ peak of `[128, 0, 0, 118]`, followed by 11 zero samples. That is command-path
 telemetry, not a measurement of LEDC duty, electrical cutoff latency, physical
 rotation, or motor-corner mapping.
 
+The [final configuration transaction](../../../docs/verification/final-flight-configuration-2026-09-10.md)
+uses persisted normal `Yaw Right` arming, survives a deliberate reset, reaches
+Armed with bounded flight-stack motor commands, and later closes Disarmed at
+zero output through a reset-neutral observation. Source/PCB mapping plus a
+private user-supplied four-corner recording establishes the fitted direction
+contract. This still does not measure electrical PWM/cutoff latency or establish
+battery-powered flight.
+
 For the pinned defaults, application UART telemetry is **57600 baud**. Board
 initialization and the tested bootloader connection use 115200, but the
 Telemetry module subsequently applies `HwSettings.TelemetrySpeed`. A saved

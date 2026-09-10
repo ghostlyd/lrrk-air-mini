@@ -33,8 +33,18 @@ diagnosis established that a conventional pyserial reopen is not passive: the
 CH340 DTR/RTS auto-reset path restarted the ESP32-S3 and the first observed
 uptime was 402 ms. A reset-neutral POSIX open preserved continuing uptime.
 Terminal RAM state must therefore be checked in the original session or through
-that reset-neutral path. Electrical output, six-face calibration, battery
-operation, physical flight safety and flight remain pending.
+that reset-neutral path. At that checkpoint, direct electrical measurement,
+six-face precision calibration, battery operation, physical flight safety and
+flight remained pending.
+
+The later [final flight-configuration record](docs/verification/final-flight-configuration-2026-09-10.md)
+verifies that the installed source is in merged `main` history, persists normal
+`Yaw Right` arming across a deliberate reboot, reaches Armed with bounded
+flight-stack motor commands, and closes on a reset-neutral Disarmed/zero-output
+snapshot. A user-supplied four-corner recording confirms the fitted motor
+directions, while stationary IMU data and live attitude agree closely enough
+for initial controlled attitude/rate flight. Battery-system validation,
+propeller fitting and an open-area hover remain separate physical gates.
 
 The NinjaPilot target's [settings-persistence correction and USB reset
 verification](docs/verification/settings-recovery-2026-09-09.md) are also complete

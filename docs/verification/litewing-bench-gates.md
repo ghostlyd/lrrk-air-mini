@@ -12,6 +12,9 @@ backup/flash, telemetry observations and remaining limitations. See the later
 for the attained command-path gate and its narrower claim boundary. The current
 image, boot-readiness, mapping and reset-behavior results are recorded in the
 [current flight-readiness report](current-image-flight-readiness-2026-09-09.md).
+The persisted normal-arming, fitted-direction, IMU-acceptance and closing-idle
+results are consolidated in the
+[final flight-configuration report](final-flight-configuration-2026-09-10.md).
 
 ## Attained software arm/output gate
 
@@ -19,14 +22,20 @@ image, boot-readiness, mapping and reset-behavior results are recorded in the
   a live motor-power source.
 - [x] Exact installed application and pinned UAVObject source verified before
   the one-shot transaction.
-- [x] `FlightStatus=Armed` observed with six bounded nonzero motor-command
-  samples; peak channels `[128, 0, 0, 118]` on the `0..1000` scale.
-- [x] Eleven later zero-command samples observed while Armed; the final sample
-  also had the receiver timed out and disconnected.
-- [x] No persistence write, post-arm reset, direct `ActuatorCommand` write,
-  flash, erase, or restore-to-`Always Disarmed` operation was sent.
-- [ ] Electrical PWM duty/cutoff timing, physical rotation in this transaction,
-  motor-corner mapping, and flight readiness remain unverified.
+- [x] Normal `Yaw Right` arming persisted with a completed single-object save
+  and survived a deliberate reset.
+- [x] `FlightStatus=Armed` observed with four bounded nonzero motor-command
+  samples under normal arming; peak channels `[59, 0, 0, 62]` on the `0..1000`
+  scale.
+- [x] Twelve later zero-command samples observed while Armed; the terminal
+  sample also had the receiver timed out and disconnected.
+- [x] A later reset-neutral snapshot observed Disarmed state with four zero
+  commands and the normal arming policy still loaded; this is consistent with
+  the configured timeout but is not represented as a continuous trace.
+- [x] No persistence write, direct `ActuatorCommand` write, flash, or erase was
+  sent during the normal arm/motor transaction.
+- [ ] Direct electrical PWM duty/cutoff timing and battery-powered flight
+  readiness remain unverified.
 
 ## Source and build
 
@@ -62,13 +71,15 @@ image, boot-readiness, mapping and reset-behavior results are recorded in the
 - [x] Owner-supplied photos, connector coordinates, A/B markings and fitted
   wire pairs establish the four documented motor corners and intended rotations.
 - [x] No propeller was installed during the current mapping and command checks.
-- [ ] A sequential visual spin-direction/assembled-continuity observation is
-  still required before propellers are fitted; telemetry cannot observe shaft direction.
+- [x] A user-supplied sequential four-corner recording establishes physical
+  fitted direction/continuity: front-right CCW, rear-right CW, rear-left CCW,
+  front-left CW. It is preserved as private evidence and is not represented as
+  synchronized with the later UART transaction.
 
 ## Flight gate
 
-- [ ] The current application source commit is merged and its exact installed
-  identity is attached to that merged history.
+- [x] The current application source commit is merged and its exact installed
+  identity is attached to merged history through PR #51 / `dc3345d`.
 - [ ] Battery, propeller, airframe, open-area, and emergency-disarm plan are
   explicitly documented.
 - [ ] The operator, not the AI assistant, has final authority for arming and
