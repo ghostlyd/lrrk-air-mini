@@ -45,6 +45,25 @@ static int xSemaphoreTakeRecursive(pthread_mutex_t *m,uint32_t ticks) {
 }
 static void xSemaphoreGiveRecursive(pthread_mutex_t *m) { assert(!pthread_mutex_unlock(m)); }
 #include "litewing_arming_maintenance.inc"
+static pthread_mutex_t coordination=PTHREAD_MUTEX_INITIALIZER;
+static pthread_cond_t gate=PTHREAD_COND_INITIALIZER;
+static pthread_t blocker;
+static int holding, release_blocker;
+static void assert_arming_inhibited(void) {
+    uint8_t armed=2;
+    pthread_mutex_lock(mutex);
+    assert(!lw_arming_write_allowed(FlightStatusHandle(),&armed,0,1));
+    pthread_mutex_unlock(mutex);
+}
+static void *hold_object_mutex(void *unused) {
+    (void)unused;
+    pthread_mutex_lock(mutex);
+    assert_arming_inhibited();
+    pthread_mutex_lock(&coordination); holding=1; pthread_cond_broadcast(&gate);
+    while (!release_blocker) pthread_cond_wait(&gate,&coordination);
+    pthread_mutex_unlock(&coordination); pthread_mutex_unlock(mutex);
+    return NULL;
+}
 BaseType_t xTaskCreate(TaskFunction_t fn,const char *name,uint32_t stack,void *arg,
                        UBaseType_t priority,TaskHandle_t *handle) {
     (void)name; (void)priority; assert(stack>=4096);
@@ -72,8 +91,15 @@ void vTaskDelay(TickType_t ticks) {
     assert(ticks); ++delay_calls;
     if (CASE("cleanup") && writes) {
         status(5,4); reject_new_valid_request();
+        assert_arming_inhibited();
         assert(PIOS_LiteWing_GCSReceiver_ClaimWireless(owner,1)==-1);
         now=3000000;
+    } else if (CASE("arming-cleanup")) {
+        status(5,4); reject_new_valid_request(); assert(writes==1);
+        pthread_mutex_lock(&coordination); release_blocker=1;
+        pthread_cond_broadcast(&gate); pthread_mutex_unlock(&coordination);
+        pthread_join(blocker,NULL);
+        assert_arming_inhibited();
     } else if (CASE("rollback") || CASE("getter-rollback")) {
         uint8_t wire[24]; assert(lw_usb_maintenance_status(wire,24)==24);
         now=wire[1]==5 ? 3000000 : 500;
@@ -104,6 +130,12 @@ enum lw_wifi_store_result lw_wifi_config_store(const uint8_t *blob,size_t size) 
     if (CASE("uncertain")) return LW_WIFI_STORE_UNCERTAIN;
     if (CASE("not-written")) return LW_WIFI_STORE_NOT_WRITTEN;
     if (CASE("invalid-store")) return LW_WIFI_STORE_INVALID;
+    if (CASE("arming-cleanup")) {
+        pthread_mutex_lock(&coordination);
+        pthread_create(&blocker,NULL,hold_object_mutex,NULL);
+        while (!holding) pthread_cond_wait(&gate,&coordination);
+        pthread_mutex_unlock(&coordination);
+    }
     return LW_WIFI_STORE_VERIFIED;
 }
 int main(int argc,char **argv) {
@@ -145,7 +177,7 @@ int main(int argc,char **argv) {
     /* Caller can wipe/change input immediately after submit returns. */
     memset(request+16,0,136);
     if (!setjmp(idle)) worker(worker_arg);
-    int stored=CASE("success") || CASE("cleanup") || CASE("uncertain") ||
+    int stored=CASE("success") || CASE("cleanup") || CASE("arming-cleanup") || CASE("uncertain") ||
                CASE("not-written") || CASE("invalid-store");
     assert(writes==(unsigned)stored);
     uint8_t result= !stored ? 0 : CASE("uncertain") ? 3 : CASE("not-written") ? 2 :
@@ -155,7 +187,10 @@ int main(int argc,char **argv) {
     assert(lw_usb_maintenance_submit(request,152)==-1); /* retained transaction ID */
     request[56]='z';
     assert(lw_usb_maintenance_submit(request,152)==-1); /* changed valid credentials, same ID */
-    if (CASE("cleanup")) assert(delay_calls==1 && writes==1);
+    if (CASE("cleanup") || CASE("arming-cleanup")) assert(delay_calls==1 && writes==1);
+    pthread_mutex_lock(mutex);
+    uint8_t arm=2; assert(lw_arming_write_allowed(FlightStatusHandle(),&arm,0,1));
+    pthread_mutex_unlock(mutex);
     if (CASE("timeout")) assert(now==2001000 && delay_calls==200);
     if (CASE("owner") || CASE("admission") || CASE("fresh-input") ||
         CASE("armed") || CASE("flight-read-error")) assert(stop_calls==0);

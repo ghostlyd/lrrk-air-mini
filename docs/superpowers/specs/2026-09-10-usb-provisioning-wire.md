@@ -69,9 +69,14 @@ transactions may replace the last result; callers must serialize provisioning.
 
 Worker ordering:
 
-1. Observe Disarmed; obtain a dedicated receiver maintenance reservation, which
+1. Atomically observe Disarmed and acquire an arming-inhibit token using the
+   object manager's existing mutex. Nonblocking lock acquisition must deny the
+   transaction if busy. Inhibit Armed/Arming writes at the actual full-object,
+   field and unpack mutation sites, while allowing Disarmed and unrelated writes.
+   Then obtain a dedicated receiver maintenance reservation, which
    excludes fresh receiver input, another reservation, a wireless owner and
-   in-flight USB writes/loads. Recheck Disarmed under the reservation.
+   in-flight USB writes/loads. Recheck the arming token and Disarmed under the
+   same object mutex; a snapshot without write exclusion is insufficient.
 2. Request cooperative Wi-Fi stop. Wait at most 2 seconds on a monotonic clock
    for quiescence; invalid/regressing time or timeout denies storage. Quiescence
    means no further resource/credential work, not proof that RTOS reclaimed
@@ -79,13 +84,17 @@ Worker ordering:
 3. Recheck Disarmed and the transaction's reservation before calling the scoped
    store exactly once. No late completion may revive a timed-out request.
 4. Record the store result, wipe pending credentials, and release only this
-   transaction's reservation using the checked token API. If release fails,
+   transaction's receiver reservation followed by its arming token using checked
+   token APIs. Retain arming inhibition while receiver cleanup is blocked. If release fails,
    retain its cleanup context, publish cleanup blocked, and retry only cleanup.
    Do not repeat the credential write. Reject new provisioning until cleanup
    finishes. Radio restart stays inhibited until an explicit reboot.
 
 Use `PIOS_LiteWing_GCSReceiver_BeginMaintenance`, `MaintenanceHeld`, and
-`EndMaintenance`. The short handshake admission token remains separate and
+`EndMaintenance` together with `lw_arming_maintenance_begin`, `held`, and `end`.
+Arming tokens serialize against FlightStatus mutation using the object-manager
+mutex, not the receiver spinlock. No mutex remains held across shutdown or NVS.
+The short handshake admission token remains separate and
 must not be held across shutdown waits. Both token kinds share the monotonic
 generation counter and mutually exclude each other. Verify maintenance use
 against the actual controller/receiver tasks; its name alone does not prove exclusion.
