@@ -1,0 +1,111 @@
+"""Exclusive macOS operator provisioning serial boundary, never an AI tool.
+
+Opening a serial port may cause driver/platform line transients despite setting
+DTR/RTS false before open. This code never deliberately resets or flashes.
+The caller must save pending credentials before constructing a writable stream.
+"""
+import math
+import time
+
+from .live_uavtalk import _Synchronizer
+from .usb_provisioning_wire import submission, status_request
+
+
+class SerialProvisioningError(OSError):
+    """Static messages exclude serial identity, raw input and credentials."""
+
+
+class ProvisioningSerial:
+    timeout = .02
+    write_timeout = .2
+
+    def __init__(self, device, location, *, request=None, serial_factory=None,
+                 comports=None, clock=time.monotonic):
+        self._port = None
+        self._request = None
+        self._attempted = False
+        try:
+            if (type(device) is not str or not device.startswith('/dev/cu.')
+                    or type(location) is not str or not location):
+                raise ValueError()
+            if request is not None:
+                if (type(request) is not bytes or len(request) != 163
+                        or submission(request[10:26], request[26:-1]) != request):
+                    raise ValueError()
+            if serial_factory is None or comports is None:
+                import serial
+                from serial.tools import list_ports
+                serial_factory = serial_factory or serial.Serial
+                comports = comports or list_ports.comports
+            matches = [item for item in comports() if item.device == device
+                       and item.vid == 0x1a86 and item.pid == 0x7522 and item.location == location]
+            if len(matches) != 1:
+                raise ValueError()
+            self._port = serial_factory(port=None, baudrate=57600, timeout=self.timeout,
+                                        write_timeout=self.write_timeout, exclusive=True)
+            self._port.dtr = False
+            self._port.rts = False
+            self._port.port = device
+            self._port.open()
+            self._align(clock)
+            self._request = request
+        except Exception:
+            self.close()
+            raise SerialProvisioningError('provisioning serial setup failed') from None
+
+    def _align(self, clock):
+        start = previous = clock()
+        if type(start) not in (int, float) or not math.isfinite(start) or start < 0:
+            raise ValueError()
+        if self.write(status_request()) != len(status_request()):
+            raise ValueError()
+        sync = _Synchronizer()
+        for _ in range(4096):
+            now = clock()
+            if (type(now) not in (int, float) or not math.isfinite(now)
+                    or now < previous or now - start >= 2):
+                raise ValueError()
+            previous = now
+            data = self.read(1)  # stop exactly at the first CRC-valid frame boundary
+            now = clock()
+            if (type(now) not in (int, float) or not math.isfinite(now)
+                    or now < previous or now - start >= 2):
+                raise ValueError()
+            previous = now
+            if sync.feed(data):
+                sync.finish()
+                return
+        raise ValueError()
+
+    def read(self, maximum):
+        try:
+            if self._port is None or type(maximum) is not int or not 1 <= maximum <= 256:
+                raise ValueError()
+            data = self._port.read(maximum)
+            if type(data) is not bytes or len(data) > maximum:
+                raise ValueError()
+            return data
+        except Exception:
+            raise SerialProvisioningError('provisioning serial read failed') from None
+
+    def write(self, packet):
+        if self._port is None or type(packet) is not bytes:
+            raise SerialProvisioningError('provisioning write denied')
+        if packet != status_request():
+            if self._request is None or packet != self._request or self._attempted:
+                raise SerialProvisioningError('provisioning write denied')
+            self._attempted = True  # an exception/short write consumes permission
+            self._request = None
+        try:
+            return self._port.write(packet)
+        except Exception:
+            raise SerialProvisioningError('provisioning serial write failed') from None
+
+    def close(self):
+        port, self._port = self._port, None
+        self._request = None
+        if port is not None:
+            try:
+                port.close()
+            except Exception:
+                raise SerialProvisioningError('provisioning serial close failed') from None
