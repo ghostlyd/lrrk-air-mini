@@ -10,10 +10,10 @@ settings remained unchanged. A bounded 30-second telemetry observation then
 found the board running, Disarmed and producing changing filtered IMU and
 attitude state.
 
-The user confirmed all four propellers removed and the battery absent before
-device access. No receiver values, settings writes, arming requests or motor
-commands were sent. **Arming remains Always Disarmed.** This is USB bench
-evidence, not powered-operation or flight clearance.
+The user confirmed that all four propellers were removed and that the battery
+was absent before device access. No receiver values, settings writes, arming
+requests or motor commands were sent. **Arming remains Always Disarmed.** This
+is USB bench evidence, not powered-operation or flight clearance.
 
 ## Exact merged candidate
 
@@ -65,7 +65,7 @@ reset.
 After the runtime observation, a fresh 32 KiB settings readback again had
 SHA-256
 `c886cec93e0b5c383e6382ef478570487dde31e6d95f02c34698a6eeca9a6f7a`
-and compared byte-for-byte equal with the pre-install copy. No whole-chip erase,
+and was byte-for-byte identical to the pre-install copy. No whole-chip erase,
 settings format, bootloader or partition rewrite, security override or eFuse
 change occurred. Recovery images and raw logs remain private.
 
@@ -79,7 +79,7 @@ NinjaPilot codec and XML paths were unchanged at pinned revision
 `ac77304a58de6c8bd552f94668b46903adb71cb2`.
 
 At 57600 baud, the probe transmitted 119 allowed telemetry status/handshake
-frames and 364 named object requests. It sent no control or settings packet,
+frames and 364 named object requests. It sent no control or settings packets,
 reported no failure and released the serial port. The private capture contains
 120,541 bytes at SHA-256
 `b137c50d97b288d99a08a0178de1a601e588d887103b4beb68e92aa10451e589`.
