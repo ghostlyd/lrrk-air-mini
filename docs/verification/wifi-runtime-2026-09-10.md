@@ -61,3 +61,21 @@ symbols. Two new test methods and eight existing flashfs methods pass.
 
 This increment is not called from startup yet. It is not evidence of a working
 AP, installed firmware, motor safety, or flight readiness.
+
+## Verified checkpoint
+
+At `77dd2e9`, the full local port suite passed: 373 run, 361 passed, 12 skipped.
+The pinned ESP-IDF build passed with persistence-link verification and a
+0x5f900-byte image. Uncalled loader functions may be linker-discarded; this build
+does not prove runtime reachability. Review accepted the credential boundary
+with no Critical/Important findings. Explicit tests for oversized stored blobs,
+missing config key, and new-version initialization failure remain coverage gaps.
+
+Startup inspection also established a required integration correction: pinned
+`flight/modules/System/systemmod.c` dequeues ObjectPersistence events and can
+call `UAVObjLoad`/`UAVObjLoadSettings` while disarmed. An event accepted before
+the UART admission guard could execute afterward. Before admission is wired,
+serialize this consumer-side persistence operation against wireless reservation;
+blocking only new UART writes does not close the race. Board boot settings
+setters are in target `firmware/pios_board.c`, before module startup, but the
+System queue is a continuing writer and needs its own exclusion test.
