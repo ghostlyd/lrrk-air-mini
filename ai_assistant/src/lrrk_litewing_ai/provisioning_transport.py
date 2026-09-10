@@ -82,6 +82,14 @@ def _exchange(port, transaction, request, clock):
                 if frame.object_id == SUBMISSION_ID:
                     parse_receipt(packet)  # ACK/NACK alone never proves outcome
                     continue
+                # A delayed reply to an alignment poll can precede this
+                # transaction's status. Ignore only the exact already-validated
+                # pre-submission payload for a DIFFERENT transaction. It cannot
+                # prove any outcome or extend the bounded exchange deadline.
+                if (frame.message_type == 0x20 and frame.instance_id == 0
+                        and frame.payload == getattr(port, 'alignment_status', None)
+                        and frame.payload[4:20] != transaction):
+                    continue
                 status = parse_status(packet, transaction)
                 if status.persisted_and_finished:
                     return TransactionResult('verified', status)

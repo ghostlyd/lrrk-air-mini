@@ -95,6 +95,23 @@ class TransportTests(unittest.TestCase):
         self.assertFalse(result.verified)
         self.assertEqual(port.writes, [])
 
+    def test_alignment_duplicates_never_prove_storage_or_hide_other_mismatches(self):
+        old = status(bytes(16), 1, 0)
+        malformed = bytearray(old)
+        malformed[1] = 0x22
+        malformed[-1] = crc8(malformed[:-1])
+        for index, chunks in enumerate(([old],
+                                        [status(b'u' * 16), status(self.tx)],
+                                        [bytes(malformed), status(self.tx)])):
+            directory = self.directory / str(index)
+            directory.mkdir(mode=0o700)
+            port = Port(chunks)
+            port.alignment_status = old[10:-1]
+            result = save_and_submit(directory, self.tx, self.blob, port, clock=port.clock)
+            self.assertFalse(result.verified)
+            self.assertEqual(port.writes.count(submission(self.tx, self.blob)), 1)
+            self.assertLessEqual(port.time, 5.03)
+
     def test_interleaved_telemetry_and_receipts_are_not_acknowledged(self):
         def frame(kind, identifier):
             body = struct.pack('<BBHIH', 0x3c, kind, 10, identifier, 0)
