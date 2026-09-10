@@ -103,3 +103,13 @@ renamed upstream implementation as its callback. Review accepted this scope.
 Before runtime admission is wired, still audit direct setters and deferred
 callbacks for settings mutations. No AP/socket task or live board operation is
 introduced by this change.
+
+## AP implementation build checkpoint
+
+`9f810df` adds the actual ESP-IDF AP lifecycle adapter and focused SDK-boundary
+tests. The full pinned ESP-IDF build passed, including the persistence-link
+check. The image remains 0x5f9b0 because startup does not reference this adapter
+yet; linker garbage collection is not evidence of AP runtime reachability.
+No radio was activated. AP review and removal of machine-local test dependencies
+are in progress. The authenticated UDP owning task, startup hook, provisioning,
+operator input and telemetry integration still remain.
