@@ -117,6 +117,35 @@ class SystemSchedulerTests(unittest.TestCase):
         manual_source = output / "manualcontrol.c"
         if os.environ.get("LRRK_TEST_ORIGINAL_MANUAL") == "1":
             manual_source = flight / "flight/modules/ManualControl/manualcontrol.c"
+        manual_mutant = os.environ.get("LRRK_TEST_MANUAL_START_MUTANT")
+        if manual_mutant:
+            mutations = {
+                "start-order": ("if (!manualControlResourcesReady || manualControlStartAttempted) return -1;",
+                    "if (manualControlStartAttempted) return -1;"),
+                "repeat-start": ("if (!manualControlResourcesReady || manualControlStartAttempted) return -1;",
+                    "if (!manualControlResourcesReady) return -1;"),
+                "configuration-result": ("if (configuration_check() != 0) return -1;",
+                    "if (configuration_check() != 0 && false) return -1;"),
+                "alarm-result": ("if (AlarmsClear(SYSTEMALARMS_ALARM_MANUALCONTROL) != 0) return -1;",
+                    "if (AlarmsClear(SYSTEMALARMS_ALARM_MANUALCONTROL) != 0 && false) return -1;"),
+                "connection-system": ("if (SystemSettingsConnectCallback(configurationUpdatedCb) != 0) return -1;",
+                    "if (SystemSettingsConnectCallback(configurationUpdatedCb) != 0 && false) return -1;"),
+                "connection-manual": ("if (ManualControlSettingsConnectCallback(configurationUpdatedCb) != 0) return -1;",
+                    "if (ManualControlSettingsConnectCallback(configurationUpdatedCb) != 0 && false) return -1;"),
+                "connection-command": ("if (ManualControlCommandConnectCallback(commandUpdatedCb) != 0) return -1;",
+                    "if (ManualControlCommandConnectCallback(commandUpdatedCb) != 0 && false) return -1;"),
+                "callback-wiring": ("SystemSettingsConnectCallback(configurationUpdatedCb)",
+                    "SystemSettingsConnectCallback(commandUpdatedCb)"),
+                "skip-dispatch": ("    (void)PIOS_CALLBACKSCHEDULER_Dispatch(callbackHandle);",
+                    "    /* mutant omitted initial dispatch */"),
+                "check-dispatch-return": ("    (void)PIOS_CALLBACKSCHEDULER_Dispatch(callbackHandle);",
+                    "    if (PIOS_CALLBACKSCHEDULER_Dispatch(callbackHandle) != pdTRUE) return -1;"),
+            }
+            old, new = mutations[manual_mutant]
+            code = manual_source.read_text()
+            if code.count(old) != 1 or old == new:
+                raise AssertionError("ManualControl start mutation anchor changed")
+            manual_source.write_text(code.replace(old, new))
         (output / "manual_module.c").write_text(
             "#define ManualControlInitialize RealManualControlInitialize\n"
             "#define ManualControlStart RealManualControlStart\n"
@@ -148,6 +177,42 @@ class SystemSchedulerTests(unittest.TestCase):
                 result = subprocess.run([str(self.manual_binary), "manual-" + case],
                     capture_output=True, text=True, timeout=5)
                 self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_manual_control_start_rejects_premature_and_repeated_calls(self):
+        for case in ("premature", "nominal"):
+            with self.subTest(case=case):
+                result = subprocess.run([str(self.manual_binary), "manual-start-" + case],
+                    capture_output=True, text=True, timeout=5)
+                self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_manual_control_start_errors_reach_system_failure_gate(self):
+        for case in ("configuration", "alarm", "connection-1", "connection-2", "connection-3"):
+            with self.subTest(case=case):
+                result = subprocess.run([str(self.manual_binary), "manual-start-" + case],
+                    capture_output=True, text=True, timeout=5)
+                self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_manual_control_start_negative_controls_reject_regressions(self):
+        cases = {
+            "start-order": "test_manual_control_start_rejects_premature_and_repeated_calls",
+            "repeat-start": "test_manual_control_start_rejects_premature_and_repeated_calls",
+            "configuration-result": "test_manual_control_start_errors_reach_system_failure_gate",
+            "alarm-result": "test_manual_control_start_errors_reach_system_failure_gate",
+            "connection-system": "test_manual_control_start_errors_reach_system_failure_gate",
+            "connection-manual": "test_manual_control_start_errors_reach_system_failure_gate",
+            "connection-command": "test_manual_control_start_errors_reach_system_failure_gate",
+            "callback-wiring": "test_manual_control_start_rejects_premature_and_repeated_calls",
+            "skip-dispatch": "test_manual_control_start_rejects_premature_and_repeated_calls",
+            "check-dispatch-return": "test_manual_control_start_rejects_premature_and_repeated_calls",
+        }
+        for mutant, method in cases.items():
+            with self.subTest(mutant=mutant):
+                result = subprocess.run([sys.executable, "-m", "unittest",
+                    "test_system_scheduler.SystemSchedulerTests." + method],
+                    cwd=ROOT / "tests", env=dict(os.environ, LRRK_TEST_MANUAL_START_MUTANT=mutant),
+                    capture_output=True, text=True, timeout=30)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn("line ", result.stderr)
 
     def test_required_module_errors_reach_real_boot_callers(self):
         for prefix in ("", "early-"):

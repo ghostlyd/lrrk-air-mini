@@ -111,6 +111,7 @@
       "ports/ninjapilot-litewing/prepare_stabilization.py",
       "ports/ninjapilot-litewing/target/startup/input_start.inc",
       "ports/ninjapilot-litewing/target/startup/actuator_start.inc",
+      "ports/ninjapilot-litewing/target/startup/manual_control_start.inc",
       "ports/ninjapilot-litewing/target/include/litewing_thrust_control.h",
       "ports/ninjapilot-litewing/target/include/litewing_settings_recovery.h",
       "ports/ninjapilot-litewing/target/pios_litewing_flashfs_nvs.c",
