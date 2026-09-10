@@ -30,6 +30,7 @@ openai = ["openai-agents==0.22.1"]
 
 [project.scripts]
 litewing-ai = "lrrk_litewing_ai.cli:main"
+litewing-provision = "lrrk_litewing_ai.provisioning_cli:main"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
