@@ -114,7 +114,12 @@ set(PIOS_COMMON_SRCS
 # Generate a hash-checked target-only parser adaptation. Keep the pinned
 # external files unchanged and capture packet age before receive-path locks.
 set(LITEWING_UAVTALK_DIR "${CMAKE_CURRENT_BINARY_DIR}/litewing_uavtalk")
-file(GLOB LITEWING_ID_HEADERS CONFIGURE_DEPENDS "${UAVOSYNTH}/*.h")
+if(CMAKE_SCRIPT_MODE_FILE)
+    # ESP-IDF's requirements pass includes this component in script mode.
+    file(GLOB LITEWING_ID_HEADERS "${UAVOSYNTH}/*.h")
+else()
+    file(GLOB LITEWING_ID_HEADERS CONFIGURE_DEPENDS "${UAVOSYNTH}/*.h")
+endif()
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
     "${PORT_ROOT}/verify_usb_ids.py" ${LITEWING_ID_HEADERS})
 execute_process(COMMAND python3 "${PORT_ROOT}/verify_usb_ids.py"
