@@ -81,6 +81,10 @@ class AuditLog:
         timestamp = event_at or datetime.now(timezone.utc)
         if timestamp.tzinfo is None or timestamp.utcoffset() is None:
             raise ValueError("event_at must be timezone-aware")
+        # Another instance may have appended since construction or our last write.
+        # Callers serialize appends; concurrent writers require external locking.
+        records = validate_replay(self.path) if self.path.exists() else []
+        self._previous_hash = records[-1]["event_hash"] if records else ""
         record = {
             "event_id": str(uuid.uuid4()),
             "event_type": event_type,

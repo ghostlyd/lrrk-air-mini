@@ -21,6 +21,27 @@ tuple for exact identity matching; bare strings are rejected.
 Policy replacement through either `runtime.policy` or
 `runtime.approvals.policy` clears the cached preflight report.
 
+Optional lifecycle recording is configured with
+`AssistantRuntime(audit=AuditLog(path, session_id))`; the CLI attaches its
+`--audit-log` destination to that same runtime. Without a recorder, library
+use creates no audit file. Every actual lifecycle transition appends one
+`proposal_ready`, `proposal_approved`, `proposal_rejected`, `proposal_expired`,
+or `proposal_aborted` event. These events contain only state/from-state,
+proposal ID/hash, snapshot hash, policy version/hash, allowlisted action kind,
+and an enumerated reason code. They exclude rationale, expected effect,
+reject/abort prose, human tokens and token hashes, raw observations, and
+provider content. See [lifecycle audit fields](../docs/AI_ASSISTANT.md#advisory-lifecycle-audit-events).
+
+Audited proposal/approval creation cannot succeed if recording fails.
+Invalidation still clears approval and enters a terminal state before raising
+`ApprovalAuditError`; policy/observation updates also clear cached reports.
+A write error disables further grants from that machine, including retries
+after ambiguous writes. Inspect storage and replay before starting a new
+runtime with a new proposal. Terminal records cannot be aborted again.
+Sequential machines/log instances may share a file; callers must serialize
+access, since this is not a concurrent-writer or crash-atomic transaction log.
+An audited `APPROVED` record remains advisory and grants no flight execution.
+
 The default mode is offline. It needs no API key, network, firmware change, or
 flight-controller write path:
 

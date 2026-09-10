@@ -96,6 +96,84 @@ PYTHONPATH=ai_assistant/src python3 -m unittest discover \
   -s ai_assistant/tests -p 'test_*.py'
 ```
 
+## Advisory lifecycle audit events
+
+Attach an existing native log with `AssistantRuntime(audit=audit_log)`.
+The CLI passes its configured `--audit-log` to the runtime, including the
+real `propose_action` path. A standalone state machine accepts
+`ApprovalStateMachine(operator_session, transition_recorder=audit_log.append)`.
+The optional callback takes `(event_type, payload)` synchronously; it must
+complete its append before returning and raise on failure. The state machine
+does not choose a destination or import CLI behavior. Omitting the recorder
+keeps offline library use available without creating a file implicitly.
+
+Each actual transition produces exactly one native event, with an empty
+`source` and the existing event ID, UTC append timestamp, session ID,
+previous hash and event hash envelope. Use a non-secret audit session ID.
+All five event payloads have exactly these keys:
+`from_state`, `state`, `reason_code`, `proposal_id`, `proposal_hash`,
+`snapshot_hash`, `policy_version`, `policy_hash`, and `action_kind`.
+Identity metadata refers to the bound proposal, including on drift; a changed
+snapshot or policy is not copied into the terminal event. `action_kind` is
+restricted to the existing advisory allowlist.
+
+| Event | Target state | Enumerated reason codes |
+| --- | --- | --- |
+| `proposal_ready` | `PROPOSAL_READY` | `PROPOSAL_CREATED` |
+| `proposal_approved` | `APPROVED` | `HUMAN_APPROVED` |
+| `proposal_rejected` | `REJECTED` | `HUMAN_REJECTED` |
+| `proposal_expired` | `EXPIRED` | `TIMEOUT` |
+| `proposal_aborted` | `ABORTED` | `EXPLICIT_ABORT`, `SNAPSHOT_DRIFT`, `POLICY_DRIFT`, `SAFETY_REGRESSION` |
+
+Reasons are selected internally, never copied from human/model prose. No
+lifecycle event contains rationale, expected-effect text, free-form reject or
+abort reasons, human tokens or token hashes, raw telemetry, prompts/responses,
+exception text or classes, credentials, environment data, serial bytes, or
+hidden reasoning. This schema applies to lifecycle events; the existing
+snapshot/preflight and provider event schemas retain their separate scopes.
+Proposal hashes bind the existing full proposal, but hashes are not encryption;
+keep the audit file private.
+
+Legal transitions are `IDLE` or a terminal state into `PROPOSAL_READY`,
+`PROPOSAL_READY` into `APPROVED` or a terminal state, and `APPROVED` into
+`EXPIRED` or `ABORTED`. Aborting an idle or terminal machine raises
+`ApprovalError`, including repeated abort calls. Rejected operations that do
+not change state append nothing. Unchanged telemetry, equivalent policies,
+early expiry checks and repeated currentness checks also append nothing.
+An operation that discovers expiry or drift records the terminal transition
+even when approval is refused. Expiry remains checked by existing API calls;
+there is no new background timer.
+
+Recording is fail closed. A proposal is installed only after its event append
+returns; approval is granted only after its event append returns. Failures
+raise `ApprovalAuditError("advisory transition audit write failed")`, suppress
+backend exception text, and leave no new in-memory approval. Safety
+invalidation, explicit abort and rejection instead enter their non-approved
+terminal state and clear the token digest before attempting the append.
+Policy and telemetry updates still take effect and clear cached preflight
+reports if that append fails. Failed recording never restores approval.
+
+Any recorder failure disables subsequent grants from that machine because
+the append may have written some or all bytes before raising. There is no
+automatic retry or synthetic completion event. A failed terminal write can
+leave an older `APPROVED` event as the last disk record; it does not make the
+in-memory approval current. Stop using that runtime, inspect the storage
+failure and `validate_replay(path)`, and create a fresh proposal/runtime only
+after resolving it. Replay validates file integrity; it does not reconstruct
+or restore live approval, establish freshness, or prove an operation returned
+success after a crash or ambiguous append failure.
+
+Multiple machines can share one `AuditLog`, and independent log instances can
+append sequentially to the same session/file, including across repeated
+sessions. Each append revalidates the existing chain and refreshes its head.
+This costs a full-file replay per append. Callers must serialize operations;
+simultaneous writers require external locking. The existing JSONL writer is
+not a crash-atomic or fsync-backed transaction store. No cross-process
+concurrency or crash-recovery guarantee is added by this change.
+
+Even a successfully recorded `APPROVED` state is only an advisory human-review
+record. It exposes no model approval tool, command sink, or flight execution.
+
 ## Live provider
 
 Live mode is opt-in and requires the `openai` extra plus an approved

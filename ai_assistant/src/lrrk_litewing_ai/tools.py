@@ -4,7 +4,8 @@ from __future__ import annotations
 
 from typing import Any, Dict, Optional
 
-from .approval import APPROVED, PROPOSAL_READY, ApprovalStateMachine
+from .approval import ApprovalStateMachine
+from .audit import AuditLog
 from .models import TelemetrySnapshot
 from .safety import PreflightReport, SafetyPolicy, run_preflight
 
@@ -66,6 +67,7 @@ class AssistantRuntime:
         latest: Optional[TelemetrySnapshot] = None,
         previous: Optional[TelemetrySnapshot] = None,
         last_report: Optional[PreflightReport] = None,
+        audit: Optional[AuditLog] = None,
     ):
         self.operator_session = operator_session
         self.latest = latest
@@ -75,6 +77,7 @@ class AssistantRuntime:
             operator_session,
             policy=policy,
             on_policy_change=self._clear_last_report,
+            transition_recorder=audit.append if audit is not None else None,
         )
 
     def _clear_last_report(self) -> None:
@@ -90,13 +93,10 @@ class AssistantRuntime:
         self.approvals.policy = policy
 
     def ingest(self, snapshot: TelemetrySnapshot) -> None:
-        proposal = self.approvals.proposal
-        if (self.approvals.state in (PROPOSAL_READY, APPROVED)
-                and proposal is not None and snapshot.snapshot_hash() != proposal.snapshot_hash):
-            self.approvals.abort("telemetry changed after proposal creation")
         self.previous = self.latest
         self.latest = snapshot
         self.last_report = None
+        self.approvals.invalidate_for_snapshot(snapshot)
 
 
 def get_latest_telemetry(runtime: AssistantRuntime) -> Dict[str, Any]:

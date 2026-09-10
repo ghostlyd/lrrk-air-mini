@@ -65,7 +65,6 @@ def _live_prompt(runtime: AssistantRuntime, prompt: str) -> str:
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
     args = build_parser().parse_args(argv)
-    runtime = AssistantRuntime(operator_session=args.session)
     audit = None
     try:
         live_values = (args.device, args.usb_location, args.private_capture, args.duration)
@@ -126,6 +125,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         print("telemetry input blocked: no snapshots", file=sys.stderr)
         return 2
 
+    runtime = AssistantRuntime(operator_session=args.session, audit=audit)
     for snapshot in snapshots:
         runtime.ingest(snapshot)
         if audit:
