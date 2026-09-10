@@ -82,3 +82,22 @@ state corruption. Full suite: 220 run, 211 passed, 9 optional SDK skips.
 UDP admission review pending. Real-C interoperability, radio provisioning,
 physical input-device handling, telemetry-only export and board AP/task lifecycle
 remain required. All network tests used local loopback with synthetic keys.
+
+## Python-to-C interoperability
+
+Review accepted UDP admission at `3822bf1` and independently passed 26 host
+admission/operator/UDP tests. A new POSIX loopback fixture compiles the actual C
+controller, session, wire codec, mbedTLS HMAC/HKDF and receiver with fatal
+ASan/UBSan. It verifies the Python admit_udp/OperatorUDP sequence through sampled
+admission, all eight receiver-channel values, and STOP invalidation while
+retaining ownership. A separate process verifies input invalidation during
+silence without STOP. Both scenarios pass with real monotonic clocks and the
+existing protocol deadlines; deadlines were not widened for the test.
+
+Platform time, synthetic mapping/object storage and deterministic test-only RNG
+are fixture adapters. This is neither ESP-IDF AP code nor physical motor-output
+or radio-load evidence. All datagrams bind to 127.0.0.1; no board is contacted.
+The initial fixture compile exposed a macOS POSIX feature-macro visibility issue
+for INADDR_LOOPBACK, corrected by inet_pton of the explicit loopback address.
+Interoperability fixture review is pending; production AP/task integration,
+provisioning, physical input and telemetry-only assistance remain unfinished.
