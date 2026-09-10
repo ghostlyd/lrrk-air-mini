@@ -47,10 +47,14 @@ static void status(uint8_t phase,uint8_t result) {
     assert(!memcmp(wire+4,request,16));
     for (unsigned i=20;i<24;++i) assert(wire[i]==0);
 }
+static void reject_new_valid_request(void) {
+    uint8_t another[152]={3}; memcpy(another+16,expected,136);
+    assert(lw_usb_maintenance_submit(another,sizeof(another))==-1);
+}
 void vTaskDelay(TickType_t ticks) {
     assert(ticks); ++delay_calls;
     if (CASE("cleanup") && writes) {
-        status(5,4); assert(lw_usb_maintenance_submit(request,sizeof(request))==-1);
+        status(5,4); reject_new_valid_request();
         assert(PIOS_LiteWing_GCSReceiver_ClaimWireless(owner,1)==-1);
         now=3000000;
     } else if (CASE("rollback")) {
@@ -74,7 +78,7 @@ enum lw_wifi_store_result lw_wifi_config_store(const uint8_t *blob,size_t size) 
     assert(PIOS_LiteWing_GCSReceiver_Unpack(&receiver,0,(uint8_t *)&receiver,now)==-1);
     FlightStatusData flight; assert(FlightStatusGet(&flight)==0 && flight.Armed==0);
     assert(lw_wifi_command_is_quiescent()); ++writes;
-    assert(lw_usb_maintenance_submit(request,sizeof(request))==-1);
+    reject_new_valid_request();
     if (CASE("cleanup")) now=500; /* actual receiver refuses token cleanup */
     if (CASE("uncertain")) return LW_WIFI_STORE_UNCERTAIN;
     if (CASE("not-written")) return LW_WIFI_STORE_NOT_WRITTEN;
@@ -125,6 +129,8 @@ int main(int argc,char **argv) {
     status(6,result);
     memcpy(request+16,expected,136);
     assert(lw_usb_maintenance_submit(request,152)==-1); /* retained transaction ID */
+    request[56]='z';
+    assert(lw_usb_maintenance_submit(request,152)==-1); /* changed valid credentials, same ID */
     if (CASE("cleanup")) assert(delay_calls==1 && writes==1);
     if (CASE("timeout")) assert(now==2001000 && delay_calls==200);
     if (CASE("owner") || CASE("admission") || CASE("fresh-input") ||
@@ -133,5 +139,9 @@ int main(int argc,char **argv) {
     if (CASE("owner")) assert(PIOS_LiteWing_GCSReceiver_ReleaseWireless(owner,1)==0);
     now=4000000;
     assert(PIOS_LiteWing_GCSReceiver_ClaimWireless(owner,1)==0);
+    assert(PIOS_LiteWing_GCSReceiver_ReleaseWireless(owner,1)==0);
+    request[0]=3;
+    assert(lw_usb_maintenance_submit(request,152)==0); /* next transaction accepted only after cleanup */
+    status(2,0);
     return 0;
 }
