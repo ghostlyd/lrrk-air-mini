@@ -74,12 +74,15 @@ class WifiCommandTests(unittest.TestCase):
         sys.path.insert(0, str(ROOT.parents[1]/'ai_assistant/src'))
         try:
             from lrrk_litewing_ai.pilot_udp import admit_udp
+            from lrrk_litewing_ai.advisory_handoff import AdvisoryTelemetryInbox
+            from lrrk_litewing_ai.tools import AssistantRuntime, run_preflight_tool
         finally:
             sys.path.pop(0)
         proc = subprocess.Popen([str(binary), mode], stdout=subprocess.PIPE,
                                 stderr=subprocess.PIPE, text=True)
         host = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         link = None
+        inbox, runtime = AdvisoryTelemetryInbox(), AssistantRuntime()
         try:
             host.bind(('127.0.0.1', 0))
             with selectors.DefaultSelector() as ready:
@@ -98,7 +101,11 @@ class WifiCommandTests(unittest.TestCase):
                 link.step(sample)
                 observation = link.take_telemetry()
                 if observation is not None:
-                    snapshot = observation.snapshot
+                    self.assertTrue(inbox.offer(observation))
+                    self.assertIs(inbox.ingest_latest(runtime), observation)
+                    snapshot = runtime.latest
+                    self.assertIs(snapshot, observation.snapshot)
+                    self.assertNotEqual(run_preflight_tool(runtime)['overall'], 'PASS')
                     self.assertIsNone(snapshot.link_age_ms)
                     self.assertIsNone(observation.sample_age_us)
                     if snapshot.attitude.roll_deg is not None:
@@ -127,6 +134,7 @@ class WifiCommandTests(unittest.TestCase):
             self.assertEqual(proc.returncode, 0, stderr)
             self.assertIn('command task fixture passed', stdout)
         finally:
+            inbox.close()
             if link is not None: link.close()
             host.close()
             if proc.poll() is None: proc.kill()
