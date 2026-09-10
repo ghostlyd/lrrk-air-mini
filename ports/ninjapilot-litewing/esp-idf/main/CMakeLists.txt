@@ -338,6 +338,9 @@ idf_component_register(
         esp_system
         esp_hw_support
         nvs_flash
+        esp_wifi
+        esp_netif
+        esp_event
 )
 
 add_custom_target(lrrk_wrapper_identity ALL
