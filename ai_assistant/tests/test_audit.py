@@ -57,7 +57,7 @@ class AuditTests(unittest.TestCase):
 
             with (
                 mock.patch("lrrk_litewing_ai.jsonl._IS_WINDOWS", True, create=True),
-                mock.patch("lrrk_litewing_ai.jsonl.os.fchmod", None),
+                mock.patch("lrrk_litewing_ai.jsonl.os.fchmod", None, create=True),
                 mock.patch.dict(sys.modules, {"oschmod": backend}),
             ):
                 log.append("snapshot_received", {"id": "one"})
