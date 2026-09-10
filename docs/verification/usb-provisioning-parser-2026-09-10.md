@@ -104,5 +104,7 @@ Two seconds is an acceptance deadline, not a guaranteed RAM-erasure deadline:
 SDK/COM ring copies and arbitrary corrupt-ID frames are outside these wipes.
 Ordinary telemetry is not subject to the reserved-frame lifetime.
 
-Worker startup and durable private host-bundle/serial integration remain pending.
+At `261421c`, worker startup and durable private host-bundle/serial integration
+remained pending. Startup was subsequently wired at `714e00d`; see
+`usb-maintenance-startup-2026-09-10.md`. Host integration remains pending.
 No board access, provisioning, flashing or actuation was performed for this slice.

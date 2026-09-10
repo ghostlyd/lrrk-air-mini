@@ -24,6 +24,11 @@ followed by the existing 136-byte LWCF v1 blob. The declared frame size is 162
 bytes, with a separate trailing CRC (163 bytes total). Other types, instances,
 lengths, malformed blobs, zero IDs and invalid CRC must not enqueue storage.
 
+Reserved-frame assembly has a two-second total acceptance lifetime from SYNC,
+not a sliding inactivity timeout. Check expiry on data and idle feeds and after
+blocking lookups before dispatch. Cleanup is cooperative with the UART task;
+the deadline does not guarantee erasure of every RAM copy within two seconds.
+
 An ACK means only accepted for asynchronous processing. A NACK means this
 submission was not accepted; it is not a statement about the outcome of any
 earlier request. A lost ACK is ambiguous. No submission response echoes the
