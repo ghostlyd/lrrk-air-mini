@@ -286,3 +286,149 @@ can be checked against a digest. Successful stdout remains sensitive. A
 process termination/interruption or storage failure can leave an unmatched
 request; it must never be interpreted as completion. No crash-recovery or
 storage-availability guarantee is introduced by this additive slice.
+
+## Review round 1 — unencodable provider response
+
+Status: COMPLETE. Fixed only the Important finding that UTF-8 response
+encoding happened outside the audited provider-operation exception boundary.
+
+Implementation commit: `e14297ac8eb6ba7d7c6754dbc04c4d96a9856548`
+(`fix: audit provider response encoding failures`). The report update is a
+following documentation commit; resolve its exact hash with:
+
+```sh
+git log -1 --format=%H -- .superpowers/sdd/2026-09-09-openai-litewing-assistant/task-7-report.md
+```
+
+Files changed in the implementation commit:
+
+- `ai_assistant/tests/test_cli_provider_audit.py`: add a real-CLI/AuditLog
+  regression whose substituted external provider runner returns
+  `"private-surrogate-response-5d72\ud800"`.
+- `ai_assistant/src/lrrk_litewing_ai/cli.py`: prepare UTF-8 response bytes and
+  completed-result metadata inside the existing audited provider-operation
+  `try`; append the prepared completed result only after that boundary exits.
+
+No other production, test, or operator-documentation file changed in the
+implementation commit. The report is the only additional file changed for
+review evidence.
+
+### RED evidence
+
+The focused regression was added before changing production code. Command,
+run with no API key and OS-enforced network denial:
+
+```sh
+/usr/bin/sandbox-exec -p '(version 1)(allow default)(deny network*)' /usr/bin/env -u OPENAI_API_KEY PYTHONPATH=ai_assistant/src TMPDIR=/private/tmp/lrrk-air-mini-provider-audit-chain/.superpowers/sdd/2026-09-09-openai-litewing-assistant/tmp /opt/homebrew/bin/python3 -m unittest -v ai_assistant/tests/test_cli_provider_audit.py
+```
+
+Expected RED output:
+
+```text
+test_failure_records_only_exception_class_and_never_discloses_message ... ok
+test_missing_key_attempt_is_audited_without_importing_sdk ... ok
+test_no_audit_log_preserves_success_and_creates_no_audit_file ... ok
+test_no_audit_log_still_sanitizes_provider_failure ... ok
+test_offline_and_no_prompt_validation_do_not_append_provider_events ... ok
+test_success_is_chained_before_and_after_runner_and_preserves_stdout ... ok
+test_unencodable_response_records_one_blocked_result_without_content ... FAIL
+
+AssertionError: 5 != 6
+
+Ran 7 tests in 0.015s
+FAILED (failures=1)
+```
+
+The test reached real audit replay successfully, then found only the two
+snapshot/preflight pairs and `provider_request`. This proved that
+`answer.encode("utf-8")` raised after the provider attempt without appending
+the required sixth `provider_result` event.
+
+### GREEN evidence
+
+After the minimal production change, the same focused command produced:
+
+```text
+test_failure_records_only_exception_class_and_never_discloses_message ... ok
+test_missing_key_attempt_is_audited_without_importing_sdk ... ok
+test_no_audit_log_preserves_success_and_creates_no_audit_file ... ok
+test_no_audit_log_still_sanitizes_provider_failure ... ok
+test_offline_and_no_prompt_validation_do_not_append_provider_events ... ok
+test_success_is_chained_before_and_after_runner_and_preserves_stdout ... ok
+test_unencodable_response_records_one_blocked_result_without_content ... ok
+
+Ran 7 tests in 0.015s
+OK
+```
+
+Focused CLI regression command:
+
+```sh
+/usr/bin/sandbox-exec -p '(version 1)(allow default)(deny network*)' /usr/bin/env -u OPENAI_API_KEY PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=ai_assistant/src TMPDIR=/private/tmp/lrrk-air-mini-provider-audit-chain/.superpowers/sdd/2026-09-09-openai-litewing-assistant/tmp /opt/homebrew/bin/python3 -m unittest discover -s ai_assistant/tests -p 'test_cli*.py' -v
+```
+
+```text
+Ran 15 tests in 0.023s
+OK
+```
+
+Full offline assistant command:
+
+```sh
+/usr/bin/sandbox-exec -p '(version 1)(allow default)(deny network*)' /usr/bin/env -u OPENAI_API_KEY PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=ai_assistant/src TMPDIR=/private/tmp/lrrk-air-mini-provider-audit-chain/.superpowers/sdd/2026-09-09-openai-litewing-assistant/tmp /opt/homebrew/bin/python3 -m unittest discover -s ai_assistant/tests -p 'test_*.py'
+```
+
+```text
+......................live-agent mode blocked
+..telemetry input blocked: invalid JSONL at line 1
+..................................sssssssss...............................................
+Ran 114 tests in 0.045s
+OK (skipped=9)
+```
+
+105 tests passed. The nine optional SDK tests skipped because the SDK is not
+installed; no skipped test is counted as passing. Existing stale-fixture
+preflight output and negative-case diagnostics are expected test output.
+
+### Regression and privacy proof
+
+The new regression substitutes only `_live_prompt`, then executes real
+`cli.main`, telemetry ingestion, private AuditLog writes, and
+`validate_replay`. It proves:
+
+- generic `assistant request blocked` stderr and exit 3;
+- a valid six-record hash chain;
+- event order ending `provider_request`, then `provider_result`;
+- exactly one `provider_result`;
+- blocked payload containing only `outcome`, current `snapshot_hash`, and
+  `error_class: "UnicodeEncodeError"`; and
+- absence of both the distinctive response marker and the complete surrogate
+  response from stdout, stderr, and raw audit text.
+
+The pre-existing success test remained green for plain and JSON modes, proving
+ordinary successful stdout and completed metadata behavior remain unchanged.
+
+### Security/privacy self-review
+
+- Response encoding, byte length, digest, and completed-result payload
+  preparation now share the existing protected provider-operation boundary.
+  Any exception during that preparation follows the same metadata-only blocked
+  path as provider setup/execution failures.
+- The blocked event records only the exception class name. It does not attempt
+  to serialize, print, hash, or otherwise retain the unencodable response.
+- The completed audit append remains after successful metadata preparation.
+  Audit write failure semantics were not changed.
+- `git diff --check` passed. The implementation diff contains only the CLI
+  exception-boundary move and the focused regression.
+- `git diff --exit-code -- ports ai_assistant/src/lrrk_litewing_ai/{audit,providers,tools,approval,adapters,live_uavtalk,uavtalk,uavobjects}.py`
+  returned 0. Firmware, UAVTalk transport, provider tools, approval/proposal
+  authority, and AuditLog internals are unchanged.
+- Every test ran with `OPENAI_API_KEY` removed and network denied by
+  `sandbox-exec`. No provider SDK, real provider, network, hardware, push, PR,
+  or merge was used.
+
+### Concerns
+
+No blocking concern. The nine optional SDK tests remain intentionally skipped,
+and this regression uses a substituted external provider runner. It proves the
+CLI/AuditLog failure behavior without making a live-provider claim.
