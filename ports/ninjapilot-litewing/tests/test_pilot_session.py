@@ -50,7 +50,8 @@ class FirmwareAdmissionTests(unittest.TestCase):
                    "-I", str(source / "include"), "-I", str(ROOT / "target/include")]
         command += [str(source / "library" / name) for name in ("md.c", "sha256.c", "hkdf.c", "platform_util.c")]
         command += [str(ROOT / "target" / name) for name in
-                    ("litewing_pilot_session.c", "litewing_pilot_wire.c", "pios_litewing_pilot_mac.c", "pios_litewing_pilot_keys.c")]
+                    ("litewing_pilot_wire.c", "pios_litewing_pilot_mac.c", "pios_litewing_pilot_keys.c")]
+        command += [str(ROOT / "tests/pilot_session_fault_fixture.c")]
         command += [str(out / "access.c"), "-o", str(out / "session.so")]
         cls.compile_command = command
         result = subprocess.run(command, capture_output=True, text=True, timeout=60)
@@ -58,6 +59,7 @@ class FirmwareAdmissionTests(unittest.TestCase):
             raise AssertionError(result.stderr)
         cls.lib = C.CDLL(str(out / "session.so"))
         cls.lib.state_size.restype = C.c_size_t
+        cls.lib.session_faults.argtypes = [C.c_int, C.c_int]
         cls.lib.phase.argtypes = [C.c_void_p]
         cls.lib.retired_keys.argtypes = [C.c_void_p]
         cls.lib.exhaust_sequence.argtypes = [C.c_void_p]
@@ -72,6 +74,7 @@ class FirmwareAdmissionTests(unittest.TestCase):
             C.c_void_p, C.c_size_t, C.POINTER(C.c_size_t)]
 
     def setUp(self):
+        self.lib.session_faults(0, 0)
         self.state = C.create_string_buffer(self.lib.state_size())
         self.lib.lw_session_init(self.state)
         self.root, self.host = b"r" * 32, b"h" * 32
@@ -375,3 +378,34 @@ class FirmwareAdmissionTests(unittest.TestCase):
                 self.assertEqual(self.issue(20100, capacity=capacity)[0], 2)
                 self.assertEqual(self.lib.phase(self.state), 0)
                 self.assertEqual(self.lib.retired_keys(self.state), 1)
+
+    def test_kdf_and_handshake_reply_mac_failure_clear_partial_state(self):
+        hello = PilotAdmission(self.root, self.host).begin(100)
+        for kdf, mac in ((1, 0), (0, 2)):
+            self.lib.lw_session_init(self.state)
+            self.lib.session_faults(kdf, mac)
+            self.assertEqual(self.receive(hello, 100)[0], 2)
+            self.assertEqual(self.lib.phase(self.state), 0)
+            self.assertEqual(self.lib.retired_keys(self.state), 1)
+
+    def test_claim_reply_and_challenge_mac_failure_retire_keys(self):
+        client, challenge = self.start()
+        claim = client.receive_challenge(challenge, 200)
+        self.lib.session_faults(0, 2)  # CLAIM validates, ACCEPT signing fails.
+        self.assertEqual(self.receive(claim, 300)[0], 2)
+        self.assertEqual(self.lib.retired_keys(self.state), 1)
+        self.lib.session_faults(0, 0)
+        self.active()
+        self.lib.session_faults(0, 1)
+        self.assertEqual(self.issue(20100)[0], 2)
+        self.assertEqual(self.lib.retired_keys(self.state), 1)
+
+    def test_incoming_mac_failure_never_prepares_or_advances_control(self):
+        frame, keys = self.active()
+        wire = self.control_wire(frame, keys)
+        self.lib.session_faults(0, 1)
+        self.assertEqual(self.prepare(wire, 500), 0)
+        self.assertEqual(self.commit(600)[0], 0)
+        self.lib.session_faults(0, 0)
+        self.assertEqual(self.prepare(wire, 700), 3)
+        self.assertEqual(self.commit(800)[1].sequence, 2)
