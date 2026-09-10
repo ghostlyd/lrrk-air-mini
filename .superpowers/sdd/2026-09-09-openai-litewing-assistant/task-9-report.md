@@ -3,6 +3,12 @@
 Date: 2026-09-10. Implementation complete locally; no independent review,
 publication, provider smoke, or hardware validation is claimed.
 
+**Review status:** The original implementation below received three Important
+independent-review findings supplied by the user. Fix round 1 is recorded at
+the end of this report and supersedes the original storage/latch/concurrency
+limitations where stated. The earlier sections preserve the original TDD
+history; no independent re-review acceptance is claimed for the fixes.
+
 ## Scope and commits
 
 - Worktree: `/private/tmp/lrrk-air-mini-provider-audit-chain`.
@@ -319,3 +325,222 @@ reconstruct approval automatically from the last event.
 No push, PR, merge, external message, dependency installation, provider/API-key
 operation, firmware action, or hardware operation was performed. The branch
 and worktree are preserved for review.
+
+## Task 9 fix round 1 — independent-review Important findings
+
+Starting HEAD: `c69ef71693bab2349ad8d277e641221aabf83816`, verified clean on
+`codex/provider-audit-chain` in the same requested worktree. The three supplied
+review findings were reproduced before any production changes. No subagents,
+dependencies, external provider, network, credential, firmware or hardware
+operation was used. The receiving-code-review and TDD skills guided this round.
+
+Implementation/tests/operator docs commit:
+`fbc3571ee9fd320a6470d245674dbb9b0a7e591a`
+(`fix: make native advisory audit appends failure-atomic`). This report update
+is a separate subsequent commit.
+
+### Corrected behavior
+
+1. Strict audit replay requires LF record terminators. CRLF is readable;
+   bare CR is not a commit delimiter. A nonempty file missing its final LF is
+   rejected even when the tail is syntactically complete JSON. Native append
+   refuses it without adding bytes. Explicit truncated-tail inspection drops
+   only the final unterminated suffix before UTF-8 decoding, including valid
+   JSON, incomplete UTF-8, or whitespace, and strictly checks every terminated
+   record. It never edits the file. The telemetry input adapter retains its
+   previous final-newline behavior through the default helper option.
+2. Native audit append now holds a process-wide reentrant lock over private
+   descriptor setup, pre-append replay/head refresh, one binary record-plus-LF
+   write, exact byte-count checking, post-append replay validation, and rollback.
+   Replay must contain exactly one additional expected event before returning.
+   Missing, corrupt, duplicate, short, partial-then-raise and complete-then-raise
+   writes cannot return success. Rollback truncates the held inode to its
+   original length; new-file rollback closes and identity-checks the created
+   file before unlinking it. Existing empty files remain present and empty.
+   Successful restoration preserves exact prior bytes, length and existence;
+   permissions remain private or are tightened. No unsafe old mode is restored.
+3. A recording failure still permanently blocks grant transitions, but no
+   longer suppresses a distinct terminal recording attempt. After failed
+   approval, recovered storage can record explicit abort, snapshot/policy
+   invalidation, expiry or rejection. Still-failing storage is attempted once,
+   then the generic error surfaces with terminal state and no approval digest.
+   Later grants remain blocked and repeated terminal calls append nothing.
+
+The native low-level writer receives the descriptor owned by the rollback
+transaction. The existing standalone `append_record(path, record)` form also
+retains its private-file protections. The optional Windows binary-open flag
+avoids text translation. The permission setter and regular-file/path identity
+guard are unchanged, including the Windows ACL backend and its fail-closed
+missing-dependency behavior. The transaction checks the target before and
+after permission setup and again before commit/cleanup.
+
+Custom transition recorders must themselves provide the same failure-atomic
+contract: commit exactly one validated event on return, or restore prior
+storage before raising. The state machine cannot undo arbitrary callback
+side effects. The earlier report's append-then-raise example is now exercised
+inside the native transaction and its orphan event is removed before failure
+surfaces; this is a storage-layer fix, not an arbitrary-callback guarantee.
+
+### Test environment and baseline
+
+All tests used the same command prefix recorded above:
+
+```sh
+/usr/bin/sandbox-exec -p '(version 1)(allow default)(deny network*)' \
+  /usr/bin/env -u OPENAI_API_KEY PYTHONDONTWRITEBYTECODE=1 \
+  PYTHONPATH=ai_assistant/src /opt/homebrew/bin/python3
+```
+
+Interpreter: existing CPython 3.14.7 on macOS. Baseline full suite at the
+requested HEAD: `Ran 157 tests in 0.088s`, `OK (skipped=9)` — **148 passed,
+9 skipped, zero failures/errors**. No dependency installation was needed.
+
+### RED before production changes — all three findings
+
+Added `test_audit_atomicity.py`, strengthened the existing no-retry test with
+exact no-orphan assertions, and added the recovered/still-failed terminal
+matrix. The focused suite comprised these names:
+
+```text
+ai_assistant.tests.test_audit_atomicity
+ai_assistant.tests.test_transition_audit.TransitionAuditTests.test_ambiguous_write_failure_cannot_retry_a_success_transition
+ai_assistant.tests.test_transition_audit.TransitionAuditTests.test_failed_approval_latches_grants_but_attempts_distinct_terminal_record
+```
+
+It was run with `unittest.defaultTestLoader.loadTestsFromNames(...)` and
+`unittest.TextTestRunner`, printing each assertion's diagnostic and returning
+exit 1 when unsuccessful. An initial diagnostic run produced **9 tests,
+26 failures and 3 errors**. The three errors were production rejections of
+uncommitted tails in explicit inspection mode: a `UnicodeDecodeError`,
+`ValueError: blank JSONL line at 2`, and
+`ValueError: audit record 1 is missing event_id`. Tests were adjusted to report
+these missing behaviors as assertions and isolate each corrupt-write case;
+no production code changed between the two RED invocations.
+
+The definitive RED run reproduced **9 tests, 29 failing assertions, 0 errors,
+0 skips**, exit 1. Complete failure accounting:
+
+| Test / cases | Failures | Exact diagnostic or byte comparison |
+| --- | ---: | --- |
+| `test_append_refuses_complete_unterminated_tail_without_mutation` | 1 | `AssertionError: ValueError not raised` |
+| `test_append_then_raise_restores_exact_prior_bytes_and_existence`: missing, empty and populated destinations, each complete/partial append | 6 | Exact pre/post byte-or-None comparisons failed with `failed append changed pre-append bytes/existence`; complete writes retained the failed event, partial writes retained `b'{"event_at":"2026'` as added bytes |
+| `test_complete_json_without_newline_is_not_committed`, complete JSON | 1 | `AssertionError: ValueError not raised` |
+| Same test, invalid UTF-8 suffix | 1 | `AssertionError: uncommitted tail was parsed: UnicodeDecodeError` |
+| Same test, whitespace suffix | 1 | `AssertionError: uncommitted tail was parsed: ValueError` |
+| `test_post_append_validation_rejects_missing_or_corrupt_record`, missing/corrupt/duplicate | 3 | `AssertionError: ValueError not raised` |
+| `test_short_binary_write_cannot_commit_an_event` | 1 | `AssertionError: OSError not raised` |
+| `test_truncated_mode_skips_only_unterminated_tail` | 1 | `AssertionError: complete JSON tail was validated as a committed record` |
+| `test_two_logs_serialize_refresh_write_and_rollback`, success/failure | 2 | `AssertionError: True is not false : second append overtook uncommitted first append` |
+| Strengthened `test_ambiguous_write_failure_cannot_retry_a_success_transition`, proposal/approval | 2 | Exact pre/post byte-or-None comparisons failed with `native failed grant left an orphan success event` |
+| `test_failed_approval_latches_grants_but_attempts_distinct_terminal_record`, still failing: abort/snapshot/policy/expire/reject | 5 | `AssertionError: 0 != 1 : terminal recorder was not attempted` |
+| Same test, recovered: abort/snapshot/policy/expire/reject | 5 | `AssertionError: recovered recorder was suppressed for distinct terminal transition` |
+
+Random event IDs and timestamps make full byte-diff strings vary between runs;
+the tests compare the exact byte snapshots, not event counts alone. Both
+absent-file and existing-empty-file states are explicitly distinct assertions.
+
+The concurrency test holds the first low-level append behind an event while
+a second preconstructed `AuditLog` tries to append. It witnessed the second
+writer finishing prematurely in RED. In GREEN the second writer waits until
+the first commits or rolls back. The failure case also proves rollback cannot
+remove a subsequent writer's committed event.
+
+### Initial GREEN and additional boundary review
+
+Implemented the three fixes minimally, then ran:
+
+```sh
+-m unittest ai_assistant.tests.test_audit_atomicity \
+  ai_assistant.tests.test_transition_audit ai_assistant.tests.test_audit \
+  ai_assistant.tests.test_approval ai_assistant.tests.test_tools \
+  ai_assistant.tests.test_cli_provider_audit
+```
+
+Result: **73 tests passed**, no failures/errors/skips
+(`Ran 73 tests in 0.318s`). Existing Windows permission-backend tests passed
+unchanged, including their exact permission-call expectations.
+
+Added five file-boundary tests. The single-write framing, symlink/nonregular
+destination, permission-failure rollback, and destination-replacement controls
+passed immediately and are not counted as RED evidence. The fifth exposed
+the existing parser's `splitlines()` acceptance of bare CR between records:
+
+```text
+test_strict_replay_requires_lf_between_committed_records:
+AssertionError: ValueError not raised
+Ran 5 tests in 0.005s
+FAILED (failures=1)
+```
+
+Changed strict audit parsing to split on LF while retaining CRLF acceptance.
+The same focused modules then passed **78 tests**, no failures/errors/skips
+(`Ran 78 tests in 0.322s`). This is an additional RED-before-fix iteration.
+
+Added two further integration controls without production changes:
+
+- Actual `os.write` calls that write a partial or complete event and then
+  raise, for both new proposal and approval: exact original bytes/existence,
+  no orphan event, pending/idle state, and no approval digest.
+- Two concurrent machines with independently constructed logs and different
+  sessions, each completing three proposal/approval/abort lifecycles: one
+  replayable 18-event chain, six unique proposals, correct per-proposal order,
+  unchanged privacy key sets and empty sources.
+
+Final focused result: **80 passed**, no failures/errors/skips
+(`Ran 80 tests in 0.333s`). Distinct definitive RED evidence in this fix round:
+**30 failing assertions** (29 + 1). Repeated diagnostics and initially passing
+controls are not counted as additional RED evidence.
+
+### Full suite, scope, leaks and compatibility
+
+Full suite suffix: `-m unittest discover -s ai_assistant/tests -p 'test_*.py'`.
+
+```text
+Ran 172 tests in 0.359s
+OK (skipped=9)
+163 passed, 9 unchanged optional SDK skips, 0 failures/errors
+```
+
+The fix adds fifteen test methods and strengthens one prior method. Existing
+Task 7/8 and Task 9 privacy/lifecycle tests remain green. Expected CLI failure
+messages and stale synthetic-fixture output are unchanged. No provider or
+hardware operation was exercised.
+
+Staged checks before the implementation commit:
+
+- Exact file-set assertion passed: `approval.py`, `audit.py`, `jsonl.py`,
+  `test_audit_atomicity.py`, `test_transition_audit.py`, `ai_assistant/README.md`
+  and `docs/AI_ASSISTANT.md` (all code/tests under their existing package paths).
+- AST comparison against `c69ef71693bab2349ad8d277e641221aabf83816` confirmed
+  unchanged `TOOL_SCHEMAS`, `ALLOWED_ACTIONS`, `TransitionReason`, provider
+  execution function, `_private_mode_setter`, and `_require_regular_target`.
+- Added source/test lines had no matches for subprocess/socket/network clients,
+  serial calls, environment/key lookups, credential/bearer/private-key patterns,
+  or flight-command additions (`rg` exit 1, empty result).
+- Changed Python source/tests parse with Python 3.11, 3.12, 3.13 and 3.14 grammar.
+  Runtime tests executed only on macOS CPython 3.14.7; Windows ACL backend
+  branches were simulated by the existing tests. No native Windows/Linux or
+  alternate Python runtime execution is claimed.
+- The explicit key-absence assertion passed under the deny-network sandbox.
+- `git diff --check` and `git diff --cached --check` passed.
+
+Declared Python/platform support and dependencies are unchanged. No firmware,
+transport, provider, CLI/runtime wiring, policy or model-visible schema change
+was made in this round. Custom recorders now have an explicit failure-atomic
+contract. Audit files with unterminated or bare-CR-delimited records must be
+inspected/repaired explicitly; telemetry adapter input compatibility remains
+unchanged. An audited `APPROVED` state is still advisory only.
+
+The shared lock serializes native operations in one process, including aliases
+and readers using `validate_replay`. Callers still serialize each mutable state
+machine, and coordinate cross-process or external file access themselves.
+The writer's rollback contract covers append exceptions while the held file
+and rollback operations remain available. It is not fsync-backed crash
+recovery, cannot restore a destination replaced by an uncoordinated actor,
+and cannot overcome filesystem failures that prevent truncate/unlink. Those
+conditions still require storage inspection; they never authorize a new
+in-memory approval. No arbitrary callback rollback guarantee is claimed.
+
+No push, PR, merge, external message, installation, subagent, provider/key,
+firmware or hardware operation occurred. The branch/worktree are retained for
+the next independent review.
