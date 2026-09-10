@@ -17,6 +17,28 @@ static void lw_usb_wipe_rx(UAVTalkConnectionData *connection)
     for(size_t i=0;i<UAVTALK_MAX_PACKET_LENGTH;++i) p[i]=0;
 }
 
+/* Total frame lifetime, not an idle timer: trickled bytes cannot renew it.
+ * Invoked by the sole receive task on data and idle ticks. No timer callback
+ * races parser storage. The UART task's scheduling bounds cleanup latency. */
+static int lw_usb_expire(UAVTalkConnectionData *connection)
+{
+    UAVTalkInputProcessor *p=&connection->iproc;
+    if(p->state!=UAVTALK_STATE_INSTID && p->state!=UAVTALK_STATE_TIMESTAMP &&
+       p->state!=UAVTALK_STATE_DATA && p->state!=UAVTALK_STATE_CS &&
+       p->state!=UAVTALK_STATE_COMPLETE) return 0;
+    if(!lw_usb_reserved(p->objId)) return 0;
+    const int64_t now=esp_timer_get_time();
+    if(p->usb_started_us<0 || now<p->usb_observed_us ||
+       now-p->usb_started_us>=INT64_C(2000000)) {
+        lw_usb_wipe_rx(connection);
+        p->state=UAVTALK_STATE_SYNC;
+        ++connection->stats.rxErrors;
+        return 1;
+    }
+    p->usb_observed_us=now;
+    return 0;
+}
+
 /* Caller owns the connection mutex. Replies contain no credential bytes and
  * never touch the generic object packer or its transmit buffer. */
 static int32_t lw_usb_reply(UAVTalkConnectionData *connection,uint8_t type,uint32_t id,
@@ -47,10 +69,19 @@ static int32_t lw_usb_receive(UAVTalkConnectionData *connection)
     UAVTalkInputProcessor *p=&connection->iproc;
     int32_t result=-1;
     xSemaphoreTakeRecursive(connection->lock,portMAX_DELAY);
+    if(lw_usb_expire(connection)) {
+        xSemaphoreGiveRecursive(connection->lock);
+        return -1;
+    }
     /* A runtime collision disables BOTH routes, including an ordinary object
      * which later appears under either ID. Never unpack or expose that object. */
     const int collision=UAVObjGetByID(LW_USB_SUBMIT_ID)!=NULL ||
                         UAVObjGetByID(LW_USB_STATUS_ID)!=NULL;
+    /* Registry lookup may wait for its mutex. It cannot extend frame life. */
+    if(lw_usb_expire(connection)) {
+        xSemaphoreGiveRecursive(connection->lock);
+        return -1;
+    }
     if(!collision && p->instId==0 && p->objId==LW_USB_SUBMIT_ID &&
        p->type==UAVTALK_TYPE_OBJ_ACK && p->length==152 && p->packet_size==162) {
         const int accepted=lw_usb_maintenance_submit(connection->rxBuffer,152)==0;

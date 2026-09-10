@@ -70,8 +70,26 @@ def prepare(source, output):
     code = replace_exact(code, anchor, anchor +
         "\n    /* SYNC may consume the final byte of this chunk. Wait for TYPE. */\n"
         "    if (length <= (*position)) return false;")
+    code = replace_exact(code,
+        "    iproc->type    = 0;\n    iproc->state   = UAVTALK_STATE_TYPE;",
+        "    iproc->usb_started_us = esp_timer_get_time();\n"
+        "    iproc->usb_observed_us = iproc->usb_started_us;\n"
+        "    iproc->type    = 0;\n    iproc->state   = UAVTALK_STATE_TYPE;")
+    code = replace_exact(code,
+        "    if (iproc->state == UAVTALK_STATE_ERROR || iproc->state == UAVTALK_STATE_COMPLETE) {",
+        "    (void)lw_usb_expire(connection);\n"
+        "    if (iproc->state == UAVTALK_STATE_ERROR || iproc->state == UAVTALK_STATE_COMPLETE) {")
+    code = replace_exact(code,
+        "    connection->stats.rxBytes += processedBytes;",
+        "    (void)lw_usb_expire(connection);\n    connection->stats.rxBytes += processedBytes;")
+    code = replace_exact(code,
+        "    UAVTalkRxState state = UAVTALK_STATE_ERROR;\n\n    while (position < length)",
+        "    UAVTalkRxState state = UAVTALK_STATE_ERROR;\n"
+        "    if (!length) return UAVTalkProcessInputStreamQuiet(connectionHandle, rxbuffer, 0, &position);\n\n"
+        "    while (position < length)")
     header = replace_exact(inputs["inc/uavtalk_priv.h"], "    uint16_t rxPacketLength;",
-        "    uint16_t rxPacketLength;\n    int64_t rx_completed_us; /* local CRC-complete time, never sender time */")
+        "    uint16_t rxPacketLength;\n    int64_t rx_completed_us; /* local CRC-complete time, never sender time */\n"
+        "    int64_t usb_started_us;\n    int64_t usb_observed_us;")
     # Fully validate before updating generated artifacts. Avoid touching mtime
     # on a no-op configure, so a build does not perpetually recompile itself.
     output.mkdir(parents=True, exist_ok=True)

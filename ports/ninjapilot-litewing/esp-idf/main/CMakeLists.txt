@@ -138,6 +138,16 @@ execute_process(COMMAND python3 "${PORT_ROOT}/prepare_uavtalk.py"
 if(NOT LITEWING_UAVTALK_RC EQUAL 0)
     message(FATAL_ERROR "Pinned UAVTalk freshness adaptation failed")
 endif()
+set(LITEWING_USB_TELEMETRY_DIR "${CMAKE_CURRENT_BINARY_DIR}/litewing_usb_telemetry")
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+    "${PORT_ROOT}/prepare_usb_telemetry.py"
+    "${FLIGHT}/modules/Telemetry/telemetry.c")
+execute_process(COMMAND python3 "${PORT_ROOT}/prepare_usb_telemetry.py"
+    --source "${FLIGHT}/modules/Telemetry" --output "${LITEWING_USB_TELEMETRY_DIR}"
+    RESULT_VARIABLE LITEWING_USB_TELEMETRY_RC)
+if(NOT LITEWING_USB_TELEMETRY_RC EQUAL 0)
+    message(FATAL_ERROR "Pinned USB telemetry cleanup adaptation failed")
+endif()
 # Selected startup services must report allocation/registration failures to
 # the board gate. Adapt only hash-checked build copies, never the pinned tree.
 set(LITEWING_STARTUP_DIR "${CMAKE_CURRENT_BINARY_DIR}/litewing_startup")
@@ -233,7 +243,7 @@ set(NINJA_MODULE_SRCS
     "${FLIGHT}/modules/ManualControl/pathfollowerhandler.c"
     "${FLIGHT}/modules/ManualControl/pathplannerhandler.c"
     "${FLIGHT}/modules/ManualControl/takeofflocationhandler.c"
-    "${FLIGHT}/modules/Telemetry/telemetry.c"
+    "${LITEWING_USB_TELEMETRY_DIR}/telemetry.c"
     "${LITEWING_SCHEDULER_DIR}/systemmod.c"
 )
 

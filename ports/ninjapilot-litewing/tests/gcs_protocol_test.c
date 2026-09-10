@@ -108,6 +108,31 @@ static void provisioning(UAVTalkConnection con,const char *name) {
     if(!strcmp(name,"provision-host")) {
         assert(fread(packet,1,163,stdin)==163 && fgetc(stdin)==EOF);
     }
+    if(!strncmp(name,"provision-expire",16)) {
+        if(!strcmp(name,"provision-expire-complete") || !strcmp(name,"provision-expire-lookup")) {
+            uint8_t position=0;
+            assert(UAVTalkProcessInputStreamQuiet(con,packet,163,&position)==UAVTALK_STATE_COMPLETE);
+            if(!strcmp(name,"provision-expire-lookup")) lookup_delay=2000000;
+            else now_us+=2000000;
+            assert(UAVTalkReceiveObject(con)==-1);
+        } else {
+            UAVTalkProcessInputStream(con,packet,100);
+            assert(!maintenance_calls && !transmitted_count);
+            if(!strcmp(name,"provision-expire-drip") || !strcmp(name,"provision-expire-rollback")) {
+                now_us+=1000000;
+                UAVTalkProcessInputStream(con,packet+100,1);
+            }
+            now_us=!strcmp(name,"provision-expire-rollback") ? 500000 : 2001000;
+            UAVTalkProcessInputStream(con,NULL,0);
+        }
+        assert(!maintenance_calls && !transmitted_count);
+        for(unsigned i=0;i<UAVTALK_MAX_PACKET_LENGTH;++i)
+            assert(((UAVTalkConnectionData *)con)->rxBuffer[i]==0);
+        /* Cleanup must permit a fresh frame, not a stale resumed payload. */
+        UAVTalkProcessInputStream(con,packet,163);
+        assert(maintenance_calls==1 && maintenance_queued);
+        return;
+    }
     if(!strcmp(name,"provision-relay")) {
         uint8_t position=0;
         assert(UAVTalkProcessInputStreamQuiet(con,packet,length,&position)==UAVTALK_STATE_COMPLETE);

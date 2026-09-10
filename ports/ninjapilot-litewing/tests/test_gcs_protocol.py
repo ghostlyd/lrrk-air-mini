@@ -58,6 +58,10 @@ class GcsProtocolTests(unittest.TestCase):
                      "collision1-submit","collision2-submit","collision1-status","collision2-status",
                      "write-fail","write-short"):
             with self.subTest(case=case): self.run_case("provision-"+case)
+    def test_abandoned_credentials_expire_without_new_bytes(self):
+        for case in ("provision-expire", "provision-expire-drip", "provision-expire-rollback",
+                     "provision-expire-complete", "provision-expire-lookup"):
+            with self.subTest(case=case): self.run_case(case)
     def test_python_submission_and_c_responses_interoperate(self):
         sys.path.insert(0, str(ROOT.parents[1] / "ai_assistant/src"))
         from lrrk_litewing_ai.usb_provisioning_wire import (
