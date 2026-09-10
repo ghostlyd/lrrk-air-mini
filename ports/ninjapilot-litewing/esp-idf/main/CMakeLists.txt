@@ -332,6 +332,7 @@ idf_component_register(
         "$ENV{IDF_PATH}/components/freertos/FreeRTOS-Kernel/include/freertos"
     REQUIRES
         driver
+        esp_adc
         esp_timer
         esp_system
         esp_hw_support
