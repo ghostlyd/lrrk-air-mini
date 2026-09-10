@@ -62,3 +62,24 @@ Receiver scaleChannel implementation's zero-denominator handling. The eventual
 platform adapter must additionally validate channel groups, unsupported inputs,
 current FlightStatus, and settings snapshot consistency. This predicate alone
 does not read settings, authenticate samples, reserve input, or activate radio.
+
+## Authenticated admission samples
+
+The host admission peer can now encode an explicit tuple of eight bounded integer
+samples as a 16-byte network-order CLAIM payload. Its legacy no-samples form
+remains handshake-only. The session core validates either legacy empty or bounded
+16-byte forms; the runtime controller independently requires the authenticated
+16-byte form and calibrated neutral predicate before entering the core CLAIM
+transition. Session/sequence/challenge freshness checks remain in that transition.
+Malformed/non-neutral traffic still runs expiry processing and cannot obtain an
+ACCEPT or receiver reservation. Controller initialization now accepts the mapping
+snapshot; a missing mapping leaves admission unable to pass neutral validation.
+
+Seven host admission tests and 39 firmware pilot test methods pass, including
+16 real controller scenarios. Added fixtures verify encoded sample bytes, strict
+host types/bounds, empty-CLAIM rejection and signed off-neutral rejection.
+The earlier missing-sample API/struct test failures preceded implementation.
+Source review, final build and full regression for this change remain pending.
+Actual persisted-settings snapshot capture, group validation and settings-drift
+exclusion remain required in the platform adapter; this change does not pretend
+the test-supplied mapping is a live settings observation.

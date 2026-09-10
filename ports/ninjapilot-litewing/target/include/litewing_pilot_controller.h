@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: GPL-3.0-or-later */
 #pragma once
 #include "litewing_pilot_session.h"
+#include "litewing_pilot_neutral.h"
 
 /* Trusted transport controller, never a model/tool API. A single owning task
  * or mutex MUST serialize every call, including observations and send failure.
@@ -16,8 +17,13 @@ struct lw_pilot_controller {
     struct lw_pilot_session session;
     uint8_t owner[16]; /* Kept after retirement to invalidate/release reservation. */
     int owned;
+    struct lw_pilot_channel mapping[5];
 };
-void lw_controller_init(struct lw_pilot_controller *controller);
+/* mapping is a validated persisted-settings snapshot; NULL disables admission.
+ * Caller must prevent settings changes during admission/ownership, or fault the
+ * controller and rebuild this snapshot before another admission. */
+void lw_controller_init(struct lw_pilot_controller *controller,
+    const struct lw_pilot_channel mapping[5]);
 enum lw_session_result lw_controller_receive(struct lw_pilot_controller *controller,
     const uint8_t *wire, size_t size, const uint8_t root[32], int64_t now_us,
     int disarmed, int neutral, lw_session_rng random, void *random_ctx,

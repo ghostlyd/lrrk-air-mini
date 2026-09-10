@@ -4,7 +4,7 @@ import test_pilot_receiver
 
 class PilotControllerTests(test_pilot_receiver.PilotReceiverTests):
     fixture = "pilot_controller_integration.c"
-    extra_sources = ("litewing_pilot_controller.c",)
+    extra_sources = ("litewing_pilot_controller.c", "litewing_pilot_neutral.c")
     cases = ("publish", "stop", "timeout", "fault", "not-neutral", "armed", "busy",
              "queued", "tick-queued", "stale-queue", "future-receive", "clock-rollback",
-             "challenge", "challenge-failure")
+             "challenge", "challenge-failure", "empty-claim", "unsafe-claim")

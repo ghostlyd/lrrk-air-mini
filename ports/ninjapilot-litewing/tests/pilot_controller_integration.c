@@ -28,7 +28,10 @@ int main(int argc, char **argv)
     uint32_t receiver_id;
     assert(PIOS_GCSRCVR_Init(&receiver_id) == 0);
     struct lw_pilot_controller controller;
-    lw_controller_init(&controller);
+    const struct lw_pilot_channel mapping[5] = {
+        {1,1000,1500,2000}, {2,1000,1500,2000}, {3,1000,1500,2000},
+        {4,1000,1500,2000}, {5,1000,1500,2000}};
+    lw_controller_init(&controller, mapping);
     struct lw_pilot_mac_key root, key;
     memset(root.bytes, 'r', 32);
     struct lw_wire_frame frame = {0};
@@ -42,6 +45,11 @@ int main(int argc, char **argv)
         random_bytes,&counter,reply,sizeof(reply),&written)==LW_HANDSHAKE_REPLY);
     memset(&frame,0,sizeof(frame));
     frame.kind=3; frame.sequence=1;
+    frame.payload_len=16;
+    for (unsigned i=0;i<8;++i) { frame.payload[2*i]=5; frame.payload[2*i+1]=220; }
+    frame.payload[0]=3; frame.payload[1]=232;
+    if (!strcmp(argv[1],"empty-claim")) frame.payload_len=0;
+    if (!strcmp(argv[1],"unsafe-claim")) frame.payload[1]=233;
     memcpy(frame.session,controller.session.session,16);
     memcpy(frame.challenge,controller.session.challenge,16);
     memcpy(key.bytes,controller.session.keys.c2b,32);
@@ -55,9 +63,11 @@ int main(int argc, char **argv)
     int neutral=strcmp(argv[1],"not-neutral")!=0;
     enum lw_session_result result=lw_controller_receive(&controller,wire,size,root.bytes,
         clock_us,disarmed,neutral,random_bytes,&counter,reply,sizeof(reply),&written);
-    if (!disarmed || !neutral || !strcmp(argv[1],"busy")) {
+    if (!disarmed || !neutral || !strcmp(argv[1],"busy") ||
+        !strcmp(argv[1],"empty-claim") || !strcmp(argv[1],"unsafe-claim")) {
         assert(result!=LW_HANDSHAKE_REPLY && written==0 && !controller.owned);
-        assert(controller.session.phase==LW_CLOSED);
+        if (strcmp(argv[1],"empty-claim") && strcmp(argv[1],"unsafe-claim"))
+            assert(controller.session.phase==LW_CLOSED);
         return 0;
     }
     assert(result==LW_HANDSHAKE_REPLY && written>0 && controller.owned);

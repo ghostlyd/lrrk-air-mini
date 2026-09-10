@@ -99,6 +99,19 @@ can prove against a malicious holder of the application key.
 
 ## Control ownership and stop behavior
 
+Admission integration correction (2026-09-10): runtime CLAIM carries exactly
+16 bytes of eight network-order uint16 channel samples, captured by the operator
+client after receipt of the board challenge. They are covered by the CLAIM c2b
+MAC, session, sequence and challenge checks. Before reservation the controller
+validates them against a frozen, validated persisted-settings mapping: throttle
+at calibrated minimum and roll/pitch/yaw/flight-mode at calibrated neutral.
+All channels must be in 1000–2000. Empty legacy handshake-only CLAIMs must never
+obtain runtime ownership. This extends the initial empty-CLAIM transcript to
+fulfill the already-approved neutral-controls requirement. Board checks cannot
+prove honest sample timing by a malicious holder of the pilot credential.
+The platform adapter must reject unsupported channel groups/inputs and prevent
+settings drift across admission; failure must not silently substitute defaults.
+
 Only one transport may supply receiver input. Claiming wireless ownership
 requires disarmed state and neutral controls. While owned wirelessly, UART
 telemetry requests remain available but UART receiver/settings/persistence

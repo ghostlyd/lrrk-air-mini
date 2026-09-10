@@ -4,13 +4,36 @@
 #include <freertos/FreeRTOS.h>
 #include <esp_timer.h>
 #include "pios_litewing_gcsrcvr.h"
+#include "litewing_pilot_wire.h"
+#include "pios_litewing_pilot_mac.h"
+#include <mbedtls/platform_util.h>
 #include <string.h>
 
-void lw_controller_init(struct lw_pilot_controller *c)
+void lw_controller_init(struct lw_pilot_controller *c,
+    const struct lw_pilot_channel mapping[5])
 {
     if (!c) return;
     memset(c, 0, sizeof(*c));
     lw_session_init(&c->session);
+    if (mapping) memcpy(c->mapping, mapping, sizeof(c->mapping));
+}
+
+static int neutral_claim(struct lw_pilot_controller *c, const uint8_t *wire, size_t size)
+{
+    struct lw_wire_frame frame = {0};
+    struct lw_pilot_mac_key key;
+    uint16_t channels[8] = {0};
+    memcpy(key.bytes, c->session.keys.c2b, sizeof(key.bytes));
+    int accepted = 0;
+    if (lw_wire_decode(wire, size, 0, lw_pilot_mac, &key, &frame) == 0 &&
+        frame.kind == 3 && frame.payload_len == 16) {
+        for (unsigned i=0; i<8; ++i)
+            channels[i] = ((uint16_t)frame.payload[2*i] << 8) | frame.payload[2*i+1];
+        accepted = lw_pilot_neutral(c->mapping, channels);
+    }
+    mbedtls_platform_zeroize(&key, sizeof(key));
+    mbedtls_platform_zeroize(&frame, sizeof(frame));
+    return accepted;
 }
 
 void lw_controller_fault(struct lw_pilot_controller *c)
@@ -87,6 +110,10 @@ enum lw_session_result lw_controller_receive(struct lw_pilot_controller *c,
     if (disarmed != 1 || neutral != 1) {
         lw_controller_fault(c);
         return LW_RETIRED;
+    }
+    if (c->session.phase == LW_PENDING && !neutral_claim(c, wire, size)) {
+        /* Invalid traffic cannot skip ordinary expiry processing. */
+        return lw_controller_tick(c, now_us) < 0 ? LW_RETIRED : LW_REJECT;
     }
     enum lw_session_result r = lw_session_receive(&c->session, wire, size, root,
         now_us, disarmed == 1 && neutral == 1, 1, random, random_ctx,
