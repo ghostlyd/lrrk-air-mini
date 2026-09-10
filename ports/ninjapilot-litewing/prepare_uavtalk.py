@@ -44,6 +44,32 @@ def prepare(source, output):
         "PIOS_LiteWing_GCSReceiver_Unpack(obj, instId, data, received_us)", 2)
     code = replace_exact(code, "    iproc->state = UAVTALK_STATE_COMPLETE;",
         "    iproc->rx_completed_us = esp_timer_get_time();\n    iproc->state = UAVTALK_STATE_COMPLETE;")
+    anchor = "static bool UAVTalkProcess_CS(UAVTalkConnectionData *connection, UAVTalkInputProcessor *iproc, uint8_t *rxbuffer, uint8_t length, uint8_t *position);"
+    code = replace_exact(code, anchor, anchor + '\n#include "litewing_usb_uavtalk.inc"')
+    code = replace_exact(code,
+        "    return receiveObject(connection, iproc->type, iproc->objId, iproc->instId, connection->rxBuffer, iproc->rx_completed_us);",
+        "    if (lw_usb_reserved(iproc->objId)) return lw_usb_receive(connection);\n"
+        "    return receiveObject(connection, iproc->type, iproc->objId, iproc->instId, connection->rxBuffer, iproc->rx_completed_us);")
+    code = replace_exact(code,
+        "    UAVTalkInputProcessor *inIproc = &inConnection->iproc;",
+        "    UAVTalkInputProcessor *inIproc = &inConnection->iproc;\n"
+        "    if (lw_usb_reserved(inIproc->objId)) {\n"
+        "        lw_usb_wipe_rx(inConnection);\n"
+        "        inIproc->state = UAVTALK_STATE_SYNC;\n"
+        "        return -1;\n    }")
+    code = replace_exact(code,
+        "    if (iproc->state == UAVTALK_STATE_ERROR || iproc->state == UAVTALK_STATE_COMPLETE) {\n        iproc->state = UAVTALK_STATE_SYNC;",
+        "    if (iproc->state == UAVTALK_STATE_ERROR || iproc->state == UAVTALK_STATE_COMPLETE) {\n"
+        "        lw_usb_wipe_rx(connection);\n        iproc->state = UAVTALK_STATE_SYNC;")
+    code = replace_exact(code,
+        "    connection->stats.rxBytes += processedBytes;\n    return iproc->state;",
+        "    connection->stats.rxBytes += processedBytes;\n"
+        "    if (iproc->state == UAVTALK_STATE_ERROR) lw_usb_wipe_rx(connection);\n"
+        "    return iproc->state;")
+    anchor = "static bool UAVTalkProcess_TYPE(UAVTalkConnectionData *connection, UAVTalkInputProcessor *iproc, uint8_t *rxbuffer, __attribute__((unused)) uint8_t length, uint8_t *position)\n{"
+    code = replace_exact(code, anchor, anchor +
+        "\n    /* SYNC may consume the final byte of this chunk. Wait for TYPE. */\n"
+        "    if (length <= (*position)) return false;")
     header = replace_exact(inputs["inc/uavtalk_priv.h"], "    uint16_t rxPacketLength;",
         "    uint16_t rxPacketLength;\n    int64_t rx_completed_us; /* local CRC-complete time, never sender time */")
     # Fully validate before updating generated artifacts. Avoid touching mtime

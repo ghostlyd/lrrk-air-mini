@@ -116,6 +116,7 @@ set(PIOS_COMMON_SRCS
 set(LITEWING_UAVTALK_DIR "${CMAKE_CURRENT_BINARY_DIR}/litewing_uavtalk")
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
     "${PORT_ROOT}/prepare_uavtalk.py"
+    "${TARGET_ROOT}/include/litewing_usb_uavtalk.inc"
     "${FLIGHT}/uavtalk/uavtalk.c"
     "${FLIGHT}/uavtalk/inc/uavtalk_priv.h")
 execute_process(COMMAND python3 "${PORT_ROOT}/prepare_uavtalk.py"

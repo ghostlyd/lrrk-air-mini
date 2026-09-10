@@ -38,6 +38,7 @@ class GcsProtocolTests(unittest.TestCase):
             str(ROOT / "tests/gcs_session_unused.c"),
             str(ROOT / "target/litewing_battery_pack.c"),
             str(ROOT / "target/litewing_battery_voltage.c"),
+            str(ROOT / "target/litewing_wifi_config.c"),
             str(ROOT / "tests/gcs_protocol_test.c"), "-o", str(cls.binary)],
             capture_output=True, text=True, timeout=30)
         if result.returncode:
@@ -49,6 +50,12 @@ class GcsProtocolTests(unittest.TestCase):
 
     def test_real_parser_packet_and_ack_paths(self):
         for case in ("normal", "acked"): self.run_case(case)
+    def test_provisioning_split_at_every_frame_boundary(self):
+        for split in range(1,163):
+            with self.subTest(split=split): self.run_case(f"provision-split-{split}")
+    def test_provisioning_rejections_and_status(self):
+        for case in ("status","instance","type","invalid","length","collision","crc","relay"):
+            with self.subTest(case=case): self.run_case("provision-"+case)
     def test_telemetry_request_remains_available_during_wireless_ownership(self):
         self.run_case("request-wireless-owner")
     def test_connection_lock_cannot_refresh_already_parsed_input(self): self.run_case("connection-lock-delay")
