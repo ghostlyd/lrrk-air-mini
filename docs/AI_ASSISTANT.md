@@ -110,7 +110,8 @@ requests for `AttitudeState`, `FlightStatus`, `FlightBatteryState`,
 objects or `FlightTelemetryStats`. The collector returns only after all five
 selected objects form one aggregate. It records their receipt span as link
 age, combines actuator mapping/update faults with system alarms, and leaves
-unobserved sensor and board identity fields unknown. An Armed aggregate is
+unobserved sensor and board identity fields unknown. A disconnect clears every
+partial object so aggregates cannot cross link epochs. An Armed aggregate is
 deterministically `BLOCKED`; the optional model cannot override that result.
 
 ### Binary capture inspection

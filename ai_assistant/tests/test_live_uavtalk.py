@@ -256,6 +256,32 @@ class LiveUAVTalkTests(unittest.TestCase):
         self.assertGreaterEqual(statuses.count(3), 2)
         self.assertNotIn(1, statuses[first_connected + 1:])
 
+    def test_disconnect_clears_objects_from_the_previous_link_epoch(self):
+        handshake = packet(
+            0x20, FLIGHT_TELEMETRY_STATS, bytes(36) + bytes([2])
+        )
+        disconnected = packet(
+            0x20, FLIGHT_TELEMETRY_STATS, bytes(36) + bytes([0])
+        )
+        before_disconnect = handshake + b"".join((
+            packet(0x20, ATTITUDE_STATE, struct.pack("<7f", 1, 0, 0, 0, 10, -20, 90)),
+            packet(0x20, FLIGHT_STATUS, bytes([2, 0, 0, 0, 0, 1, 0, 0])),
+            packet(0x20, BATTERY_STATE, struct.pack("<7f2B", 0, 0, 0, 0, 0, 0, 0, 1, 1)),
+            packet(0x22, ACTUATOR_COMMAND, struct.pack("<12hHHB", *([0] * 12), 0, 0, 0)),
+        ))
+        after_reconnect = handshake + packet(
+            0x20, SYSTEM_ALARMS, bytes([1] * 21 + [0] * 4)
+        )
+        transport = FakeTransport((before_disconnect, disconnected, after_reconnect))
+
+        with tempfile.TemporaryDirectory() as directory:
+            with self.assertRaises(UAVTalkLiveError):
+                self.collector(
+                    transport, Path(directory) / "live.uavtalk"
+                ).collect()
+
+        self.assertTrue(transport.closed)
+
     def test_initial_synchronization_reads_at_most_4096_bytes(self):
         synchronizer = _Synchronizer()
         self.assertEqual(synchronizer.feed(bytes(4095)), [])

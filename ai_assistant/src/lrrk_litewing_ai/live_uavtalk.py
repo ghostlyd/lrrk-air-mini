@@ -352,13 +352,18 @@ class LiveUAVTalkCollector:
             if status_value not in (0, 1, 2, 3):
                 raise UAVTalkLiveError("invalid FlightTelemetryStats status")
             if status_value == 2:
+                if not self._connected:
+                    self._latest.clear()
                 self._handshake_status = 3
                 self._connected = True
                 self.transport.handshake(3)
             elif status_value == 3:
+                if not self._connected:
+                    self._latest.clear()
                 self._handshake_status = 3
                 self._connected = True
             else:
+                self._latest.clear()
                 self._handshake_status = 1
                 self._connected = False
             return
