@@ -7,6 +7,7 @@ One serialized owner calls step frequently; no background sender or retransmit.
 """
 import socket
 import secrets
+from datetime import datetime, timezone
 from .pilot_operator import OperatorSession
 from .pilot_admission import PilotAdmission
 
@@ -61,11 +62,13 @@ def admit_udp(sock: socket.socket, root: bytes, sample, clock):
 
 
 class OperatorUDP:
-    def __init__(self, session: OperatorSession, sock: socket.socket, clock):
+    def __init__(self, session: OperatorSession, sock: socket.socket, clock, *, wall_clock=None):
         self._session, self._socket, self._clock = session, sock, clock
         self._closed = False
         self._proof = None
         self._received = None
+        self._latest_telemetry = None
+        self._wall_clock = wall_clock if wall_clock is not None else lambda: datetime.now(timezone.utc)
         try:
             if session.closed or sock.type != socket.SOCK_DGRAM:
                 raise ValueError("accepted session and UDP socket required")
@@ -82,8 +85,27 @@ class OperatorUDP:
         if not self._closed:
             self._closed=True
             self._proof=self._received=None
+            self._latest_telemetry=None
             self._session.close()
             self._socket.close()
+
+    def take_telemetry(self):
+        """Drain the one-observation mailbox; no key, socket or control object.
+
+        Call on the same serialized owner as step/stop. Returned data is a
+        historical observation, never proof that this link remains active.
+        """
+        if self.closed:
+            self.close()
+            return None
+        try:
+            self._session.check_time(self._clock())
+            observation = self._latest_telemetry
+            self._latest_telemetry = None
+            return observation
+        except BaseException:
+            self.close()
+            raise
 
     def _send(self, wire):
         if self._socket.send(wire)!=len(wire):
@@ -105,6 +127,22 @@ class OperatorUDP:
             received=self._clock()
             self._session.check_time(received)
             if len(wire)>594: return False
+            # Header bytes are a routing hint only. The telemetry consumer
+            # authenticates the entire envelope with its separate key.
+            if len(wire)>=8 and wire[:8]==b'LWPL\x01\x01\x08\x00':
+                wall_received=self._wall_clock()
+                # Local clock faults are fatal, not untrusted-packet rejection.
+                # Keep this validation outside the consumer's ValueError catch.
+                if (not isinstance(wall_received,datetime) or wall_received.tzinfo is None
+                        or wall_received.utcoffset() is None):
+                    raise ValueError("telemetry wall clock must be timezone-aware")
+                try:
+                    observation=self._session.observe_telemetry(wire,received,wall_received)
+                except ValueError:
+                    if self._session.closed: raise
+                    return False
+                self._latest_telemetry=observation
+                return False  # No pilot sampling, sending or proof renewal.
             try:
                 command=self._session.pilot(wire,received,sample,self._clock)
             except ValueError:
