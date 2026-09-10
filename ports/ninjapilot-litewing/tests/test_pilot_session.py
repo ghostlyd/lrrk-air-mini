@@ -36,6 +36,7 @@ class FirmwareAdmissionTests(unittest.TestCase):
             '#include "litewing_pilot_session.h"\n'
             'size_t state_size(void) {return sizeof(struct lw_pilot_session);}\n'
             'int phase(struct lw_pilot_session *s) {return s->phase;}\n'
+            'void exhaust_sequence(struct lw_pilot_session *s) {s->board_sequence=UINT64_MAX;}\n'
             'int retired_keys(struct lw_pilot_session *s) {\n'
             'const unsigned char *p=(const unsigned char *)&s->keys;\n'
             'for(size_t i=0;i<sizeof(s->keys);++i) if(p[i]) return 0;\n'
@@ -56,6 +57,7 @@ class FirmwareAdmissionTests(unittest.TestCase):
         cls.lib.state_size.restype = C.c_size_t
         cls.lib.phase.argtypes = [C.c_void_p]
         cls.lib.retired_keys.argtypes = [C.c_void_p]
+        cls.lib.exhaust_sequence.argtypes = [C.c_void_p]
         cls.lib.lw_session_init.argtypes = [C.c_void_p]
         cls.lib.lw_session_tick.argtypes = [C.c_void_p, C.c_int64]
         cls.lib.lw_session_issue_challenge.argtypes = [C.c_void_p, C.c_void_p,
@@ -248,3 +250,21 @@ class FirmwareAdmissionTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         result = subprocess.run([str(binary)], capture_output=True, text=True, timeout=20)
         self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_issuance_collision_capacity_and_sequence_exhaustion_retire(self):
+        for failure in ("collision", "capacity", "sequence"):
+            self.lib.lw_session_init(self.state)
+            self.rng_calls = 0
+            client, challenge = self.start()
+            self.assertEqual(self.receive(client.receive_challenge(challenge, 200), 300)[0], 1)
+            capacity = 594
+            if failure == "collision":
+                self.rng_calls = 2  # Next RNG output repeats initial challenge byte 3.
+            elif failure == "capacity":
+                capacity = 81  # Empty active envelope requires 82 bytes.
+            else:
+                self.lib.exhaust_sequence(self.state)
+            with self.subTest(failure=failure):
+                self.assertEqual(self.issue(20100, capacity=capacity)[0], 2)
+                self.assertEqual(self.lib.phase(self.state), 0)
+                self.assertEqual(self.lib.retired_keys(self.state), 1)
