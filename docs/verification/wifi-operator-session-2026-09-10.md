@@ -60,3 +60,25 @@ before implementation. UDP review pending; this exercised only local loopback.
 Admission over UDP, physical input-device integration and board AP/socket tasks
 are still absent. The transport requires an already accepted session; these tests
 do not claim a full handshake with board firmware, radio performance, or flight.
+
+## UDP admission
+
+Transport review accepted `a57d58f` and independently passed 13 operator/UDP
+tests. The host now performs one sampled UDP admission attempt with a fresh
+CSPRNG nonce, one-second core deadline, 20ms socket timeout and 64-receive work
+cap. It does not automatically retransmit or reconnect. Proof authentication and
+nonce binding precede the operator callback; after sampling, the clock and 75ms
+receive-to-sample age are rechecked before CLAIM encoding. The sampler must be
+bounded/nonblocking: Python cannot preempt a stuck callback; board expiry remains
+independent. Missing samples cannot fall back to the legacy empty CLAIM path.
+
+Accepted admission transfers once into OperatorUDP. Any unsuccessful attempt
+closes socket and admission key references. Eight loopback tests now include the
+full HELLO/CHALLENGE/sampled CLAIM/ACCEPT/PILOT/STOP exchange and silent admission
+expiry with no retransmission. The peer is a Python protocol fixture, not the
+firmware. Test-driven fixes cover None-sample fallback and pre-begin invocation
+state corruption. Full suite: 220 run, 211 passed, 9 optional SDK skips.
+
+UDP admission review pending. Real-C interoperability, radio provisioning,
+physical input-device handling, telemetry-only export and board AP/task lifecycle
+remain required. All network tests used local loopback with synthetic keys.

@@ -63,6 +63,32 @@ class AdmissionTests(unittest.TestCase):
         self.assertIsNone(client._keys)
         with self.assertRaises(ValueError): client.take_operator_session(302)
 
+    def test_sampled_callback_requires_verified_proof_and_bounded_sampling_time(self):
+        client=self.make(); calls=[]
+        with self.assertRaises(ValueError):
+            client.receive_challenge_sampled(self.challenge_wire(payload=b'x'*64),200,
+                lambda:calls.append(1),lambda:210)
+        self.assertEqual(calls,[])
+        result=client.receive_challenge_sampled(self.challenge_wire(),200,
+            lambda:calls.append(1) or (1500,)*8,lambda:210)
+        self.assertIsInstance(result,bytes)
+        self.assertEqual(calls,[1])
+        client=self.make(); times=iter((210,75201))
+        with self.assertRaises(ValueError):
+            client.receive_challenge_sampled(self.challenge_wire(),200,
+                lambda:(1500,)*8,lambda:next(times))
+        self.assertTrue(client.closed)
+    def test_sampled_admission_cannot_fall_back_to_empty_claim(self):
+        client=self.make()
+        with self.assertRaises(ValueError):
+            client.receive_challenge_sampled(self.challenge_wire(),200,lambda:None,lambda:210)
+        self.assertTrue(client.closed)
+    def test_sampled_call_before_begin_does_not_corrupt_fresh_attempt(self):
+        client=PilotAdmission(self.root,self.host)
+        with self.assertRaises(ValueError):
+            client.receive_challenge_sampled(self.challenge_wire(),200,lambda:(1500,)*8,lambda:210)
+        self.assertIsInstance(client.begin(300),bytes)
+
     def test_bad_board_proofs_cannot_advance(self):
         for changes in (dict(payload=b"x" * 64), dict(payload=self.host),
                         dict(sequence=1), dict(kind=7)):
