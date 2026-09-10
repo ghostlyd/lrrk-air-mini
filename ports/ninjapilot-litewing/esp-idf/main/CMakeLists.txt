@@ -338,6 +338,9 @@ idf_component_register(
         esp_system
         esp_hw_support
         nvs_flash
+        esp_wifi
+        esp_netif
+        esp_event
 )
 
 add_custom_target(lrrk_wrapper_identity ALL
@@ -353,8 +356,11 @@ target_linker_script(${COMPONENT_LIB} INTERFACE "uavo_handles.ld")
 # The pinned delete implementation discards erase/commit failures. Keep the
 # upstream file untouched, rename only its unchecked entry point, and bind
 # callers to the checked repository-owned UAVObjDelete implementation.
+# Route loads through admission exclusion as queued persistence requests can
+# execute after the UART ingress transaction has already finished.
 set_source_files_properties("${FLIGHT}/uavobjects/uavobjectpersistence.c"
-    PROPERTIES COMPILE_DEFINITIONS "UAVObjDelete=UAVObjDelete_unchecked")
+    PROPERTIES COMPILE_DEFINITIONS
+        "UAVObjDelete=UAVObjDelete_unchecked;UAVObjLoad=UAVObjLoad_unserialized")
 
 target_compile_definitions(${COMPONENT_LIB} PRIVATE
     USE_ESP32=1

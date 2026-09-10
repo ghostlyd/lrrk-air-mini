@@ -13,6 +13,12 @@ int32_t PIOS_LiteWing_GCSReceiver_Unpack(UAVObjHandle obj, uint16_t instance,
  * not exclude local UAVObject setters: caller must separately control those. */
 int32_t PIOS_LiteWing_GCSReceiver_BeginAdmission(int disarmed, uint64_t *token);
 int32_t PIOS_LiteWing_GCSReceiver_EndAdmission(uint64_t token);
+/* Execute a trusted persistence load outside the spinlock, but counted as an
+ * in-flight writer until synchronous load/callback work finishes. Asynchronous
+ * callbacks are not covered. Refuse during admission/ownership.
+ * Permits boot-time loading before receiver initialization. Not a wire API. */
+int32_t PIOS_LiteWing_GCSReceiver_SettingsLoad(UAVObjHandle obj, uint16_t instance,
+    int32_t (*load)(UAVObjHandle, uint16_t));
 /* Trusted controller APIs, not wire endpoints. Caller must validate the session
  * handshake and serialize its current disarmed observation with ownership work.
  * Returns 0/-1. Claim cannot preempt fresh USB input. Release requires the same

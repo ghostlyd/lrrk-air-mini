@@ -15,6 +15,7 @@ set(LITEWING_TARGET_SRCS
     ${CMAKE_CURRENT_LIST_DIR}/pios_litewing_flashfs_nvs.c
     ${CMAKE_CURRENT_LIST_DIR}/litewing_settings_recovery.c
     ${CMAKE_CURRENT_LIST_DIR}/litewing_uavobject_delete.c
+    ${CMAKE_CURRENT_LIST_DIR}/litewing_uavobject_load.c
     ${CMAKE_CURRENT_LIST_DIR}/pios_litewing_gcsrcvr.c
     ${CMAKE_CURRENT_LIST_DIR}/litewing_battery_voltage.c
     ${CMAKE_CURRENT_LIST_DIR}/pios_litewing_battery.c
@@ -27,6 +28,10 @@ set(LITEWING_TARGET_SRCS
     ${CMAKE_CURRENT_LIST_DIR}/litewing_pilot_controller.c
     ${CMAKE_CURRENT_LIST_DIR}/litewing_pilot_neutral.c
     ${CMAKE_CURRENT_LIST_DIR}/pios_litewing_pilot_mapping.c
+    ${CMAKE_CURRENT_LIST_DIR}/litewing_wifi_config.c
+    ${CMAKE_CURRENT_LIST_DIR}/pios_litewing_wifi_config.c
+    ${CMAKE_CURRENT_LIST_DIR}/pios_litewing_wifi_ap.c
+    ${CMAKE_CURRENT_LIST_DIR}/pios_litewing_wifi_command.c
 )
 
 set(LITEWING_TARGET_INCLUDE_DIRS

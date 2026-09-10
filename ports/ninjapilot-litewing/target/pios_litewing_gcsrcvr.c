@@ -36,6 +36,26 @@ static uint32_t usb_inflight;
 static uint64_t admission_generation;
 static uint64_t admission_token;
 
+int32_t PIOS_LiteWing_GCSReceiver_SettingsLoad(UAVObjHandle obj, uint16_t instance,
+    int32_t (*load)(UAVObjHandle, uint16_t))
+{
+    if (!load || !obj) return -1;
+    portENTER_CRITICAL(&receiver_lock);
+    const int64_t now=esp_timer_get_time();
+    const bool permitted=!wireless_owner && !admission_token &&
+        usb_inflight!=UINT32_MAX && now>=0 && now>=usb_fence_us;
+    if (permitted) ++usb_inflight;
+    portEXIT_CRITICAL(&receiver_lock);
+    if (!permitted) return -1;
+    /* Loading mutates live object storage and may synchronously run callbacks.
+     * Admission cannot start until all such work has returned. */
+    const int32_t result=load(obj,instance);
+    portENTER_CRITICAL(&receiver_lock);
+    --usb_inflight;
+    portEXIT_CRITICAL(&receiver_lock);
+    return result;
+}
+
 int32_t PIOS_LiteWing_GCSReceiver_BeginAdmission(int disarmed, uint64_t *token)
 {
     if (token) *token=0;

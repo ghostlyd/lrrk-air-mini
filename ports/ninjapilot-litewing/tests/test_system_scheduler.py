@@ -319,6 +319,14 @@ class SystemSchedulerTests(unittest.TestCase):
         result = subprocess.run([str(self.binary), "nominal"], capture_output=True, text=True, timeout=5)
         self.assertEqual(result.returncode, 0, result.stderr)
 
+    def test_optional_wifi_launch_requires_ready_system_connections(self):
+        for case in ('wifi-ready', 'wifi-task-failure', 'wifi-queue',
+                     'wifi-hw-callback', 'wifi-system-callback'):
+            with self.subTest(case=case):
+                result = subprocess.run([str(self.binary), case],
+                                        capture_output=True, text=True, timeout=5)
+                self.assertEqual(result.returncode, 0, result.stderr)
+
     def test_original_system_ignoring_scheduler_error_fails_regression(self):
         result = subprocess.run([sys.executable, "-m", "unittest",
             "test_system_scheduler.SystemSchedulerTests.test_failed_scheduler_start_stops_system_before_normal_boot_work"],
