@@ -110,7 +110,7 @@ lossless UART capture.
 The full local host gate used the exact installed candidate's ELF, its generated
 ESP-IDF build graph and both pinned upstream trees. It passed 83 assistant tests
 and all 269 port tests. The macOS system Python explicitly skipped nine tests
-that require the optional OpenAI Agents SDK; the pull request's separate SDK
+that require the optional OpenAI Agents SDK; the separate OpenAI Agents SDK CI
 job remains a required merge gate rather than treating those local skips as
 coverage.
 
