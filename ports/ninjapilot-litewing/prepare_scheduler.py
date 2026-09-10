@@ -89,9 +89,15 @@ static bool systemResourcesReady;""")
     system = replace_exact(system, "    HwSettingsConnectCallback(checkSettingsUpdatedCb);",
         "    wifi_connections_ready &= (HwSettingsConnectCallback(checkSettingsUpdatedCb) == 0);")
     system = replace_exact(system, "    SystemSettingsConnectCallback(checkSettingsUpdatedCb);", """    wifi_connections_ready &= (SystemSettingsConnectCallback(checkSettingsUpdatedCb) == 0);
-    /* Optional network task failure must not stop System or USB recovery.
-     * Creation is not AP readiness; the task validates credentials first. */
-    if (wifi_connections_ready) (void)lw_wifi_command_start();""")
+    /* Optional task failures must not stop System or USB recovery.
+     * Start the waiting USB worker before network admission can begin.
+     * Creation is not provisioning or AP readiness. */
+    if (wifi_connections_ready) {
+        (void)lw_usb_maintenance_start();
+        (void)lw_wifi_command_start();
+    }""")
+    system = replace_exact(system, "#include <pios_litewing_wifi_command.h>",
+        "#include <pios_litewing_wifi_command.h>\n#include <pios_litewing_usb_maintenance.h>")
     codes["systemmod.c"] = replace_exact(system, "#if defined(PIOS_INCLUDE_IAP)", """    if (PIOS_LiteWing_ConfirmBootReady() != 0) {
         stopSystemBeforeConnections(true);
         return;

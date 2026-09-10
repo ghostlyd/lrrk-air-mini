@@ -114,8 +114,22 @@ set(PIOS_COMMON_SRCS
 # Generate a hash-checked target-only parser adaptation. Keep the pinned
 # external files unchanged and capture packet age before receive-path locks.
 set(LITEWING_UAVTALK_DIR "${CMAKE_CURRENT_BINARY_DIR}/litewing_uavtalk")
+if(CMAKE_SCRIPT_MODE_FILE)
+    # ESP-IDF's requirements pass includes this component in script mode.
+    file(GLOB LITEWING_ID_HEADERS "${UAVOSYNTH}/*.h")
+else()
+    file(GLOB LITEWING_ID_HEADERS CONFIGURE_DEPENDS "${UAVOSYNTH}/*.h")
+endif()
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+    "${PORT_ROOT}/verify_usb_ids.py" ${LITEWING_ID_HEADERS})
+execute_process(COMMAND python3 "${PORT_ROOT}/verify_usb_ids.py"
+    --objects "${UAVOSYNTH}" RESULT_VARIABLE LITEWING_USB_IDS_RC)
+if(NOT LITEWING_USB_IDS_RC EQUAL 0)
+    message(FATAL_ERROR "USB maintenance ID reservations conflict with generated objects")
+endif()
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
     "${PORT_ROOT}/prepare_uavtalk.py"
+    "${TARGET_ROOT}/include/litewing_usb_uavtalk.inc"
     "${FLIGHT}/uavtalk/uavtalk.c"
     "${FLIGHT}/uavtalk/inc/uavtalk_priv.h")
 execute_process(COMMAND python3 "${PORT_ROOT}/prepare_uavtalk.py"
@@ -123,6 +137,16 @@ execute_process(COMMAND python3 "${PORT_ROOT}/prepare_uavtalk.py"
     RESULT_VARIABLE LITEWING_UAVTALK_RC)
 if(NOT LITEWING_UAVTALK_RC EQUAL 0)
     message(FATAL_ERROR "Pinned UAVTalk freshness adaptation failed")
+endif()
+set(LITEWING_USB_TELEMETRY_DIR "${CMAKE_CURRENT_BINARY_DIR}/litewing_usb_telemetry")
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+    "${PORT_ROOT}/prepare_usb_telemetry.py"
+    "${FLIGHT}/modules/Telemetry/telemetry.c")
+execute_process(COMMAND python3 "${PORT_ROOT}/prepare_usb_telemetry.py"
+    --source "${FLIGHT}/modules/Telemetry" --output "${LITEWING_USB_TELEMETRY_DIR}"
+    RESULT_VARIABLE LITEWING_USB_TELEMETRY_RC)
+if(NOT LITEWING_USB_TELEMETRY_RC EQUAL 0)
+    message(FATAL_ERROR "Pinned USB telemetry cleanup adaptation failed")
 endif()
 # Selected startup services must report allocation/registration failures to
 # the board gate. Adapt only hash-checked build copies, never the pinned tree.
@@ -138,8 +162,20 @@ if(NOT LITEWING_STARTUP_RC EQUAL 0)
     message(FATAL_ERROR "Pinned startup service adaptation failed")
 endif()
 
-set(UAVO_CORE_SRCS
+set(LITEWING_ARMING_DIR "${CMAKE_CURRENT_BINARY_DIR}/litewing_arming")
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+    "${PORT_ROOT}/prepare_arming_maintenance.py"
     "${FLIGHT}/uavobjects/uavobjectmanager.c"
+    "${TARGET_ROOT}/include/litewing_arming_maintenance.inc")
+execute_process(COMMAND python3 "${PORT_ROOT}/prepare_arming_maintenance.py"
+    --source "${FLIGHT}/uavobjects" --output "${LITEWING_ARMING_DIR}"
+    RESULT_VARIABLE LITEWING_ARMING_RC)
+if(NOT LITEWING_ARMING_RC EQUAL 0)
+    message(FATAL_ERROR "Pinned object-manager maintenance adaptation failed")
+endif()
+
+set(UAVO_CORE_SRCS
+    "${LITEWING_ARMING_DIR}/uavobjectmanager.c"
     "${FLIGHT}/uavobjects/uavobjectpersistence.c"
     "${LITEWING_STARTUP_DIR}/eventdispatcher.c"
     "${LITEWING_UAVTALK_DIR}/uavtalk.c"
@@ -207,7 +243,7 @@ set(NINJA_MODULE_SRCS
     "${FLIGHT}/modules/ManualControl/pathfollowerhandler.c"
     "${FLIGHT}/modules/ManualControl/pathplannerhandler.c"
     "${FLIGHT}/modules/ManualControl/takeofflocationhandler.c"
-    "${FLIGHT}/modules/Telemetry/telemetry.c"
+    "${LITEWING_USB_TELEMETRY_DIR}/telemetry.c"
     "${LITEWING_SCHEDULER_DIR}/systemmod.c"
 )
 

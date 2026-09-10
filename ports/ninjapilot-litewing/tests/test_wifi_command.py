@@ -34,7 +34,7 @@ class WifiCommandTests(unittest.TestCase):
             command += [str(crypto/'library'/name) for name in
                         ('md.c', 'sha256.c', 'hkdf.c', 'platform_util.c')]
             command += [str(ROOT/'target'/name) for name in (
-                'pios_litewing_wifi_command.c', 'litewing_pilot_session.c',
+                'litewing_pilot_session.c',
                 'litewing_pilot_wire.c', 'pios_litewing_pilot_mac.c',
                 'pios_litewing_pilot_keys.c', 'pios_litewing_gcsrcvr.c',
                 'litewing_pilot_neutral.c')]
@@ -47,7 +47,10 @@ class WifiCommandTests(unittest.TestCase):
                      'recv-error', 'ap-fault', 'rng-fault', 'stop', 'loss',
                      'peer-replay', 'pending-peer', 'malformed', 'flood', 'time-budget',
                      'pending-expiry', 'cleanup', 'close-error', 'clock-rollback',
-                     'admission-rollback')
+                     'admission-rollback', 'stop-before-start', 'create-stop-success',
+                     'create-stop-failure', 'create-complete-before-return', 'queued-stop',
+                     'ap-start-stop', 'ready-stop', 'mapping-stop', 'rng-stop',
+                     'active-stop', 'cleanup-stop', 'close-stop', 'maintenance-stuck')
             for case in cases:
                 with self.subTest(case=case):
                     result = subprocess.run([str(binary), case], capture_output=True,

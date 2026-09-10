@@ -5,6 +5,9 @@ It reads normalized telemetry, runs deterministic preflight checks, records
 redacted hash-chained audit events, and creates bounded proposals for explicit
 human review.
 
+Separate operator tools, not AI tools, provide USB credential maintenance and
+an authenticated application-key reachability check. See [operator provisioning](#operator-provisioning).
+
 Approval is a short-lived advisory record bound to the exact telemetry hash
 and configured safety policy. Proposals and approval results carry the
 human-readable analyzer/policy version and a canonical JSON SHA-256 policy
@@ -122,8 +125,8 @@ exact CH340 USB identity and location selected by the operator:
 ```sh
 PYTHONPATH=ai_assistant/src python3 -m lrrk_litewing_ai.cli \
   --input-format uavtalk-live \
-  --device /dev/cu.wchusbserial410 \
-  --usb-location 4-1 \
+  --device /dev/cu.YOUR_DEVICE \
+  --usb-location YOUR_USB_LOCATION \
   --private-capture /path/to/new-private-capture.uavtalk \
   --duration 2 --json
 ```
@@ -156,3 +159,37 @@ partial snapshots: no missing battery, sensor health, timestamp freshness or
 physical output measurement is inferred from a successfully decoded frame.
 The live aggregate likewise identifies the USB bridge in `source.transport`
 while leaving `source.board` unknown; a CH340 identity is not aircraft identity.
+
+## Operator provisioning
+
+Install this package with its `uavtalk` extra. The current serial operator
+commands support macOS CH340 devices; private provisioning storage supports
+macOS/Linux, not Windows. Use an existing owner-only, ACL-free `0700` directory
+outside Git. Never pass credentials as command arguments or capture outbound
+provisioning traffic in an audit log.
+
+```text
+litewing-provision create --directory PRIVATE_DIRECTORY --device EXACT_PORT --location EXACT_USB_LOCATION
+litewing-provision reconcile --bundle EXISTING_PENDING_FILE --device EXACT_PORT --location EXACT_USB_LOCATION
+litewing-check-link --bundle EXISTING_PENDING_FILE --host EXPLICIT_IPV4
+```
+
+`create` saves fresh credentials before opening serial, then submits once.
+After any ambiguous result, retain all bundles and use `reconcile` on the same
+pending file; do not use `create` as an automatic retry. Verified storage and
+cleanup produce a separate `.stored` copy while preserving pending/old records.
+File existence alone is not a successful promotion result.
+
+`litewing-check-link` requires an already joined network and verifies a fresh
+application-key challenge at UDP port 2390. It never sends CLAIM or flight
+commands. It does not verify AP password, firmware identity, reboot or flight
+readiness, and must not run concurrently with pilot admission. No tool performs
+automatic network association, activation or reset.
+
+Opening serial is a hardware operation: DTR/RTS are deasserted before opening,
+but driver line transients remain possible. Use a secured props-removed bench;
+USB-C can power motors without a battery. Source and simulated integration tests
+are complete for the documented paths; physical provisioning/activation is not
+yet established. See [operator CLI evidence](../docs/verification/provisioning-operator-cli-2026-09-10.md),
+[storage promotion](../docs/verification/credential-storage-promotion-2026-09-10.md)
+and [key probe limits](../docs/verification/application-key-probe-2026-09-10.md).

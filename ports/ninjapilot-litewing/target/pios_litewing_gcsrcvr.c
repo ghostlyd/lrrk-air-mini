@@ -35,6 +35,7 @@ static int64_t usb_fence_us = -1;
 static uint32_t usb_inflight;
 static uint64_t admission_generation;
 static uint64_t admission_token;
+static uint64_t maintenance_token;
 
 int32_t PIOS_LiteWing_GCSReceiver_SettingsLoad(UAVObjHandle obj, uint16_t instance,
     int32_t (*load)(UAVObjHandle, uint16_t))
@@ -42,7 +43,7 @@ int32_t PIOS_LiteWing_GCSReceiver_SettingsLoad(UAVObjHandle obj, uint16_t instan
     if (!load || !obj) return -1;
     portENTER_CRITICAL(&receiver_lock);
     const int64_t now=esp_timer_get_time();
-    const bool permitted=!wireless_owner && !admission_token &&
+    const bool permitted=!wireless_owner && !admission_token && !maintenance_token &&
         usb_inflight!=UINT32_MAX && now>=0 && now>=usb_fence_us;
     if (permitted) ++usb_inflight;
     portEXIT_CRITICAL(&receiver_lock);
@@ -63,7 +64,7 @@ int32_t PIOS_LiteWing_GCSReceiver_BeginAdmission(int disarmed, uint64_t *token)
     int32_t result=-1;
     portENTER_CRITICAL(&receiver_lock);
     const int64_t now=esp_timer_get_time();
-    if (initialized && !wireless_owner && !admission_token && !usb_inflight &&
+    if (initialized && !wireless_owner && !admission_token && !maintenance_token && !usb_inflight &&
         admission_generation!=UINT64_MAX && now>=0 && now>=usb_fence_us &&
         (!have_timestamp || now>=received_us)) {
         if (valid && now-received_us>=LITEWING_GCS_TIMEOUT_US) valid=false;
@@ -92,13 +93,59 @@ int32_t PIOS_LiteWing_GCSReceiver_EndAdmission(uint64_t token)
     return result;
 }
 
+int32_t PIOS_LiteWing_GCSReceiver_BeginMaintenance(int disarmed, uint64_t *token)
+{
+    if (token) *token=0;
+    if (!token || disarmed!=1) return -1;
+    int32_t result=-1;
+    portENTER_CRITICAL(&receiver_lock);
+    const int64_t now=esp_timer_get_time();
+    if (initialized && !wireless_owner && !admission_token && !maintenance_token &&
+        !usb_inflight && admission_generation!=UINT64_MAX && now>=0 &&
+        now>=usb_fence_us && (!have_timestamp || now>=received_us)) {
+        if (valid && now-received_us>=LITEWING_GCS_TIMEOUT_US) valid=false;
+        if (!valid) {
+            maintenance_token=++admission_generation;
+            *token=maintenance_token;
+            usb_fence_us=now;
+            result=0;
+        }
+    }
+    portEXIT_CRITICAL(&receiver_lock);
+    return result;
+}
+
+int32_t PIOS_LiteWing_GCSReceiver_MaintenanceHeld(uint64_t token)
+{
+    portENTER_CRITICAL(&receiver_lock);
+    const int64_t now=esp_timer_get_time();
+    const bool held=token && token==maintenance_token && !wireless_owner &&
+        !admission_token && now>=0 && now>=usb_fence_us;
+    portEXIT_CRITICAL(&receiver_lock);
+    return held ? 1 : 0;
+}
+
+int32_t PIOS_LiteWing_GCSReceiver_EndMaintenance(uint64_t token)
+{
+    int32_t result=-1;
+    portENTER_CRITICAL(&receiver_lock);
+    const int64_t now=esp_timer_get_time();
+    if (token && token==maintenance_token && now>=0 && now>=usb_fence_us) {
+        maintenance_token=0;
+        usb_fence_us=now;
+        result=0;
+    }
+    portEXIT_CRITICAL(&receiver_lock);
+    return result;
+}
+
 int32_t PIOS_LiteWing_GCSReceiver_ClaimWireless(const uint8_t session[16], int disarmed)
 {
     if (!session || disarmed != 1) return -1;
     int32_t result = -1;
     portENTER_CRITICAL(&receiver_lock);
     const int64_t now = esp_timer_get_time();
-    if (initialized && !wireless_owner && usb_inflight == 0 && now >= 0 &&
+    if (initialized && !wireless_owner && !maintenance_token && usb_inflight == 0 && now >= 0 &&
         now >= usb_fence_us && owner_generation != UINT64_MAX &&
         (!have_timestamp || now >= received_us)) {
         if (valid && now - received_us >= LITEWING_GCS_TIMEOUT_US) valid = false;
@@ -176,7 +223,7 @@ int32_t PIOS_LiteWing_GCSReceiver_Unpack(UAVObjHandle obj, uint16_t instance,
     const int64_t arrival_us = received_time;
     portENTER_CRITICAL(&receiver_lock);
     const uint64_t generation = owner_generation;
-    const bool permitted = !wireless_owner && !admission_token && arrival_us > usb_fence_us &&
+    const bool permitted = !wireless_owner && !admission_token && !maintenance_token && arrival_us > usb_fence_us &&
                            usb_inflight != UINT32_MAX;
     /* Reservation refuses while storage/events may still be in flight. Never
      * hold the spinlock across the potentially blocking object-manager call. */

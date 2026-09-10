@@ -3,6 +3,10 @@
 Open source hardware and software for the LiteWing compact Wi-Fi drone, with a
 host-side control and AI-assistance layer under active development.
 
+Operator USB provisioning, recovery and key-reachability commands are documented
+in the [host package guide](ai_assistant/README.md#operator-provisioning).
+These are separate from the advisory AI tools and do not establish flight readiness.
+
 ![LiteWing](Documents/Images/LiteWing.png)
 
 LiteWing is an ESP32-S3-based quadcopter platform. The board combines the

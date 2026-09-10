@@ -28,7 +28,16 @@ static int system_token, persistence_queue;
 static unsigned module_starts, after_scheduler, fault_alarms, shutdowns, system_deletes;
 static unsigned readiness_checks;
 static unsigned wifi_launches;
+static unsigned usb_launches;
 static bool lifecycle, early_system, executing_system, system_live, system_monitored, queue_live;
+int lw_usb_maintenance_start(void)
+{
+    CHECK(readiness_checks==1 && after_scheduler==3 && system_live);
+    CHECK(strcmp(scenario,"boot-readiness"));
+    CHECK(wifi_launches==0);
+    ++usb_launches;
+    return !strcmp(scenario,"wifi-usb-task-failure") ? -1 : 0;
+}
 int lw_wifi_command_start(void)
 {
     CHECK(readiness_checks==1 && after_scheduler==3 && system_live);
@@ -523,7 +532,9 @@ int main(int argc, char **argv)
         run_system();
         CHECK(system_live && after_scheduler==3 && shutdowns==0 && fault_alarms==0);
         CHECK(wifi_launches==(!strcmp(scenario,"wifi-ready") ||
-                             !strcmp(scenario,"wifi-task-failure") ? 1u : 0u));
+                             !strcmp(scenario,"wifi-task-failure") ||
+                             !strcmp(scenario,"wifi-usb-task-failure") ? 1u : 0u));
+        CHECK(usb_launches==wifi_launches);
         return 0;
     }
 #ifdef TEST_MODULE_TABLE
