@@ -108,6 +108,7 @@
       "ports/ninjapilot-litewing/prepare_uavtalk.py",
       "ports/ninjapilot-litewing/prepare_control.py",
       "ports/ninjapilot-litewing/prepare_input_startup.py",
+      "ports/ninjapilot-litewing/prepare_stabilization.py",
       "ports/ninjapilot-litewing/target/startup/input_start.inc",
       "ports/ninjapilot-litewing/target/startup/actuator_start.inc",
       "ports/ninjapilot-litewing/target/include/litewing_thrust_control.h",
