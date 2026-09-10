@@ -27,7 +27,7 @@ class GcsReceiverTests(unittest.TestCase):
 
     def run_case(self, case):
         if "LRRK_GCS_TEST_SOURCE" in os.environ and case in (
-                "wireless-excludes-usb", "wireless-cannot-steal-fresh-usb",
+                "admission-guard", "wireless-excludes-usb", "wireless-cannot-steal-fresh-usb",
                 "ownership-change-during-unpack", "wireless-excludes-all-object-writes",
                 "claim-during-other-object-unpack"):
             self.skipTest("upstream baseline has no wireless ownership API")
@@ -53,3 +53,4 @@ class GcsReceiverTests(unittest.TestCase):
     def test_ownership_change_during_unpack_rejects_old_publication(self): self.run_case("ownership-change-during-unpack")
     def test_wireless_blocks_all_uart_object_writes(self): self.run_case("wireless-excludes-all-object-writes")
     def test_claim_waits_for_other_object_storage(self): self.run_case("claim-during-other-object-unpack")
+    def test_admission_excludes_writes_and_stale_release_tokens(self): self.run_case("admission-guard")

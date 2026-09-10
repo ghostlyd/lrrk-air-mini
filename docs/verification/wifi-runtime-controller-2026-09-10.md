@@ -103,3 +103,23 @@ must exclude settings writers across capture/initialization/admission, recheck
 flight state at CLAIM, and invalidate on settings changes. Observed RAM settings
 are not proof that the corresponding values have been saved to flash. No live
 runtime caller or hardware operation is introduced. Adapter review/build pending.
+
+## Admission UART write guard
+
+The adapter at `dccb28e` passed the target build and scoped source review, with
+no Critical/Important findings. The new receiver BeginAdmission/EndAdmission
+guard provides a temporary UART-write exclusion transaction without granting
+pilot ownership. Begin refuses fresh USB input, active ownership, another guard,
+or any admitted storage transaction in flight. A monotonically issued token
+prevents stale cleanup from ending a newer guard. Begin/end timestamp fences
+reject delayed pre-transaction USB packets. Ending after successful ownership
+claim preserves wireless write exclusion. It does not exclude local setters.
+
+Thirty GCS regressions pass, including guard/storage non-entry, fresh-input and
+in-flight refusal, stale-token rejection, delayed packet fencing and claim/end
+coexistence. The new fixture failed for missing APIs before implementation.
+Runtime integration must authenticate before acquiring the guard, use it only
+around synchronous snapshot/CLAIM work (never wait for packets while holding it),
+end on every path, and handle clock/cleanup failure explicitly. Mapping must be
+captured or checked inside this transaction, not trusted from a prior HELLO.
+The actual orchestrating task and local-settings-writer lifecycle remain pending.

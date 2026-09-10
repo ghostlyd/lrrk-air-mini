@@ -5,6 +5,14 @@
 #include "uavobjectmanager.h"
 int32_t PIOS_LiteWing_GCSReceiver_Unpack(UAVObjHandle obj, uint16_t instance,
                                        const uint8_t *data, int64_t received_us);
+/* Trusted serialized admission transaction only, after authenticating HELLO.
+ * Blocks UART writes, not read requests; does not grant pilot ownership/input.
+ * Refuses fresh USB input or in-flight writes. Caller must end on every path,
+ * including timeout/fault; no wait/network receive while holding this guard.
+ * Token prevents an old cleanup from releasing a newer transaction. It does
+ * not exclude local UAVObject setters: caller must separately control those. */
+int32_t PIOS_LiteWing_GCSReceiver_BeginAdmission(int disarmed, uint64_t *token);
+int32_t PIOS_LiteWing_GCSReceiver_EndAdmission(uint64_t token);
 /* Trusted controller APIs, not wire endpoints. Caller must validate the session
  * handshake and serialize its current disarmed observation with ownership work.
  * Returns 0/-1. Claim cannot preempt fresh USB input. Release requires the same
