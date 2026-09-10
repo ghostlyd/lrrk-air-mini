@@ -1,8 +1,9 @@
 # Battery telemetry implementation status
 
-Latest status: native ESP-IDF adapter compiles at `4f96dfd`; worker/startup and
-publication code compiles at `fad34d9`, but the main module table does not call
-it yet. Native SDK-boundary and worker tests now pass.
+Latest status: `687fb60` connects the battery module to initialization/startup,
+and the ESP32-S3 image builds with its worker and ADC functions retained.
+Native SDK-boundary, worker, and module-table tests pass. No flash or live
+voltage measurement has been performed for this branch.
 Sections below record incremental work
 and their then-current limitations, not independent current completion claims.
 
@@ -230,3 +231,35 @@ discard it. Startup integration and its regression tests remain next; this is
 not enabled live battery telemetry. The inherited wire object still lacks an
 acquisition timestamp; on-change metadata alone is not proof of end-to-end
 acquisition freshness for explicitly requested or delayed packets.
+
+## Startup integration and linked image
+
+At `687fb60`, the explicit module table calls `LiteWingBatteryInitialize` after
+Telemetry initialization and `LiteWingBatteryStart` after Telemetry startup.
+Failures propagate through the existing checked startup path. A missing battery
+or unavailable ADC calibration does not change persisted arming settings: the
+worker publishes unknown readings. Failure to create the module task is a
+startup error, distinct from an unavailable ADC reading.
+
+The real-table test failed before integration and passes for successful startup,
+battery initialization failure, and battery start failure, including duplicate
+and out-of-order calls. Existing module-specific fixtures stub the added module;
+its own native/worker/table fixtures cover its behavior. Focused battery suite:
+18 methods passed.
+
+ESP-IDF 5.3.2 build: PASS at `687fb60`.
+
+- Application: `0x5db20` bytes, partition `0x100000` bytes (63% free).
+- Application SHA-256:
+  `7fa7e64ffbaab893dabc8e9d8520fecbf1fa56b33e89aee5eff642b069789929`.
+- ELF retained symbols: `LiteWingBatteryInitialize` `0x4200b2ec`,
+  `LiteWingBatteryStart` `0x4200b350`, `PIOS_LiteWing_BatteryADC_Init`
+  `0x420148d8`, `PIOS_LiteWing_BatteryADC_Read` `0x420149cc`, and
+  `battery_worker` `0x4200b294`.
+
+This proves source integration and linkage, not task execution, ADC accuracy,
+timing under flight load, GCS NaN rendering, or bench/flight qualification.
+
+Full port discovery with both pinned external source fixtures supplied:
+322 tests run, 310 passed, 12 skipped, in 125.274 seconds. This includes the
+previously skipped source-dependent module lifecycle/regression fixtures.
