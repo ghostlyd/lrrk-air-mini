@@ -31,7 +31,9 @@ def prepare(source, output):
             raise ValueError("unreviewed UAVTalk input: " + name)
         inputs[name] = data.decode("utf-8")
     code = replace_exact(inputs["uavtalk.c"], '#include "uavtalk_priv.h"',
-                         '#include "uavtalk_priv.h"\n#include <esp_timer.h>\n#include "pios_litewing_gcsrcvr.h"')
+                         '#include "uavtalk_priv.h"\n#include <esp_timer.h>\n#include "pios_litewing_gcsrcvr.h"\n#include "litewing_battery_pack.h"')
+    code = replace_exact(code, "UAVObjPack(obj, instId, &connection->txBuffer[headerLength])",
+        "LiteWingBatteryPack(obj, instId, &connection->txBuffer[headerLength])")
     code = replace_exact(code,
         "uint16_t instId, uint8_t *data)",
         "uint16_t instId, uint8_t *data, int64_t received_us)", 2)

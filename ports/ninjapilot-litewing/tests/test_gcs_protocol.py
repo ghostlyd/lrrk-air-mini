@@ -35,6 +35,8 @@ class GcsProtocolTests(unittest.TestCase):
             "-I", str(ROOT / "target/include"), "-I", str(cls.output),
             "-I", str(cls.source / "inc"), str(cls.output / "uavtalk.c"),
             str(ROOT / "target/pios_litewing_gcsrcvr.c"),
+            str(ROOT / "target/litewing_battery_pack.c"),
+            str(ROOT / "target/litewing_battery_voltage.c"),
             str(ROOT / "tests/gcs_protocol_test.c"), "-o", str(cls.binary)],
             capture_output=True, text=True, timeout=30)
         if result.returncode:
@@ -52,6 +54,11 @@ class GcsProtocolTests(unittest.TestCase):
     def test_bad_crc_or_length_never_supplies_input(self):
         for case in ("bad-crc", "bad-length"): self.run_case(case)
     def test_failed_storage_never_supplies_input(self): self.run_case("failed-unpack")
+
+    def test_battery_request_checks_age_at_serialization(self):
+        for case in ("request-fresh", "request-stale", "request-other", "request-boundary",
+                     "request-invalid", "request-future", "request-uninitialized"):
+            with self.subTest(case=case): self.run_case(case)
 
     def test_unreviewed_source_fails_without_overwriting_outputs(self):
         with tempfile.TemporaryDirectory() as directory:

@@ -1,5 +1,6 @@
 #include "battery_worker_sdk.h"
 #include "pios_litewing_battery.h"
+#include "litewing_battery_pack.h"
 #include <assert.h>
 #include <math.h>
 #include <setjmp.h>
@@ -12,6 +13,11 @@ static bool in_worker;
 static int64_t now=1000000;
 static jmp_buf finished;
 static int fail(const char *s) { return strcmp(scenario,s)==0; }
+uint32_t UAVObjGetID(UAVObjHandle obj) { (void)obj; return 0x26962352; }
+uint16_t UAVObjGetNumBytes(UAVObjHandle obj) { (void)obj; return 30; }
+int32_t UAVObjPack(UAVObjHandle obj,uint16_t inst,uint8_t *data) {
+    (void)obj; (void)inst; (void)data; assert(false); return -1;
+}
 UAVObjHandle FlightBatteryStateHandle(void) { return fail("handle")?NULL:(void *)1; }
 int FlightBatteryStateGetMetadata(UAVObjMetadata *m) { m->mode=1; m->telemetryUpdatePeriod=1000; return fail("get-meta")?-1:0; }
 void UAVObjSetTelemetryUpdateMode(UAVObjMetadata *m,int mode) { m->mode=mode; }
@@ -38,12 +44,19 @@ int PIOS_LiteWing_BatteryADC_Init(void) { assert(in_worker); adc_inits++; return
 bool PIOS_LiteWing_BatteryADC_Read(struct litewing_battery_sample *s) {
     assert(in_worker && adc_inits==1 && !fail("adc-init"));
     reads++;
-    *s=(struct litewing_battery_sample){.valid=!fail("read"),.millivolts=3900,
+    *s=(struct litewing_battery_sample){.valid=true,.millivolts=3900,
                                       .captured_us=fail("stale")?0:now-16000};
-    return s->valid;
+    /* A failed adapter must not leak even a partially filled valid record. */
+    return !fail("read");
 }
 int64_t esp_timer_get_time(void) { return now; }
 void vTaskDelay(unsigned ticks) {
+    uint8_t wire[30]; float voltage;
+    assert(LiteWingBatteryPack((void *)1,0,wire)==0);
+    memcpy(&voltage,wire,4);
+    if(fail("adc-init")||fail("read")||fail("stale")||fail("runtime-publish"))
+        assert(isnan(voltage));
+    else assert(fabsf(voltage-3.9f)<0.0001f);
     assert(ticks==100); now+=100000; if(++delays==2) longjmp(finished,1);
 }
 int main(int argc,char **argv) {

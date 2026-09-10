@@ -19,6 +19,7 @@ set(LITEWING_TARGET_SRCS
     ${CMAKE_CURRENT_LIST_DIR}/litewing_battery_voltage.c
     ${CMAKE_CURRENT_LIST_DIR}/pios_litewing_battery.c
     ${CMAKE_CURRENT_LIST_DIR}/litewing_battery_module.c
+    ${CMAKE_CURRENT_LIST_DIR}/litewing_battery_pack.c
 )
 
 set(LITEWING_TARGET_INCLUDE_DIRS
