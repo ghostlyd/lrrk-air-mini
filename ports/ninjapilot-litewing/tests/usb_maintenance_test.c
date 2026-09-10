@@ -9,6 +9,11 @@
 #include <setjmp.h>
 #include <string.h>
 #include <pthread.h>
+#ifdef TEST_HOST_PARSER
+void host_read_frame(uint8_t *payload);
+void host_submit_frame(void);
+void host_emit_status(void);
+#endif
 
 static const char *scenario;
 static int64_t now=1000;
@@ -151,6 +156,10 @@ int main(int argc,char **argv) {
     assert(fgetc(stdin)==EOF);
     memcpy(expected,request+16,sizeof(expected));
 #endif
+#ifdef TEST_HOST_PARSER
+    host_read_frame(request);
+    memcpy(expected,request+16,sizeof(expected));
+#endif
     assert(lw_usb_maintenance_submit(request,sizeof(request))==-1);
     assert(lw_usb_maintenance_status(NULL,24)==-1);
     uint8_t short_out[23]; memset(short_out,0xA5,sizeof(short_out));
@@ -176,7 +185,12 @@ int main(int argc,char **argv) {
         receiver.Channel[0]=1500;
         assert(PIOS_LiteWing_GCSReceiver_Unpack(&receiver,0,(uint8_t *)&receiver,++now)==0);
     }
-    assert(lw_usb_maintenance_submit(request,152)==0); status(2,0);
+#ifdef TEST_HOST_PARSER
+    host_submit_frame();
+#else
+    assert(lw_usb_maintenance_submit(request,152)==0);
+#endif
+    status(2,0);
     memcpy(malformed,request,152); ++malformed[0];
     assert(lw_usb_maintenance_submit(malformed,152)==-1);
     /* Caller can wipe/change input immediately after submit returns. */
@@ -188,6 +202,9 @@ int main(int argc,char **argv) {
     uint8_t result= !stored ? 0 : CASE("uncertain") ? 3 : CASE("not-written") ? 2 :
                     CASE("invalid-store") ? 1 : 4;
     status(6,result);
+#ifdef TEST_HOST_PARSER
+    host_emit_status();
+#endif
 #ifdef TEST_HOST_PAYLOAD
     uint8_t host_status[24];
     assert(lw_usb_maintenance_status(host_status,sizeof(host_status))==24);

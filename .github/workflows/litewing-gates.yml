@@ -184,6 +184,10 @@ jobs:
         run: |
           LRRK_TEST_FLIGHT_ROOT="$RUNNER_TEMP/litewing-external/NinjaPilot" \
             python3 -m unittest discover -s ports/ninjapilot-litewing/tests -p 'test_gcs_*.py' -v
+      - name: Test complete host frames through parser worker and scoped store
+        run: |
+          LRRK_TEST_FLIGHT_ROOT="$RUNNER_TEMP/litewing-external/NinjaPilot" \
+            python3 -m unittest discover -s ports/ninjapilot-litewing/tests -p test_usb_parser_store.py -v
       - name: Test restricted bench probe with pinned protocol definitions
         run: |
           LRRK_TEST_FLIGHT_ROOT="$RUNNER_TEMP/litewing-external/NinjaPilot" \
