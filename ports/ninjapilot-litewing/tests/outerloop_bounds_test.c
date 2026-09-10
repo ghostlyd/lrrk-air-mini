@@ -12,7 +12,10 @@
 
 struct object { uint32_t id, size; unsigned char data[2048]; UAVObjMetadata metadata; };
 static struct object objects[8];
-static unsigned object_count, publications, cruise_calls, dispatches;
+static unsigned object_count, registrations, publications, cruise_calls, dispatches;
+static unsigned scheduler_creates, callback_connects;
+static int fail_object;
+static bool fail_scheduler, fail_callback;
 static float cruise_thrust;
 static AttitudeStateData expected_state;
 static int callback_token;
@@ -26,6 +29,7 @@ UAVObjHandle UAVObjGetByID(uint32_t id) {
 }
 UAVObjHandle UAVObjRegister(uint32_t id, bool single, bool settings, bool priority,
                            uint32_t size, UAVObjInitializeCallback cb) {
+    if (++registrations == (unsigned)fail_object) return NULL;
     CHECK(object_count < 8 && size <= 2048 && !UAVObjGetByID(id));
     struct object *o = &objects[object_count++]; o->id = id; o->size = size;
     cb(o, 0); return o;
@@ -54,14 +58,18 @@ int32_t UAVObjSetDataField(UAVObjHandle h, const void *in, uint32_t offset, uint
 }
 int32_t UAVObjSetMetadata(UAVObjHandle h, const UAVObjMetadata *m) { CHECK(h); ((struct object *)h)->metadata = *m; return 0; }
 int32_t UAVObjConnectCallback(UAVObjHandle h, UAVObjEventCallback cb, uint8_t mask) {
+    ++callback_connects;
     CHECK(h == AttitudeStateHandle() && cb && mask == EV_MASK_ALL_UPDATES && !attitude_callback);
+    if (fail_callback) return -1;
     attitude_callback = cb; return 0;
 }
 DelayedCallbackInfo *PIOS_CALLBACKSCHEDULER_Create(DelayedCallback cb, DelayedCallbackPriority priority,
     DelayedCallbackPriorityTask task, int16_t id, uint32_t stack) {
+    ++scheduler_creates;
     CHECK(!callback && cb && priority == CALLBACK_PRIORITY_REGULAR);
     CHECK(task == CALLBACK_TASK_STABILIZATIONOUTERLOOP && id == CALLBACKINFO_RUNNING_STABILIZATION0);
     CHECK(stack == PIOS_STABILIZATION_STACK_SIZE);
+    if (fail_scheduler) return NULL;
     callback = cb; return (DelayedCallbackInfo *)&callback_token;
 }
 int32_t PIOS_CALLBACKSCHEDULER_Dispatch(DelayedCallbackInfo *handle) {
@@ -78,7 +86,34 @@ void cruisecontrol_compute_factor(AttitudeStateData *state, float thrust) {
 int main(int argc, char **argv) {
     CHECK(argc == 2);
     if (!strcmp(argv[1], "stack-bytes")) { printf("%u\n", (unsigned)STACK_SIZE_BYTES); return 0; }
+#ifndef TEST_ORIGINAL
+    if (!strncmp(argv[1], "startup-object-", 15)) fail_object = atoi(argv[1] + 15);
+    fail_scheduler = !strcmp(argv[1], "startup-scheduler");
+    fail_callback = !strcmp(argv[1], "startup-callback");
+    if (!strcmp(argv[1], "startup-existing")) {
+        CHECK(RateDesiredInitialize() == 0 && StabilizationDesiredInitialize() == 0);
+        CHECK(AttitudeStateInitialize() == 0 && StabilizationStatusInitialize() == 0);
+        CHECK(FlightStatusInitialize() == 0 && ManualControlCommandInitialize() == 0);
+    }
+    if (!strncmp(argv[1], "startup-", 8)) {
+        bool should_fail = fail_object || fail_scheduler || fail_callback;
+        unsigned before = registrations;
+        int32_t result = PIOS_LiteWing_StabilizationOuterloopInitialize();
+        CHECK((result != 0) == should_fail);
+        CHECK(registrations == before + (fail_object ? (unsigned)fail_object :
+              !strcmp(argv[1], "startup-existing") ? 0U : 6U));
+        CHECK(scheduler_creates == (unsigned)(!fail_object));
+        CHECK(callback_connects == (unsigned)(!fail_object && !fail_scheduler));
+        CHECK((attitude_callback != NULL) == (!should_fail));
+        unsigned side_effects = registrations + scheduler_creates + callback_connects;
+        CHECK(PIOS_LiteWing_StabilizationOuterloopInitialize() != 0);
+        CHECK(registrations + scheduler_creates + callback_connects == side_effects);
+        return 0;
+    }
+    CHECK(PIOS_LiteWing_StabilizationOuterloopInitialize() == 0);
+#else
     stabilizationOuterloopInit();
+#endif
     CHECK(object_count == 6 && callback && attitude_callback);
     AttitudeStateData state = { .q1 = 1.0f };
     StabilizationDesiredData desired = { .Roll = .25f, .Pitch = -.5f, .Yaw = .75f, .Thrust = .375f };
