@@ -83,3 +83,26 @@ were performed.
 
 Independent source review accepted the conditional-glob fix at `f196698` with
 no new issue; the successful target rebuild supplies its requested build check.
+
+## Reserved-frame lifetime and UART cleanup — `261421c`
+
+Reserved frames now have a two-second total acceptance lifetime measured from
+SYNC, including checks after blocking registry lookups. Trickle input does not
+renew it. Expiry resets the parser and wipes its receive buffer without queueing
+or replying. The sole UART RX task supplies idle ticks and clears its owned
+receive chunk after parsing; no concurrent timer mutates parser state.
+
+Thirteen parser test methods passed, including five expiry scenarios, all 162
+frame splits, and Python/C interoperability. The extracted generated UART task
+passed its ASan/UBSan cleanup test. Independent review found no blocking issue.
+ESP-IDF 5.3.2 built `261421c` successfully: both schema checks passed for 115
+objects, persistence linking passed, image size was `0xd4540`, and the unchanged
+application partition retained 17% free space.
+
+Two seconds is an acceptance deadline, not a guaranteed RAM-erasure deadline:
+500 ms UART idle reads, scheduling, lock waits and reply writes can delay cleanup.
+SDK/COM ring copies and arbitrary corrupt-ID frames are outside these wipes.
+Ordinary telemetry is not subject to the reserved-frame lifetime.
+
+Worker startup and durable private host-bundle/serial integration remain pending.
+No board access, provisioning, flashing or actuation was performed for this slice.

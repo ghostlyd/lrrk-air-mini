@@ -320,7 +320,7 @@ class SystemSchedulerTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
 
     def test_optional_wifi_launch_requires_ready_system_connections(self):
-        for case in ('wifi-ready', 'wifi-task-failure', 'wifi-queue',
+        for case in ('wifi-ready', 'wifi-task-failure', 'wifi-usb-task-failure', 'wifi-queue',
                      'wifi-hw-callback', 'wifi-system-callback'):
             with self.subTest(case=case):
                 result = subprocess.run([str(self.binary), case],
