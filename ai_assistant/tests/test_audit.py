@@ -5,6 +5,7 @@ import tempfile
 import unittest
 from datetime import datetime, timezone
 from pathlib import Path
+from unittest import mock
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -15,6 +16,16 @@ from lrrk_litewing_ai.jsonl import canonical_json  # noqa: E402
 
 
 class AuditTests(unittest.TestCase):
+    def test_missing_descriptor_chmod_fails_before_file_creation(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "audit.jsonl"
+
+            with mock.patch("lrrk_litewing_ai.jsonl.os.fchmod", None):
+                with self.assertRaisesRegex(OSError, "secure audit permissions"):
+                    AuditLog(path, "session-1").append("snapshot_received", {"id": "one"})
+
+            self.assertFalse(path.exists())
+
     def test_new_audit_log_is_private_despite_permissive_umask(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "audit.jsonl"

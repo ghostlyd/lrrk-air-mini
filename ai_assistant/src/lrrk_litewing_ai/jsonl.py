@@ -14,6 +14,10 @@ def canonical_json(value: Dict[str, Any]) -> str:
 
 
 def append_record(path: Path, record: Dict[str, Any]) -> None:
+    descriptor_chmod = getattr(os, "fchmod", None)
+    if not callable(descriptor_chmod):
+        raise OSError("secure audit permissions are unavailable on this platform")
+
     path.parent.mkdir(parents=True, exist_ok=True)
     flags = os.O_WRONLY | os.O_APPEND | os.O_CREAT
     if hasattr(os, "O_CLOEXEC"):
@@ -25,7 +29,7 @@ def append_record(path: Path, record: Dict[str, Any]) -> None:
     try:
         if not stat.S_ISREG(os.fstat(descriptor).st_mode):
             raise ValueError("audit destination must be a regular file")
-        os.fchmod(descriptor, 0o600)
+        descriptor_chmod(descriptor, 0o600)
         with os.fdopen(descriptor, "a", encoding="utf-8") as handle:
             descriptor = -1
             handle.write(canonical_json(record))
