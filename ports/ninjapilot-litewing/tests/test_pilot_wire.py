@@ -83,6 +83,10 @@ class PilotWireCTests(unittest.TestCase):
                         tampered = bytearray(result)
                         tampered[-1] ^= 1
                         self.assertEqual(self.unpack(bytes(tampered), direction)[0], -1)
+                        if payload:
+                            tampered = bytearray(result)
+                            tampered[50] ^= 1
+                            self.assertEqual(self.unpack(bytes(tampered), direction)[0], -1)
 
     def test_tamper_truncation_extra_bytes_and_wrong_direction(self):
         packet = encode(Envelope(0, 5, b"s"*16, 9, b"c"*16, b"ab"), self.key)
@@ -113,7 +117,8 @@ class PilotWireCTests(unittest.TestCase):
     def test_standalone_memory_sanitizers(self):
         binary = Path(self.temp.name) / "wire-sanitizers"
         subprocess.run(["cc", "-std=c11", "-Wall", "-Wextra", "-Werror",
-                        "-fsanitize=address,undefined", "-fno-omit-frame-pointer",
+                        "-fsanitize=address,undefined", "-fno-sanitize-recover=all",
+                        "-fno-omit-frame-pointer",
                         "-I", str(ROOT / "target/include"),
                         str(ROOT / "target/litewing_pilot_wire.c"),
                         str(ROOT / "tests/pilot_wire_memory_test.c"),
