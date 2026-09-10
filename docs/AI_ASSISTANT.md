@@ -23,6 +23,11 @@ configured safety policy. Proposals and approval results include
 JSON containing the analyzer version and every `SafetyPolicy` field). Both
 fields are included in `proposal_hash`. Default thresholds remain unchanged;
 new proposal hashes include the policy binding, so regenerate earlier proposals.
+Numeric policy values accept integers or floats and are normalized to floats
+before hashing. Booleans, non-numeric values, NaN, and infinities are rejected.
+Link-age and future-skew limits must be non-negative, minimum battery voltage
+must be positive, and battery warning percentage must be between 0 and 100.
+Canonical JSON also rejects non-standard numeric constants.
 
 Configure `AssistantRuntime(policy=SafetyPolicy(...))`, and replace a policy
 through `runtime.policy = SafetyPolicy(...)`. The runtime and
@@ -30,6 +35,9 @@ through `runtime.policy = SafetyPolicy(...)`. The runtime and
 also accept `ApprovalStateMachine(operator_session, policy=...)` and public
 `machine.policy` replacement. Any changed policy identity immediately moves
 a pending or approved record to `ABORTED` and clears its approval digest.
+Replacement through either public path also invalidates the runtime's cached
+preflight report, including direct assignment to `runtime.approvals.policy`.
+An invalid replacement is rejected before changing the policy or cached report.
 Replacing a policy with the same identity preserves the record. Approval and
 currentness checks recheck the bound identity and apply that exact configured
 policy, including customized freshness budgets; they never revert to defaults.

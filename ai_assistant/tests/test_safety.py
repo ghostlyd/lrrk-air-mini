@@ -1,5 +1,6 @@
 import sys
 import unittest
+from dataclasses import fields
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -7,11 +8,19 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
+from lrrk_litewing_ai.approval import ApprovalStateMachine  # noqa: E402
+from lrrk_litewing_ai.jsonl import canonical_json  # noqa: E402
 from lrrk_litewing_ai.models import BatteryState, SensorHealth, SourceIdentity, TelemetrySnapshot  # noqa: E402
-from lrrk_litewing_ai.safety import run_preflight  # noqa: E402
+from lrrk_litewing_ai.safety import SafetyPolicy, run_preflight  # noqa: E402
 
 
 NOW = datetime(2026, 9, 9, 12, 0, tzinfo=timezone.utc)
+NUMERIC_POLICY_FIELDS = (
+    "max_link_age_ms",
+    "max_future_skew_ms",
+    "min_battery_voltage_v",
+    "warn_battery_percent",
+)
 
 
 def snapshot(**changes):
@@ -32,6 +41,75 @@ def snapshot(**changes):
 
 
 class SafetyTests(unittest.TestCase):
+    def test_nonfinite_policy_values_are_rejected_at_construction(self):
+        self.assertEqual(
+            set(NUMERIC_POLICY_FIELDS),
+            {field.name for field in fields(SafetyPolicy)} - {"accepted_imu_identities"},
+        )
+        for name in NUMERIC_POLICY_FIELDS:
+            for value in (float("nan"), float("inf"), float("-inf")):
+                with self.subTest(field=name, value=value):
+                    with self.assertRaisesRegex(ValueError, name + " must be finite"):
+                        SafetyPolicy(**{name: value})
+
+    def test_nonfinite_policy_values_cannot_be_hashed_analyzed_or_proposed(self):
+        for name in NUMERIC_POLICY_FIELDS:
+            for value in (float("nan"), float("inf"), float("-inf")):
+                policy = SafetyPolicy()
+                object.__setattr__(policy, name, value)
+                operations = {
+                    "identity": policy.policy_hash,
+                    "preflight": lambda: run_preflight(snapshot(), policy=policy, now=NOW),
+                    "proposal": lambda: ApprovalStateMachine("operator-1", policy=policy).create_proposal(
+                        snapshot(), "inspect_telemetry", "inspect", "show report", now=NOW
+                    ),
+                }
+                for operation, call in operations.items():
+                    with self.subTest(field=name, value=value, operation=operation):
+                        with self.assertRaisesRegex(ValueError, name + " must be finite"):
+                            call()
+
+    def test_policy_numeric_types_and_ranges_are_validated(self):
+        for name in NUMERIC_POLICY_FIELDS:
+            for value in (True, False, None, "500"):
+                with self.subTest(field=name, value=value):
+                    with self.assertRaisesRegex(ValueError, name + " must be numeric"):
+                        SafetyPolicy(**{name: value})
+
+        invalid_ranges = {
+            "max_link_age_ms": (-0.1,),
+            "max_future_skew_ms": (-0.1,),
+            "min_battery_voltage_v": (-0.1, 0.0),
+            "warn_battery_percent": (-0.1, 100.1),
+        }
+        for name, values in invalid_ranges.items():
+            for value in values:
+                with self.subTest(field=name, value=value):
+                    with self.assertRaisesRegex(ValueError, name + " is outside its valid range"):
+                        SafetyPolicy(**{name: value})
+
+    def test_equivalent_integer_and_float_policy_values_share_identity(self):
+        integer_policy = SafetyPolicy(
+            max_link_age_ms=500,
+            max_future_skew_ms=5000,
+            min_battery_voltage_v=4,
+            warn_battery_percent=20,
+        )
+        float_policy = SafetyPolicy(
+            max_link_age_ms=500.0,
+            max_future_skew_ms=5000.0,
+            min_battery_voltage_v=4.0,
+            warn_battery_percent=20.0,
+        )
+        self.assertEqual(integer_policy, float_policy)
+        self.assertEqual(integer_policy.policy_hash(), float_policy.policy_hash())
+
+    def test_canonical_json_rejects_nonstandard_numeric_constants(self):
+        for value in (float("nan"), float("inf"), float("-inf")):
+            with self.subTest(value=value):
+                with self.assertRaises(ValueError):
+                    canonical_json({"value": value})
+
     def test_complete_snapshot_passes(self):
         report = run_preflight(snapshot(), now=NOW)
         self.assertEqual(report.overall, "PASS")

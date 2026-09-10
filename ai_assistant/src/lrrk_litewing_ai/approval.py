@@ -6,7 +6,7 @@ import hashlib
 import uuid
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, Optional
+from typing import Any, Callable, Dict, Optional
 
 from .jsonl import canonical_json
 from .models import TelemetrySnapshot
@@ -71,11 +71,18 @@ def _canonical_proposal_fields(fields: Dict[str, Any]) -> str:
 
 
 class ApprovalStateMachine:
-    def __init__(self, operator_session: str, policy: SafetyPolicy = SafetyPolicy()):
+    def __init__(
+        self,
+        operator_session: str,
+        policy: SafetyPolicy = SafetyPolicy(),
+        on_policy_change: Optional[Callable[[], None]] = None,
+    ):
         if not operator_session or not isinstance(operator_session, str):
             raise ApprovalError("operator_session must be non-empty")
+        policy.validate()
         self.operator_session = operator_session
         self._policy = policy
+        self._on_policy_change = on_policy_change
         self.state = IDLE
         self.proposal: Optional[ActionProposal] = None
         self._approval_digest: Optional[str] = None
@@ -86,8 +93,11 @@ class ApprovalStateMachine:
 
     @policy.setter
     def policy(self, policy: SafetyPolicy) -> None:
+        policy.validate()
         self._policy = policy
         self._policy_is_current()
+        if self._on_policy_change is not None:
+            self._on_policy_change()
 
     def _policy_is_current(self) -> bool:
         if self.state in (PROPOSAL_READY, APPROVED) and self.proposal is not None:

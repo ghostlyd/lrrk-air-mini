@@ -71,7 +71,14 @@ class AssistantRuntime:
         self.latest = latest
         self.previous = previous
         self.last_report = last_report
-        self.approvals = ApprovalStateMachine(operator_session, policy=policy)
+        self.approvals = ApprovalStateMachine(
+            operator_session,
+            policy=policy,
+            on_policy_change=self._clear_last_report,
+        )
+
+    def _clear_last_report(self) -> None:
+        self.last_report = None
 
     @property
     def policy(self) -> SafetyPolicy:
@@ -81,7 +88,6 @@ class AssistantRuntime:
     @policy.setter
     def policy(self, policy: SafetyPolicy) -> None:
         self.approvals.policy = policy
-        self.last_report = None
 
     def ingest(self, snapshot: TelemetrySnapshot) -> None:
         proposal = self.approvals.proposal

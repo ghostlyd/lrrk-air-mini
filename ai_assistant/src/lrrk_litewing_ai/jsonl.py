@@ -14,7 +14,7 @@ _PRIVATE_MODE = 0o600
 
 
 def canonical_json(value: Dict[str, Any]) -> str:
-    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
+    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=True, allow_nan=False)
 
 
 def _private_mode_setter():

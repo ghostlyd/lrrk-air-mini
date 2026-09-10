@@ -13,6 +13,12 @@ from .models import TelemetrySnapshot
 
 
 ANALYZER_VERSION = "litewing-safety-3"
+_NUMERIC_POLICY_FIELDS = (
+    "max_link_age_ms",
+    "max_future_skew_ms",
+    "min_battery_voltage_v",
+    "warn_battery_percent",
+)
 
 
 @dataclass(frozen=True)
@@ -23,11 +29,39 @@ class SafetyPolicy:
     warn_battery_percent: float = 20.0
     accepted_imu_identities: Tuple[str, ...] = ("MPU6050", "0x68", "0x69", "104", "105")
 
+    def __post_init__(self) -> None:
+        for name, value in self._validated_numeric_values().items():
+            object.__setattr__(self, name, value)
+
+    def _validated_numeric_values(self) -> Dict[str, float]:
+        values = {}
+        for name in _NUMERIC_POLICY_FIELDS:
+            value = getattr(self, name)
+            if isinstance(value, bool) or not isinstance(value, (int, float)):
+                raise ValueError("%s must be numeric" % name)
+            converted = float(value)
+            if not math.isfinite(converted):
+                raise ValueError("%s must be finite" % name)
+            values[name] = converted
+        if values["max_link_age_ms"] < 0:
+            raise ValueError("max_link_age_ms is outside its valid range")
+        if values["max_future_skew_ms"] < 0:
+            raise ValueError("max_future_skew_ms is outside its valid range")
+        if values["min_battery_voltage_v"] <= 0:
+            raise ValueError("min_battery_voltage_v is outside its valid range")
+        if not 0 <= values["warn_battery_percent"] <= 100:
+            raise ValueError("warn_battery_percent is outside its valid range")
+        return values
+
+    def validate(self) -> None:
+        self._validated_numeric_values()
+
     @property
     def policy_version(self) -> str:
         return ANALYZER_VERSION
 
     def policy_hash(self) -> str:
+        self.validate()
         fields = {"analyzer_version": self.policy_version, "policy": asdict(self)}
         return hashlib.sha256(canonical_json(fields).encode("utf-8")).hexdigest()
 
@@ -184,6 +218,7 @@ def run_preflight(
 ) -> PreflightReport:
     """Return a deterministic report; no network or hardware access occurs."""
 
+    policy.validate()
     current = _now(now)
     findings = []
     future_ms = (snapshot.captured_at - current).total_seconds() * 1000.0

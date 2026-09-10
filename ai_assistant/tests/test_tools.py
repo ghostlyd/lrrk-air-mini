@@ -38,6 +38,19 @@ def make_snapshot(snapshot_id="tools-1"):
 
 
 class ToolTests(unittest.TestCase):
+    def test_nan_battery_policy_cannot_approve_three_volt_snapshot(self):
+        with self.assertRaisesRegex(ValueError, "min_battery_voltage_v must be finite"):
+            runtime = AssistantRuntime(policy=SafetyPolicy(min_battery_voltage_v=float("nan")))
+            state = TelemetrySnapshot.from_dict(dict(
+                make_snapshot().to_dict(),
+                battery={"voltage_v": 3.0, "current_a": None, "percent": 80},
+            ))
+            runtime.ingest(state)
+            proposal = propose_action(runtime, "review_battery", "inspect", "show report")["proposal"]
+            runtime.approvals.approve(
+                proposal["proposal_id"], "human-confirmation", state, now=state.captured_at
+            )
+
     def test_changed_snapshot_ingestion_immediately_aborts_active_records(self):
         for approved in (False, True):
             for changes in ({"snapshot_id": "new-observation"}, {"armed": True}, {"alarms": None}):
@@ -115,10 +128,33 @@ class ToolTests(unittest.TestCase):
 
     def test_runtime_and_state_machine_share_policy_updates(self):
         runtime = AssistantRuntime()
-        runtime.ingest(make_snapshot())
+        snapshot = make_snapshot()
+        runtime.ingest(snapshot)
+        with patch("lrrk_litewing_ai.safety._now", return_value=snapshot.captured_at):
+            self.assertEqual(run_preflight_tool(runtime)["overall"], "PASS")
+        self.assertIsNotNone(runtime.last_report)
         runtime.approvals.policy = SafetyPolicy(min_battery_voltage_v=4.10)
-        self.assertEqual(run_preflight_tool(runtime)["overall"], "BLOCKED")
+        self.assertIsNone(runtime.last_report)
+        with patch("lrrk_litewing_ai.safety._now", return_value=snapshot.captured_at):
+            self.assertEqual(run_preflight_tool(runtime)["overall"], "BLOCKED")
         self.assertEqual(runtime.policy.policy_hash(), runtime.approvals.policy.policy_hash())
+
+    def test_direct_policy_replacement_rejects_malformed_policy_before_installing_it(self):
+        runtime = AssistantRuntime()
+        snapshot = make_snapshot()
+        runtime.ingest(snapshot)
+        with patch("lrrk_litewing_ai.safety._now", return_value=snapshot.captured_at):
+            run_preflight_tool(runtime)
+        original_policy = runtime.policy
+        original_report = runtime.last_report
+        malformed = SafetyPolicy()
+        object.__setattr__(malformed, "min_battery_voltage_v", float("nan"))
+
+        with self.assertRaisesRegex(ValueError, "min_battery_voltage_v must be finite"):
+            runtime.approvals.policy = malformed
+
+        self.assertIs(runtime.policy, original_policy)
+        self.assertIs(runtime.last_report, original_report)
 
     def test_configured_battery_block_cannot_be_approved(self):
         runtime = AssistantRuntime(policy=SafetyPolicy(min_battery_voltage_v=4.10))
