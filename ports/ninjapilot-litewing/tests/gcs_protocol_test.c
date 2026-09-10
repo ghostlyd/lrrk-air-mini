@@ -69,6 +69,10 @@ int main(int argc,char **argv) {
     assert(PIOS_GCSRCVR_Init(&receiver_id)==0);
     UAVTalkConnection con=UAVTalkInitialize(output); assert(con);
     if(!strncmp(argv[1],"request-",8)) {
+        if(!strcmp(argv[1],"request-wireless-owner")) {
+            const uint8_t session[16]={1};
+            assert(PIOS_LiteWing_GCSReceiver_ClaimWireless(session,1)==0);
+        }
         float voltage=3.9f; memcpy(battery,&voltage,4);
         struct litewing_battery_sample sample={.valid=true,.millivolts=3900,.captured_us=now_us};
         if(!strcmp(argv[1],"request-invalid")) sample.valid=false;
@@ -83,6 +87,7 @@ int main(int argc,char **argv) {
         uint8_t consumed=0;
         assert(UAVTalkProcessInputStreamQuiet(con,request,11,&consumed)==UAVTALK_STATE_COMPLETE);
         assert(UAVTalkReceiveObject(con)==0);
+        assert(unpack_calls==0);
         assert(transmitted_count==(other?27:41));
         if(other) assert(!memcmp(transmitted+10,&object,16));
         else {

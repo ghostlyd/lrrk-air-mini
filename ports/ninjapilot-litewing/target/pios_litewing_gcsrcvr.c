@@ -112,10 +112,6 @@ int32_t PIOS_LiteWing_GCSReceiver_Unpack(UAVObjHandle obj, uint16_t instance,
 {
     const bool receiver_packet = obj != NULL && obj == GCSReceiverHandle() &&
                                  instance == 0 && data != NULL;
-    if (!receiver_packet) {
-        return UAVObjUnpack(obj, instance, data);
-    }
-
     /* Retain the timestamp from packet completion. Copy this packet, not
      * whatever a delayed event callback happens to find in shared storage.
      * UAVTalk validates the complete object length/CRC before this API call. */
@@ -129,12 +125,12 @@ int32_t PIOS_LiteWing_GCSReceiver_Unpack(UAVObjHandle obj, uint16_t instance,
     if (permitted) ++usb_inflight;
     portEXIT_CRITICAL(&receiver_lock);
     if (!permitted) return -1;
-    GCSReceiverData packet;
-    memcpy(&packet, data, sizeof(packet));
+    GCSReceiverData packet = {0};
+    if (receiver_packet) memcpy(&packet, data, sizeof(packet));
     const int32_t result = UAVObjUnpack(obj, instance, data);
     portENTER_CRITICAL(&receiver_lock);
     --usb_inflight;
-    if (result == 0 && initialized && !wireless_owner && generation == owner_generation &&
+    if (receiver_packet && result == 0 && initialized && !wireless_owner && generation == owner_generation &&
         arrival_us > usb_fence_us && arrival_us >= 0 &&
         (!have_timestamp || arrival_us > received_us)) {
         /* Older (or equal-time) completions cannot replace a newer packet. */

@@ -16,6 +16,7 @@ static uint32_t receiver_id = 1234;
 static int other_object;
 static bool inject_newer;
 static unsigned unpacked_events;
+static unsigned unpack_calls;
 #ifndef LRRK_TEST_UPSTREAM
 static bool inject_claim;
 static const uint8_t wifi_session[16] = {1};
@@ -31,6 +32,7 @@ static void event(UAVObjEventType kind) {
     if (callback) callback(&ev);
 }
 int32_t UAVObjUnpack(UAVObjHandle obj, uint16_t instance, const uint8_t *data) {
+    ++unpack_calls;
     now_us += unpack_delay;
     if (unpack_result) return unpack_result;
 #ifndef LRRK_TEST_UPSTREAM
@@ -154,6 +156,25 @@ int main(int argc,char **argv) {
         now_us=101000;
         assert(PIOS_LiteWing_GCSReceiver_ClaimWireless(wifi_session, 1)==0);
         expect(0,PIOS_RCVR_TIMEOUT);
+    } else if (!strcmp(name,"wireless-excludes-all-object-writes")) {
+        assert(PIOS_LiteWing_GCSReceiver_ClaimWireless(wifi_session,1)==0);
+        GCSReceiverData frame={.Channel={1700}};
+        assert(PIOS_LiteWing_GCSReceiver_Unpack(&other_object,0,(const uint8_t *)&frame,now_us)==-1);
+        assert(PIOS_LiteWing_GCSReceiver_Unpack(&object,1,(const uint8_t *)&frame,now_us)==-1);
+        assert(unpack_calls==0 && unpacked_events==0);
+        now_us=2000;
+        assert(PIOS_LiteWing_GCSReceiver_ReleaseWireless(wifi_session,1)==0);
+        assert(PIOS_LiteWing_GCSReceiver_Unpack(&other_object,0,(const uint8_t *)&frame,1500)==-1);
+        assert(unpack_calls==0);
+        now_us=3000;
+        assert(PIOS_LiteWing_GCSReceiver_Unpack(&other_object,0,(const uint8_t *)&frame,now_us)==0);
+        assert(unpack_calls==1);
+    } else if (!strcmp(name,"claim-during-other-object-unpack")) {
+        inject_claim=true;
+        GCSReceiverData frame={.Channel={1700}};
+        assert(PIOS_LiteWing_GCSReceiver_Unpack(&other_object,0,(const uint8_t *)&frame,now_us)==0);
+        assert(PIOS_LiteWing_GCSReceiver_ClaimWireless(wifi_session,1)==0);
+        assert(unpack_calls==1);
     } else if (!strcmp(name,"ownership-change-during-unpack")) {
         inject_claim=true;
         input(1500);
