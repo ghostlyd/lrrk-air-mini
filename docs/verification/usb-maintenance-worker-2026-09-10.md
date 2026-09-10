@@ -47,3 +47,27 @@ retain their documented limitations.
 
 No board access, flash, real credential creation, radio activation, arming or
 motor commands occurred for these checks. This does not establish flight readiness.
+
+## Independent review and follow-up
+
+The independent review of `b1fcedc..a07f98b` returned **not ready to integrate**.
+
+1. **Open, integration-blocking:** a normal flight-task arming transition can
+   occur after a Disarmed snapshot. In particular, the pinned arming handler's
+   AlwaysArmed path can act on cached input after maintenance takes the receiver
+   reservation. A coordinated inhibit at the actual arming transition is
+   required through storage and cleanup. Repeated snapshots are not sufficient.
+   Do not connect this worker to startup or the USB parser before this is fixed.
+2. **Late-observation acceptance corrected:** added tests advancing time inside
+   FlightStatus reads during shutdown and immediately before storage. Both
+   timeout tests failed against the original worker by observing a write, then
+   passed after checking time after the quiescence observation and final getter.
+   A rollback-during-getter case also passes. The worker suite now has 17
+   scenarios. This denies late storage; it does **not** bound elapsed response
+   time while a UAVObject getter waits on its upstream mutex. A bounded status
+   observation path remains part of the arming-inhibit integration work.
+
+The suite additionally now submits valid, distinct credentials while storing
+and cleanup-blocked, rejects changed credentials under the retained ID, and
+accepts a new transaction after completed cleanup. Deterministic concurrent
+worker/flight-task tests and combined radio/storage integration remain needed.

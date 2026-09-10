@@ -27,7 +27,8 @@ class USBMaintenanceTests(unittest.TestCase):
             self.assertEqual(result.returncode, 0, result.stderr)
             for case in ("success", "armed", "flight-read-error", "arm-during-stop",
                          "timeout", "rollback", "owner", "admission", "fresh-input",
-                         "cleanup", "uncertain", "not-written", "invalid-store", "create-fail"):
+                         "cleanup", "uncertain", "not-written", "invalid-store", "create-fail",
+                         "getter-timeout", "getter-rollback", "final-getter-timeout"):
                 with self.subTest(case=case):
                     result = subprocess.run([str(binary), case], capture_output=True,
                                             text=True, timeout=5)

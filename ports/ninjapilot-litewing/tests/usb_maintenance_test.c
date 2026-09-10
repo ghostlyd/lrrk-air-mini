@@ -11,6 +11,7 @@
 static const char *scenario;
 static int64_t now=1000;
 static unsigned notifications, writes, stop_calls, delay_calls;
+static unsigned stopped_reads;
 static TaskFunction_t worker;
 static void *worker_arg;
 static jmp_buf idle;
@@ -26,6 +27,12 @@ int32_t UAVObjUnpack(UAVObjHandle h,uint16_t i,const uint8_t *data) {
 int32_t FlightStatusGet(FlightStatusData *out) {
     memset(out,0,sizeof(*out));
     out->Armed=(CASE("armed") || (CASE("arm-during-stop") && stop_calls)) ? 2 : 0;
+    if (stop_calls) {
+        ++stopped_reads;
+        if (CASE("getter-timeout") || (CASE("final-getter-timeout") && stopped_reads==2))
+            now=2001000;
+        if (CASE("getter-rollback") && stopped_reads==1) now=500;
+    }
     return CASE("flight-read-error") ? -1 : 0;
 }
 BaseType_t xTaskCreate(TaskFunction_t fn,const char *name,uint32_t stack,void *arg,
@@ -57,7 +64,7 @@ void vTaskDelay(TickType_t ticks) {
         status(5,4); reject_new_valid_request();
         assert(PIOS_LiteWing_GCSReceiver_ClaimWireless(owner,1)==-1);
         now=3000000;
-    } else if (CASE("rollback")) {
+    } else if (CASE("rollback") || CASE("getter-rollback")) {
         uint8_t wire[24]; assert(lw_usb_maintenance_status(wire,24)==24);
         now=wire[1]==5 ? 3000000 : 500;
     }

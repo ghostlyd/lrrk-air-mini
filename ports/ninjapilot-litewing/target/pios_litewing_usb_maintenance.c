@@ -45,19 +45,29 @@ static void delay_ms(unsigned ms)
     vTaskDelay(ticks ? ticks : 1);
 }
 
-static int stop_and_wait(uint64_t token)
+static int within_deadline(int64_t start, int64_t *previous)
 {
-    const int64_t start=esp_timer_get_time();
-    if (start<0) return -1;
-    int64_t previous=start;
+    const int64_t now=esp_timer_get_time();
+    if (start<0 || now<*previous || now-start>=INT64_C(2000000)) return 0;
+    *previous=now;
+    return 1;
+}
+
+static int stop_and_wait(uint64_t token, int64_t *start, int64_t *previous)
+{
+    *start=esp_timer_get_time();
+    if (*start<0) return -1;
+    *previous=*start;
     lw_wifi_command_request_stop();
     for (;;) {
-        const int64_t now=esp_timer_get_time();
         /* Deadline wins even if shutdown finishes on/after the boundary. */
-        if (now<previous || now-start>=INT64_C(2000000)) return -1;
-        previous=now;
+        if (!within_deadline(*start,previous)) return -1;
         if (!disarmed() || !PIOS_LiteWing_GCSReceiver_MaintenanceHeld(token)) return -1;
-        if (lw_wifi_command_is_quiescent()) return 0;
+        const int quiet=lw_wifi_command_is_quiescent();
+        /* A UAVObject getter may block; time observed before it is not an
+         * authorization to accept a late quiescence observation. */
+        if (!within_deadline(*start,previous)) return -1;
+        if (quiet) return 0;
         delay_ms(10);
     }
 }
@@ -88,13 +98,15 @@ static void maintenance_task(void *arg)
         phase=WAIT_STOP;
         portEXIT_CRITICAL(&lock);
         uint64_t token=0;
+        int64_t stop_started=0, previous=0;
         uint8_t outcome=NOT_ATTEMPTED;
         /* Local UAVObject setters remain a trusted boundary; reservation
          * excludes receiver ingress/loads, not arbitrary flight-module code. */
         if (disarmed() &&
             PIOS_LiteWing_GCSReceiver_BeginMaintenance(1,&token)==0 &&
-            disarmed() && stop_and_wait(token)==0 && disarmed() &&
-            PIOS_LiteWing_GCSReceiver_MaintenanceHeld(token)) {
+            disarmed() && stop_and_wait(token,&stop_started,&previous)==0 && disarmed() &&
+            PIOS_LiteWing_GCSReceiver_MaintenanceHeld(token) &&
+            within_deadline(stop_started,&previous)) {
             set_phase(STORING);
             outcome=wire_result(lw_wifi_config_store(blob,sizeof(blob)));
         }
