@@ -299,7 +299,9 @@ The launcher does not discover or attest that configuration.
   reproducing the firmware's low-throttle arming gesture. Space remains the
   explicit arming request. Mode stays 1500; unused channels stay 1500.
 - Escape, STOP, window close, or focus leaving the control panel ends the
-  session. Returning focus does not resume it. Connect starts a new session.
+  session. Returning focus does not resume it. Connect attempts new admission;
+  current firmware retains wireless ownership after STOP/expiry/failure and
+  requires a board reboot for recovery. The launcher does not reset the board.
   STOP transmission is best effort, not an acknowledgement of physical stop;
   independent board link-loss handling remains essential.
 
