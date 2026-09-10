@@ -96,6 +96,30 @@ disabled or fail closed when the relevant sensors are absent or unverified.
 
 ## Existing firmware and host dependencies
 
+### Selected OpenPilot wrapper (distinct from the stock baseline)
+
+Use `ports/ninjapilot-litewing/esp-idf`, not the root ESP-Drone project, for
+the selected port. The wrapper requires the manifest-pinned NinjaPilot and
+reference HAL trees, generated UAVObjects, and ESP-IDF **5.3.2** with its
+ESP32-S3 toolchain. The stock `cflib`/CRTP client below is not an OpenPilot
+UAVTalk controller and should not be assumed compatible with this image.
+
+The battery telemetry implementation adds the IDF-provided `esp_adc` component
+(continuous ADC1 and curve-fitting calibration); it does not require a separate
+ADC breakout or additional Python hardware library. It targets GPIO2 using the
+candidate board's nominal resistor-divider ratio, which still needs fitted-board
+electrical validation. Initialization and sampling run on one pinned worker;
+missing calibration produces unavailable voltage, not a guessed conversion.
+See the [battery integration/build record](verification/battery-telemetry-bringup-2026-09-10.md).
+
+The host AI package declares CPython **3.11 through 3.14**. Keep its environment
+separate from the ESP-IDF-managed Python environment. UART telemetry uses the
+pinned UAVTalk decoder; optional serial and OpenAI SDK dependencies are declared
+in [`ai_assistant/pyproject.toml`](../ai_assistant/pyproject.toml). OpenAI runs on
+the host, with no API credential or model on the board. Wi-Fi transport for this
+OpenPilot wrapper is unfinished; the stock firmware's Wi-Fi features below do
+not establish support in the selected port.
+
 ### Firmware baseline
 
 - Root project: ESP-IDF (`CMakeLists.txt`, `main/`, `components/`).

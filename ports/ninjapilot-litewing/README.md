@@ -4,6 +4,12 @@ This directory owns the reproducible adapter boundary between the LiteWing
 V2.6.C hardware and the selected NinjaPilot/OpenPilot flight tree. The source
 inputs are pinned in [`SOURCE_MANIFEST.json`](SOURCE_MANIFEST.json).
 
+The [battery integration record](../../docs/verification/battery-telemetry-bringup-2026-09-10.md)
+documents the ADC1 voltage producer, checked startup, unavailable-field host
+decoding, and linked ESP32-S3 build. This implementation has not been flashed or
+electrically calibrated on the fitted board. It changes no persistent arming
+settings and does not estimate battery percentage or measure current.
+
 The [settings-recovery report](../../docs/verification/settings-recovery-2026-09-09.md)
 records the real persistence linker gate and non-destructive NVS recovery
 contract. Successful compilation or linkage is not physical flight clearance.
