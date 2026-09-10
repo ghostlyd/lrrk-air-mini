@@ -43,6 +43,14 @@ returning success. A custom recorder must provide the same failure-atomic
 contract; the state machine cannot undo arbitrary callback side effects.
 Terminal records cannot be aborted again.
 
+Primary descriptor close is part of the native transaction. An independent
+rollback descriptor retains the exact inode across close failures; rollback
+truncates and syncs that inode before reporting failure. Ambiguously closed
+descriptor numbers are never retried. A final redundant handle-close error is
+cleanup, so it cannot report a failed grant after commit. OS close errors can
+leave an open handle until process exit; see the documented
+[close and recovery limits](../docs/AI_ASSISTANT.md#advisory-lifecycle-audit-events).
+
 Audit records commit with a terminating LF (CRLF is readable). Unterminated
 tails are refused even if they contain valid JSON. Truncated-tail replay is
 read-only inspection of the committed prefix; it does not repair the file.

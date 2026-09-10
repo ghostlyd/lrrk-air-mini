@@ -452,6 +452,107 @@ class TransitionAuditTests(unittest.TestCase):
                     if path.exists():
                         self.assertEqual([r["event_type"] for r in validate_replay(path)], ["proposal_ready"])
 
+    def test_primary_close_failures_restore_grant_bytes_existence_and_recovery(self):
+        from lrrk_litewing_ai.jsonl import append_record
+        real_close = os.close
+        cases = (("proposal", "missing"), ("proposal", "empty"),
+                 ("proposal", "populated"), ("approval", "populated"))
+        for target, prior in cases:
+            for after_close in (False, True):
+                with self.subTest(target=target, prior=prior, after_close=after_close):
+                    path = self.directory / (target + prior + str(after_close) + ".jsonl")
+                    log = AuditLog(path, "audit-session")
+                    if prior == "empty":
+                        path.touch(mode=0o600)
+                    elif prior == "populated":
+                        log.append("existing", {})
+                    runtime = AssistantRuntime(audit=log, latest=snapshot())
+                    if target == "approval":
+                        proposal = runtime.approvals.create_proposal(
+                            snapshot(), "open_manual", PRIVATE, PRIVATE, now=NOW)
+                        operation = lambda: self.approve(runtime, proposal)
+                    else:
+                        operation = lambda: propose_action(runtime, "open_manual", PRIVATE, PRIVATE)
+                    before = path.read_bytes() if path.exists() else None
+                    primary = []
+                    failed = []
+                    def capture_append(descriptor, record):
+                        primary.append(descriptor)
+                        append_record(descriptor, record)
+                    def failed_close(descriptor):
+                        if primary and descriptor == primary[0] and not failed:
+                            failed.append(descriptor)
+                            if after_close:
+                                real_close(descriptor)
+                            raise OSError(ERROR)
+                        return real_close(descriptor)
+                    try:
+                        with patch("lrrk_litewing_ai.audit.append_record", new=capture_append), \
+                                patch("lrrk_litewing_ai.jsonl.os.close", new=failed_close):
+                            self.assert_write_failure(operation)
+                        self.assertEqual(len(failed), 1)
+                        self.assertEqual(runtime.approvals.state, "IDLE" if target == "proposal" else "PROPOSAL_READY")
+                        self.assertIsNone(runtime.approvals._approval_digest)
+                        self.assertEqual(path.read_bytes() if path.exists() else None, before,
+                                         "primary close failure left an orphan grant")
+                        if before is not None:
+                            self.assertEqual(len(validate_replay(path)), before.count(b"\n"))
+                        # A fresh writer can continue; the failed machine stays latched.
+                        recovered = AuditLog(path, "recovered-session")
+                        recovered.append("recovered", {})
+                        rows = validate_replay(path)
+                        self.assertEqual(len(rows), (before.count(b"\n") if before is not None else 0) + 1)
+                        self.assertEqual(rows[-1]["event_type"], "recovered")
+                        self.assertEqual(path.read_bytes()[:len(before or b"")], before or b"")
+                    finally:
+                        # An injected pre-close error may deliberately leave an
+                        # open descriptor. Test cleanup owns this known injection.
+                        if failed and not after_close:
+                            try:
+                                real_close(failed[0])
+                            except OSError:
+                                pass
+
+    def test_redundant_rollback_close_failure_does_not_report_failed_grant(self):
+        real_dup, real_close = os.dup, os.close
+        for target in ("proposal", "approval"):
+            for after_close in (False, True):
+                with self.subTest(target=target, after_close=after_close):
+                    path = self.directory / ("cleanup-" + target + str(after_close) + ".jsonl")
+                    runtime = AssistantRuntime(audit=AuditLog(path, "audit-session"), latest=snapshot())
+                    if target == "approval":
+                        proposal = runtime.approvals.create_proposal(
+                            snapshot(), "open_manual", PRIVATE, PRIVATE, now=NOW)
+                        operation = lambda: self.approve(runtime, proposal)
+                    else:
+                        operation = lambda: propose_action(runtime, "open_manual", PRIVATE, PRIVATE)
+                    rollback, failed = [], []
+                    def capture_dup(descriptor):
+                        duplicate = real_dup(descriptor)
+                        rollback.append(duplicate)
+                        return duplicate
+                    def failed_cleanup(descriptor):
+                        if rollback and descriptor == rollback[0] and not failed:
+                            failed.append(descriptor)
+                            if after_close:
+                                real_close(descriptor)
+                            raise OSError(ERROR)
+                        return real_close(descriptor)
+                    try:
+                        with patch("lrrk_litewing_ai.jsonl.os.dup", new=capture_dup), \
+                                patch("lrrk_litewing_ai.jsonl.os.close", new=failed_cleanup):
+                            result = operation()
+                        self.assertEqual(len(failed), 1)
+                        self.assertEqual(result["state"], "PROPOSAL_READY" if target == "proposal" else "APPROVED")
+                        self.assertEqual(runtime.approvals.state, result["state"])
+                        self.assertEqual(len(validate_replay(path)), 1 if target == "proposal" else 2)
+                        # Cleanup errors cannot latch or falsify the successful grant.
+                        runtime.approvals.abort(PRIVATE)
+                        self.assertEqual(validate_replay(path)[-1]["event_type"], "proposal_aborted")
+                    finally:
+                        if failed and not after_close:
+                            real_close(failed[0])
+
     def test_concurrent_machines_keep_each_proposal_lifecycle_in_one_valid_chain(self):
         barrier = threading.Barrier(2)
         logs = (self.log, AuditLog(self.path, "second-session"))

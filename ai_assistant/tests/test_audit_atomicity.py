@@ -248,6 +248,105 @@ class AuditAtomicityTests(unittest.TestCase):
                 self.assertEqual([r["event_type"] for r in validate_replay(path)],
                                  ["second"] if failure else ["first", "second"])
 
+    def test_primary_close_failure_never_retries_a_reused_descriptor(self):
+        self.log.append("existing", {})
+        before = self.path.read_bytes()
+        victim = self.directory / "unrelated"
+        victim.write_bytes(b"unchanged unrelated file")
+        real_close = os.close
+        primary, replacement, close_attempts = [], [], []
+        def capture_append(descriptor, record):
+            primary.append(descriptor)
+            append_record(descriptor, record)
+        def reused_close(descriptor):
+            if primary and descriptor == primary[0]:
+                close_attempts.append(descriptor)
+                if not replacement:
+                    real_close(descriptor)
+                    opened = os.open(victim, os.O_RDWR)
+                    if opened != descriptor:
+                        os.dup2(opened, descriptor)
+                        real_close(opened)
+                    replacement.append(descriptor)
+                    raise OSError("synthetic close failure")
+            return real_close(descriptor)
+        try:
+            with patch("lrrk_litewing_ai.audit.append_record", new=capture_append), \
+                    patch("lrrk_litewing_ai.jsonl.os.close", new=reused_close):
+                with self.assertRaises(OSError):
+                    self.log.append("failed", {})
+            self.assertEqual(len(close_attempts), 1)
+            self.assertTrue(os.path.samestat(os.fstat(replacement[0]), victim.stat()))
+            self.assertEqual(victim.read_bytes(), b"unchanged unrelated file")
+            self.assertEqual(self.path.read_bytes(), before)
+            self.assertEqual(len(validate_replay(self.path)), 1)
+        finally:
+            if replacement:
+                real_close(replacement[0])
+
+    def test_close_failure_rolls_back_held_inode_without_unlinking_substitution(self):
+        real_close = os.close
+        victim = self.directory / "victim"
+        victim.write_bytes(b"unchanged private data")
+        probe = self.directory / "probe"
+        try:
+            probe.symlink_to(victim)
+        except OSError as error:
+            self.skipTest("symlink creation unavailable: %s" % type(error).__name__)
+        for exists in (False, True):
+            with self.subTest(exists=exists):
+                path = self.directory / ("close-swap-%s.jsonl" % exists)
+                displaced = self.directory / ("close-held-%s.jsonl" % exists)
+                log = AuditLog(path, "test-session")
+                if exists:
+                    log.append("existing", {})
+                before = path.read_bytes() if exists else b""
+                primary, failed = [], []
+                def capture_append(descriptor, record):
+                    primary.append(descriptor)
+                    append_record(descriptor, record)
+                def swapped_close(descriptor):
+                    if primary and descriptor == primary[0] and not failed:
+                        failed.append(descriptor)
+                        real_close(descriptor)
+                        path.rename(displaced)
+                        path.symlink_to(victim)
+                        raise OSError("synthetic close failure")
+                    return real_close(descriptor)
+                with patch("lrrk_litewing_ai.audit.append_record", new=capture_append), \
+                        patch("lrrk_litewing_ai.jsonl.os.close", new=swapped_close):
+                    with self.assertRaises((OSError, ValueError)):
+                        log.append("failed", {})
+                self.assertEqual(len(failed), 1)
+                self.assertEqual(displaced.read_bytes(), before)
+                self.assertTrue(path.is_symlink())
+                self.assertEqual(victim.read_bytes(), b"unchanged private data")
+                validate_replay(displaced)
+
+    def test_new_file_rollback_closes_owned_handles_before_unlink(self):
+        real_dup, real_unlink = os.dup, Path.unlink
+        descriptors = []
+        def capture_dup(descriptor):
+            duplicate = real_dup(descriptor)
+            descriptors.extend((descriptor, duplicate))
+            return duplicate
+        def windows_style_unlink(path, *args, **kwargs):
+            if path == self.path:
+                for descriptor in descriptors:
+                    with self.assertRaises(OSError):
+                        os.fstat(descriptor)
+            return real_unlink(path, *args, **kwargs)
+        def failed_append(descriptor, record):
+            append_record(descriptor, record)
+            raise OSError("synthetic append failure")
+        with patch("lrrk_litewing_ai.jsonl.os.dup", new=capture_dup), \
+                patch.object(Path, "unlink", new=windows_style_unlink), \
+                patch("lrrk_litewing_ai.audit.append_record", new=failed_append):
+            with self.assertRaises(OSError):
+                self.log.append("failed", {})
+        self.assertEqual(len(descriptors), 2)
+        self.assertFalse(self.path.exists())
+
 
 if __name__ == "__main__":
     unittest.main()

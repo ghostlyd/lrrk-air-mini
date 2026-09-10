@@ -188,9 +188,32 @@ never unlinks a substituted destination. Existing permissions stay private
 (or are tightened), rather than restoring an unsafe earlier mode. macOS/Linux
 descriptor permissions and the existing Windows ACL backend run before any
 record bytes, with regular-file/identity checks before and after setup.
-Windows descriptors are opened in binary mode and closed before new-file
-cleanup. Native failed proposal/approval writes therefore leave no orphan
+Windows descriptors are opened in binary mode; all still-owned handles receive
+a close attempt before new-file cleanup. Native failed proposal/approval writes leave no orphan
 success event under coordinated access and functioning rollback storage.
+
+Primary descriptor close is inside the transaction's failure boundary. A
+separate duplicated rollback descriptor holds the exact inode and original
+length across that close. If primary close raises either before or after
+actually closing its descriptor, rollback truncates and fsyncs through the
+independent handle before failure surfaces. Path identity is rechecked before
+new-file removal, so a path replacement or symlink never receives rollback
+writes or gets unlinked in place of the original file.
+
+The primary descriptor number is relinquished before its close attempt and
+never retried: an error may mean it already closed and another thread reused
+the number. After a successful primary close and final identity check, closing
+the redundant rollback descriptor is cleanup only. An `OSError` from that final
+cleanup is suppressed rather than reporting a false failed grant or rolling
+back an already committed event. Cleanup is attempted once, without retry.
+
+There is an unavoidable OS close ambiguity: an error may instead leave a
+handle open. Retrying is unsafe, so such a handle can remain until process
+exit. On Windows, an ambiguously open handle can prevent removal of a newly
+created, already-truncated empty file; cleanup then fails and the call remains
+failed with no grant or orphan success event. Close failures that prevent file
+removal require process/OS cleanup and explicit storage inspection. The normal
+owned-handle cleanup order closes both descriptors before Windows unlink.
 
 Strict audit replay requires LF-terminated records; CRLF is also accepted,
 but a bare CR does not commit a record. Any nonempty file without its final LF
@@ -205,8 +228,9 @@ The telemetry input adapter retains its existing final-newline behavior.
 Exception rollback is not crash recovery or a transaction across process
 memory and disk. Process termination, filesystem failure that prevents rollback,
 or uncoordinated destination replacement still requires manual storage/replay
-inspection. No fsync durability or cross-process lock is added, and replay
-cannot prove a method returned success before a process crash.
+inspection. Rollback truncation is fsynced, but successful commits do not gain
+an fsync/directory-sync crash-durability guarantee or a cross-process lock.
+Replay cannot prove a method returned success before a process crash.
 
 Even a successfully recorded `APPROVED` state is only an advisory human-review
 record. It exposes no model approval tool, command sink, or flight execution.

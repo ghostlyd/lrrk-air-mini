@@ -47,6 +47,18 @@ def _require_regular_target(path: Path, descriptor: int) -> None:
         raise ValueError("audit destination must be one regular file")
 
 
+def _close_cleanup(descriptor: int) -> None:
+    """Attempt redundant cleanup once; an error may mean it already closed.
+
+    Retrying a descriptor number could close a different, newly opened file.
+    This cleanup must not turn an already committed append into a failure.
+    """
+    try:
+        os.close(descriptor)
+    except OSError:
+        pass
+
+
 @contextmanager
 def append_transaction(path: Path) -> Iterator[int]:
     """Hold a private descriptor and undo append bytes on any raised exception.
@@ -67,25 +79,39 @@ def append_transaction(path: Path) -> Iterator[int]:
             descriptor = os.open(path, flags)
             created = False
         original_size = None
+        rollback_descriptor = None
         try:
             _require_regular_target(path, descriptor)
             original_size = os.fstat(descriptor).st_size
+            rollback_descriptor = os.dup(descriptor)
             set_private_mode(descriptor, path)
             _require_regular_target(path, descriptor)
             yield descriptor
             _require_regular_target(path, descriptor)
+            # Primary close is part of commit. Keep an independent reference to
+            # the inode until it succeeds, even if close invalidates its fd and
+            # then raises. Relinquish the number BEFORE attempting close.
+            closing, descriptor = descriptor, -1
+            os.close(closing)
+            _require_regular_target(path, rollback_descriptor)
         except BaseException:
-            # Truncate the held inode, never a newly resolved path. The only
-            # permitted data mutation inside the context is append.
-            if original_size is not None and os.fstat(descriptor).st_size != original_size:
-                os.ftruncate(descriptor, original_size)
+            # Truncate/fsync the held inode, never a newly resolved path or the
+            # primary descriptor number after an ambiguous close.
+            restore = rollback_descriptor if rollback_descriptor is not None else descriptor
+            if original_size is not None and os.fstat(restore).st_size != original_size:
+                os.ftruncate(restore, original_size)
+                os.fsync(restore)
             if created:
-                _require_regular_target(path, descriptor)
-                original = os.fstat(descriptor)
-                os.close(descriptor)
-                descriptor = -1
-                # Windows needs the descriptor closed before unlink. Recheck
-                # identity so cleanup cannot remove a substituted destination.
+                _require_regular_target(path, restore)
+                original = os.fstat(restore)
+                # Windows requires all still-owned handles closed before unlink.
+                # An ambiguously closed number is never owned or retried here.
+                if descriptor >= 0:
+                    closing, descriptor = descriptor, -1
+                    _close_cleanup(closing)
+                if rollback_descriptor is not None:
+                    closing, rollback_descriptor = rollback_descriptor, None
+                    _close_cleanup(closing)
                 current = os.stat(path, follow_symlinks=False)
                 if not stat.S_ISREG(current.st_mode) or not os.path.samestat(original, current):
                     raise ValueError("audit destination changed during rollback")
@@ -93,7 +119,9 @@ def append_transaction(path: Path) -> Iterator[int]:
             raise
         finally:
             if descriptor >= 0:
-                os.close(descriptor)
+                _close_cleanup(descriptor)
+            if rollback_descriptor is not None:
+                _close_cleanup(rollback_descriptor)
 
 
 def append_record(path: Union[Path, int], record: Dict[str, Any]) -> None:
