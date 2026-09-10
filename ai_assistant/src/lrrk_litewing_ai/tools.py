@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
 from typing import Any, Dict, Optional
 
 from .approval import ApprovalStateMachine
+from .audit import AuditLog
 from .models import TelemetrySnapshot
 from .safety import PreflightReport, SafetyPolicy, run_preflight
 
@@ -59,22 +59,44 @@ TOOL_SCHEMAS = (
 )
 
 
-@dataclass
 class AssistantRuntime:
-    policy: SafetyPolicy = field(default_factory=SafetyPolicy)
-    operator_session: str = "offline-session"
-    latest: Optional[TelemetrySnapshot] = None
-    previous: Optional[TelemetrySnapshot] = None
-    last_report: Optional[PreflightReport] = None
-    approvals: ApprovalStateMachine = field(init=False)
+    def __init__(
+        self,
+        policy: SafetyPolicy = SafetyPolicy(),
+        operator_session: str = "offline-session",
+        latest: Optional[TelemetrySnapshot] = None,
+        previous: Optional[TelemetrySnapshot] = None,
+        last_report: Optional[PreflightReport] = None,
+        audit: Optional[AuditLog] = None,
+    ):
+        self.operator_session = operator_session
+        self.latest = latest
+        self.previous = previous
+        self.last_report = last_report
+        self.approvals = ApprovalStateMachine(
+            operator_session,
+            policy=policy,
+            on_policy_change=self._clear_last_report,
+            transition_recorder=audit.append if audit is not None else None,
+        )
 
-    def __post_init__(self) -> None:
-        self.approvals = ApprovalStateMachine(self.operator_session)
+    def _clear_last_report(self) -> None:
+        self.last_report = None
+
+    @property
+    def policy(self) -> SafetyPolicy:
+        # One policy source for preflight, proposals, approval and currentness.
+        return self.approvals.policy
+
+    @policy.setter
+    def policy(self, policy: SafetyPolicy) -> None:
+        self.approvals.policy = policy
 
     def ingest(self, snapshot: TelemetrySnapshot) -> None:
         self.previous = self.latest
         self.latest = snapshot
         self.last_report = None
+        self.approvals.invalidate_for_snapshot(snapshot)
 
 
 def get_latest_telemetry(runtime: AssistantRuntime) -> Dict[str, Any]:

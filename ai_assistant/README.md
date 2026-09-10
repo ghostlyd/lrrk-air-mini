@@ -5,6 +5,60 @@ It reads normalized telemetry, runs deterministic preflight checks, records
 redacted hash-chained audit events, and creates bounded proposals for explicit
 human review.
 
+Approval is a short-lived advisory record bound to the exact telemetry hash
+and configured safety policy. Proposals and approval results carry the
+human-readable analyzer/policy version and a canonical JSON SHA-256 policy
+hash; both participate in the proposal hash. Changing `runtime.policy` or
+ingesting telemetry with a different bound snapshot hash immediately aborts
+pending/approved state and clears the approval digest. Identical telemetry or
+an equivalent policy does not create drift or extend freshness. Approval
+requires an explicit human token, which is never stored or returned raw, and
+grants no flight execution authority. See [approval policy binding](../docs/AI_ASSISTANT.md#offline-first).
+Policy numeric fields must be finite numbers within their documented ranges;
+signed zero is canonicalized to `0.0`. Accepted IMU identities must be a list
+or tuple of non-empty strings and are normalized to a deterministic immutable
+tuple for exact identity matching; bare strings are rejected.
+Policy replacement through either `runtime.policy` or
+`runtime.approvals.policy` clears the cached preflight report.
+
+Optional lifecycle recording is configured with
+`AssistantRuntime(audit=AuditLog(path, session_id))`; the CLI attaches its
+`--audit-log` destination to that same runtime. Without a recorder, library
+use creates no audit file. Every actual lifecycle transition appends one
+`proposal_ready`, `proposal_approved`, `proposal_rejected`, `proposal_expired`,
+or `proposal_aborted` event. These events contain only state/from-state,
+proposal ID/hash, snapshot hash, policy version/hash, allowlisted action kind,
+and an enumerated reason code. They exclude rationale, expected effect,
+reject/abort prose, human tokens and token hashes, raw observations, and
+provider content. See [lifecycle audit fields](../docs/AI_ASSISTANT.md#advisory-lifecycle-audit-events).
+
+Audited proposal/approval creation cannot succeed if recording fails.
+Invalidation still clears approval and enters a terminal state before raising
+`ApprovalAuditError`; policy/observation updates also clear cached reports.
+A write error permanently disables further grants from that machine, while
+distinct abort/invalidation/rejection/expiry transitions still attempt their
+terminal event once. Native `AuditLog` rolls back partial or complete failed
+appends to the prior file bytes and existence, and validates replay before
+returning success. A custom recorder must provide the same failure-atomic
+contract; the state machine cannot undo arbitrary callback side effects.
+Terminal records cannot be aborted again.
+
+Primary descriptor close is part of the native transaction. An independent
+rollback descriptor retains the exact inode across close failures; rollback
+truncates and syncs that inode before reporting failure. Ambiguously closed
+descriptor numbers are never retried. A final redundant handle-close error is
+cleanup, so it cannot report a failed grant after commit. OS close errors can
+leave an open handle until process exit; see the documented
+[close and recovery limits](../docs/AI_ASSISTANT.md#advisory-lifecycle-audit-events).
+
+Audit records commit with a terminating LF (CRLF is readable). Unterminated
+tails are refused even if they contain valid JSON. Truncated-tail replay is
+read-only inspection of the committed prefix; it does not repair the file.
+Native logs and replay share a process-wide lock, so separate log instances
+can safely append concurrently within one process. Cross-process access still
+requires external serialization; this is not a crash-atomic transaction log.
+An audited `APPROVED` record remains advisory and grants no flight execution.
+
 The default mode is offline. It needs no API key, network, firmware change, or
 flight-controller write path:
 
@@ -43,6 +97,22 @@ The dedicated CI job installs the extra so these tests cannot silently skip for
 a missing SDK. Ordinary offline tests still need no third-party packages.
 Local tool tests do **not** verify API credentials, model replies, latency,
 provider billing, or live flight telemetry.
+
+With `--live-agent --prompt ... --audit-log ...`, the CLI appends native
+hash-chained `provider_request` and `provider_result` events. They contain only
+provider mode, the current snapshot hash, UTF-8 text byte counts and SHA-256
+digests, and a completed/blocked outcome (only the exception class on failure).
+Raw prompts, responses, exception messages, credentials, authorization and
+environment data, raw serial bytes, and hidden reasoning are excluded from
+these events. Successful response stdout is unchanged; provider-failure stderr
+is generic. Treat stdout separately if retaining a response transcript.
+
+Offline prompts, no-prompt validation, and runs without an audit destination
+produce no provider events. The offline CLI integration tests substitute only
+the external provider runner and exercise the real audit chain without the
+SDK, a key, or network access. They establish implementation behavior; a
+future live-provider smoke requires separate authorization and evidence.
+See [provider event fields](../docs/AI_ASSISTANT.md#provider-audit-events).
 
 UAVTalk is an adapter boundary, not a flight-command channel. Deterministic
 JSONL and saved-capture replay keep safety behavior testable without a board.

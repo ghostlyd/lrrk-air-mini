@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional
 
-from .jsonl import append_record, canonical_json, iter_records
+from .jsonl import AUDIT_LOCK, append_record, append_transaction, canonical_json, iter_records
 
 
 REDACTED = "[REDACTED]"
@@ -38,7 +38,13 @@ def _event_hash(event: Dict[str, Any]) -> str:
 
 
 def validate_replay(path: Path, allow_truncated_final_line: bool = False) -> List[Dict[str, Any]]:
-    records = list(iter_records(path, allow_truncated_final_line=allow_truncated_final_line))
+    with AUDIT_LOCK:
+        return _validate_replay(path, allow_truncated_final_line)
+
+
+def _validate_replay(path: Path, allow_truncated_final_line: bool) -> List[Dict[str, Any]]:
+    records = list(iter_records(path, allow_truncated_final_line=allow_truncated_final_line,
+                                require_final_newline=True))
     previous = ""
     seen = set()
     for index, record in enumerate(records):
@@ -63,11 +69,9 @@ class AuditLog:
             raise ValueError("session_id must be a non-empty string")
         self.path = Path(path)
         self.session_id = session_id
-        if self.path.exists():
-            records = validate_replay(self.path)
+        with AUDIT_LOCK:
+            records = validate_replay(self.path) if self.path.exists() else []
             self._previous_hash = records[-1]["event_hash"] if records else ""
-        else:
-            self._previous_hash = ""
 
     def append(
         self,
@@ -81,16 +85,22 @@ class AuditLog:
         timestamp = event_at or datetime.now(timezone.utc)
         if timestamp.tzinfo is None or timestamp.utcoffset() is None:
             raise ValueError("event_at must be timezone-aware")
-        record = {
-            "event_id": str(uuid.uuid4()),
-            "event_type": event_type,
-            "event_at": timestamp.astimezone(timezone.utc).isoformat().replace("+00:00", "Z"),
-            "session_id": self.session_id,
-            "source": redact(source or {}),
-            "payload": redact(payload),
-            "prev_hash": self._previous_hash,
-        }
-        record["event_hash"] = _event_hash(record)
-        append_record(self.path, record)
+        with append_transaction(self.path) as descriptor:
+            # Refresh, append, validation and rollback share one process lock.
+            records = validate_replay(self.path)
+            record = {
+                "event_id": str(uuid.uuid4()),
+                "event_type": event_type,
+                "event_at": timestamp.astimezone(timezone.utc).isoformat().replace("+00:00", "Z"),
+                "session_id": self.session_id,
+                "source": redact(source or {}),
+                "payload": redact(payload),
+                "prev_hash": records[-1]["event_hash"] if records else "",
+            }
+            record["event_hash"] = _event_hash(record)
+            append_record(descriptor, record)
+            after = validate_replay(self.path)
+            if len(after) != len(records) + 1 or after[-1] != record:
+                raise ValueError("audit append did not commit exactly one expected event")
         self._previous_hash = record["event_hash"]
         return record
