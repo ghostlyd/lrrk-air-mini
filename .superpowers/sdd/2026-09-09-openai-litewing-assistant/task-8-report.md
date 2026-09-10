@@ -551,3 +551,185 @@ These SHA-256 values were recorded from clean implementation commit
   not proposal identity, model authority, or execution authority.
 - Review round 1 was fixed and verified by the sole implementing writer. A later
   independent re-review remains a separate gate.
+
+## Task 8 review round 2
+
+Review round 2 started from clean branch `codex/provider-audit-chain` at
+`f533a2493bacb0571020c2a56a2f64f0021de034`. The production, behavioral-test,
+and public-documentation changes are committed as
+`a1c2bc22d56c9ebb8a74e5728ba84b7edf6e2e69` (`fix: canonicalize assistant
+safety policy values`), tree
+`58e5c37c82d8b2f275a0e48677d20eaa29df2aa8`. This report update is committed
+separately; its containing commit is intentionally resolved from Git rather
+than embedded in its own bytes.
+
+All Python tests and behavioral checks in this section ran from the worktree
+root under macOS `sandbox-exec` policy
+`(version 1)(allow default)(deny network*)`. Every command explicitly unset
+`OPENAI_API_KEY`. No provider, network, dependency, hardware, firmware,
+transport, push, PR, merge, or subagent operation occurred.
+
+### Review cycle 4: reject and canonicalize accepted IMU identities
+
+The behavioral regressions cover rejected bare strings, bytes, null, numeric,
+set, frozenset, and mapping containers; rejected empty, whitespace-only,
+null, numeric, boolean, and byte entries; immutable normalization of valid
+list/tuple inputs; deterministic duplicate and order handling; exact rather
+than substring identity matching; validation before policy hashing and
+preflight; and an approval-level reproduction using accepted policy
+`"MPU6050"` with reported identity `"MPU"`.
+
+Exact RED command:
+
+```sh
+/usr/bin/sandbox-exec -p '(version 1)(allow default)(deny network*)' /usr/bin/env -u OPENAI_API_KEY PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=ai_assistant/src TMPDIR=/private/tmp /opt/homebrew/bin/python3 -m unittest -v ai_assistant/tests/test_safety.py ai_assistant/tests/test_approval.py
+```
+
+Result: exit 1, `Ran 40 tests in 0.007s`, `FAILED (failures=18)`. All failures
+were the intended behavior gaps: fourteen malformed container/entry cases were
+accepted, canonical tuple normalization was absent, two deliberately tampered
+policy use-boundary checks proceeded, and the approval regression reached
+`APPROVED` (`'APPROVED' == 'APPROVED'`). No failure was an import, fixture,
+syntax, sandbox, or environment error.
+
+Minimal GREEN implementation:
+
+- `SafetyPolicy.__post_init__()` accepts only list/tuple containers whose
+  entries are non-empty strings and replaces valid inputs with an immutable,
+  duplicate-free tuple.
+- A deterministic canonical ordering retains the existing default identity
+  order first, then orders custom identities lexically. Equivalent list/tuple,
+  duplicate, and ordering variants therefore share one policy hash while the
+  default policy's canonical bytes remain unchanged.
+- `SafetyPolicy.validate()` repeats the accepted-identity checks at policy
+  identity, analyzer, state-machine construction, and replacement boundaries.
+  Deliberately bypassing the frozen constructor cannot revive bare-string
+  substring membership.
+- Analyzer membership remains exact tuple membership: `MPU` cannot satisfy
+  an accepted `MPU6050` identity.
+
+The exact GREEN command was the same 40-test command. Result: exit 0,
+`Ran 40 tests in 0.006s`, `OK`.
+
+### Review cycle 5: canonicalize semantically equivalent signed zero
+
+The direct policy-hash regression covers every field whose valid range permits
+zero: `max_link_age_ms`, `max_future_skew_ms`, and
+`warn_battery_percent`. The lifecycle regression covers both pending and
+approved records for each field, replaces `0.0` with `-0.0`, and requires the
+pending proposal to remain approvable and the existing approval to remain
+current.
+
+Exact RED command:
+
+```sh
+/usr/bin/sandbox-exec -p '(version 1)(allow default)(deny network*)' /usr/bin/env -u OPENAI_API_KEY PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=ai_assistant/src TMPDIR=/private/tmp /opt/homebrew/bin/python3 -m unittest -v ai_assistant.tests.test_safety.SafetyTests.test_signed_zero_policy_values_share_canonical_identity ai_assistant.tests.test_approval.ApprovalTests.test_signed_zero_policy_replacement_preserves_active_records
+```
+
+Result: exit 1, `Ran 2 tests in 0.002s`, `FAILED (failures=9)`. The three
+positive-zero/negative-zero policy hashes differed, and all six pending or
+approved lifecycle cases moved to `ABORTED`. No failure was environmental.
+
+The minimal production change maps every already type-checked, finite numeric
+zero to positive `0.0` inside the existing `SafetyPolicy` normalization. Range
+validation remains unchanged, so both signs of zero remain invalid for the
+strictly positive minimum-battery field.
+
+The exact GREEN command was the same two-test command. Result: exit 0,
+`Ran 2 tests in 0.001s`, `OK`.
+
+### Focused and full final verification
+
+Exact focused command:
+
+```sh
+/usr/bin/sandbox-exec -p '(version 1)(allow default)(deny network*)' /usr/bin/env -u OPENAI_API_KEY PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=ai_assistant/src TMPDIR=/private/tmp /opt/homebrew/bin/python3 -m unittest -v ai_assistant.tests.test_safety ai_assistant.tests.test_approval ai_assistant.tests.test_tools
+```
+
+Result: exit 0, `Ran 59 tests in 0.010s`, `OK`, no skips.
+
+Exact full-suite command:
+
+```sh
+/usr/bin/sandbox-exec -p '(version 1)(allow default)(deny network*)' /usr/bin/env -u OPENAI_API_KEY PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=ai_assistant/src TMPDIR=/private/tmp /opt/homebrew/bin/python3 -m unittest discover -s ai_assistant/tests -p 'test_*.py'
+```
+
+Result: exit 0, `Ran 141 tests in 0.051s`, `OK (skipped=9)`: 132 passed,
+9 unchanged optional-SDK tests skipped, with zero failures or errors. Expected
+generic CLI failure-path messages and stale replay preflight findings appeared
+on the streams and were not failures. Six test methods were added in round 2.
+
+### Static scope, leak, and canonical-format verification
+
+`git diff --check` returned exit 0 with no output. The review-base allowlist
+also returned exit 0 with no output:
+
+```sh
+git diff --exit-code f533a2493bacb0571020c2a56a2f64f0021de034 -- . ':(exclude)ai_assistant/src/lrrk_litewing_ai/safety.py' ':(exclude)ai_assistant/tests/test_safety.py' ':(exclude)ai_assistant/tests/test_approval.py' ':(exclude)ai_assistant/README.md' ':(exclude)docs/AI_ASSISTANT.md'
+```
+
+The production authority scan returned expected ripgrep no-match status,
+exit 1 with no output:
+
+```sh
+rg -n 'socket|requests|urllib|httpx|subprocess|os\.system|\bexec\(|\beval\(|\bserial\b|OPENAI_API_KEY|\b(arm|disarm|takeoff|land|write_actuator|set_gain|set_failsafe)\(' ai_assistant/src/lrrk_litewing_ai/safety.py
+```
+
+The changed-file credential-pattern scan also returned expected no-match
+status, exit 1 with no output:
+
+```sh
+rg -n 'sk-[A-Za-z0-9_-]{16,}|AKIA[A-Z0-9]{16}|-----BEGIN ([A-Z ]+ )?PRIVATE KEY-----|Bearer [A-Za-z0-9._-]{16,}' ai_assistant/src/lrrk_litewing_ai/safety.py ai_assistant/tests/test_safety.py ai_assistant/tests/test_approval.py ai_assistant/README.md docs/AI_ASSISTANT.md
+```
+
+This exact deny-network behavioral check returned exit 0 and
+`canonical policy identity OK 7d379a97585a3b1dab4c4c74b304916efe23d07522b33cebba650330726358bc`:
+
+```sh
+/usr/bin/sandbox-exec -p '(version 1)(allow default)(deny network*)' /usr/bin/env -u OPENAI_API_KEY PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=ai_assistant/src TMPDIR=/private/tmp /opt/homebrew/bin/python3 -c 'import hashlib,json,os; from dataclasses import asdict; from lrrk_litewing_ai.jsonl import canonical_json; from lrrk_litewing_ai.safety import SafetyPolicy; reject=lambda value: (_ for _ in ()).throw(ValueError(value)); default=SafetyPolicy(); expected={"analyzer_version":"litewing-safety-3","policy":{"max_link_age_ms":500.0,"max_future_skew_ms":5000.0,"min_battery_voltage_v":3.3,"warn_battery_percent":20.0,"accepted_imu_identities":["MPU6050","0x68","0x69","104","105"]}}; assert "OPENAI_API_KEY" not in os.environ; assert default.policy_hash()==hashlib.sha256(canonical_json(expected).encode()).hexdigest(); assert SafetyPolicy(max_link_age_ms=0.0).policy_hash()==SafetyPolicy(max_link_age_ms=-0.0).policy_hash(); assert SafetyPolicy(accepted_imu_identities=["0x68","MPU6050","0x68"]).policy_hash()==SafetyPolicy(accepted_imu_identities=("MPU6050","0x68")).policy_hash(); encoded=canonical_json({"policy":asdict(SafetyPolicy(warn_battery_percent=-0.0))}); json.loads(encoded,parse_constant=reject); assert "-0.0" not in encoded; print("canonical policy identity OK", default.policy_hash())'
+```
+
+The check independently parsed canonical policy JSON with non-standard
+constants rejected, verified normalized signed-zero and accepted-identity
+equivalence, and confirmed that the pre-round default policy hash is unchanged.
+
+### Round-2 changed files and hashes
+
+These SHA-256 values were recorded from clean implementation commit
+`a1c2bc22d56c9ebb8a74e5728ba84b7edf6e2e69`:
+
+| File | SHA-256 |
+| --- | --- |
+| `ai_assistant/README.md` | `ce9ba7ea333f8c38be06b5b7b000759435f99545f9b8daf658284e2b3bdff003` |
+| `ai_assistant/src/lrrk_litewing_ai/safety.py` | `07786883694ee14b15bef4aecc6fcc5794e63cdd967dd536f82774b1b8cfc35c` |
+| `ai_assistant/tests/test_approval.py` | `4dc3e2300d6ec52ca841ec0c3da046b825f73b1caf1b37d96db575be4feabd19` |
+| `ai_assistant/tests/test_safety.py` | `3cf20dcc80a9448d2365f39901cfd4c41db5386f1ffbbfef1fdde760148ac519` |
+| `docs/AI_ASSISTANT.md` | `f8e398c4b16195953ee9f5091e534255e3b7d60479da169c934015a49c69e17a` |
+
+### Scope and compatibility review
+
+- The only production file changed in round 2 is host-side
+  `safety.py`. The patch adds validation and canonical value normalization; it
+  adds no I/O, provider call, secret access, transport, hardware, flight
+  command, actuator write, or execution sink.
+- The default thresholds, default accepted identities, default canonical bytes,
+  default policy hash, analyzer version `litewing-safety-3`, finding behavior,
+  action allowlist, and advisory-only authority remain unchanged.
+- Valid accepted-identity list/tuple inputs now expose an immutable tuple;
+  duplicates collapse and semantically irrelevant input order is canonical.
+  Existing noncanonical custom policy hashes intentionally converge on the
+  semantic identity. The default tuple order is preserved for compatibility.
+- Identity strings are not coerced, trimmed, case-folded, or substring-matched.
+  Whitespace-only entries are rejected; otherwise matching remains exact.
+  Empty list/tuple policies remain valid deny-all configurations and cannot
+  make an IMU pass.
+- Signed zero is normalized only after numeric type and finiteness checks.
+  This preserves valid range behavior and prevents equivalent replacement from
+  aborting pending or approved records.
+- `AssistantRuntime` repr, equality, constructor, and introspection behavior
+  were not changed in round 2. No concrete repository consumer required any
+  expansion of the round-1 compatibility assessment.
+- Nine optional SDK tests remain skipped because the optional package is not
+  installed. No live provider or hardware evidence is claimed. Review round 2
+  was implemented and verified by the sole writer; independent re-review
+  remains a separate gate.
