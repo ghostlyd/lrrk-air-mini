@@ -4,10 +4,10 @@ Date: 2026-09-10. Implementation complete locally; no independent review,
 publication, provider smoke, or hardware validation is claimed.
 
 **Review status:** The original implementation below received three Important
-independent-review findings supplied by the user. Fix round 1 is recorded at
-the end of this report and supersedes the original storage/latch/concurrency
-limitations where stated. The earlier sections preserve the original TDD
-history; no independent re-review acceptance is claimed for the fixes.
+independent-review findings supplied by the user. Fix rounds 1 and 2 are
+recorded below and supersede earlier storage/latch/concurrency/finalization
+claims where stated. The earlier sections preserve the original TDD history;
+no independent re-review acceptance is claimed for the fixes.
 
 ## Scope and commits
 
@@ -544,3 +544,193 @@ in-memory approval. No arbitrary callback rollback guarantee is claimed.
 No push, PR, merge, external message, installation, subagent, provider/key,
 firmware or hardware operation occurred. The branch/worktree are retained for
 the next independent review.
+
+## Task 9 fix round 2 — descriptor finalization rollback
+
+Starting HEAD: `a117a872ebf566c42b38046d7287b9f308f348bf`, verified clean in
+`/private/tmp/lrrk-air-mini-provider-audit-chain` on the existing
+`codex/provider-audit-chain` branch. The remaining supplied Important finding
+was that primary `os.close` ran outside the transaction's exception handler:
+close could fail after the success event was written, leaving an orphan event
+despite a generic failed call and unchanged in-memory grant state.
+
+Implementation/tests/operator docs commit:
+`01dd7af7a11987a6c32eb4ab7a507f2561286c03`
+(`fix: retain audit rollback handle across primary close`). This report update
+is committed separately afterward. No re-review acceptance is claimed.
+
+### RED before production changes
+
+Added this focused test before changing production code:
+
+```text
+ai_assistant.tests.test_transition_audit.TransitionAuditTests.test_primary_close_failures_restore_grant_bytes_existence_and_recovery
+```
+
+The real native audit/approval path was exercised with only `os.close` failure
+injection and a forwarding append wrapper to identify the primary descriptor.
+The injection either raises before real close (leaving the primary usable), or
+closes it and then raises (leaving it invalid). Both modes were applied to:
+
+| Grant call | Prior file | Before-real-close failure | After-real-close failure |
+| --- | --- | --- | --- |
+| Proposal | Missing | RED | RED |
+| Proposal | Existing empty | RED | RED |
+| Proposal | Existing populated | RED | RED |
+| Approval | Existing populated, with pending proposal | RED | RED |
+
+All runs used the existing CPython 3.14.7 interpreter with the same offline
+prefix as the earlier rounds:
+
+```sh
+/usr/bin/sandbox-exec -p '(version 1)(allow default)(deny network*)' \
+  /usr/bin/env -u OPENAI_API_KEY PYTHONDONTWRITEBYTECODE=1 \
+  PYTHONPATH=ai_assistant/src /opt/homebrew/bin/python3
+```
+
+RED suffix:
+
+```sh
+-m unittest -v ai_assistant.tests.test_transition_audit.TransitionAuditTests.test_primary_close_failures_restore_grant_bytes_existence_and_recovery
+```
+
+Result: `Ran 1 test in 0.007s`, `FAILED (failures=8)`, exit 1, zero errors/skips.
+All eight cases reached the exact prior-bytes/existence assertion after first
+proving the call raised the generic recording error, the grant state was still
+`IDLE` or `PROPOSAL_READY`, and no approval digest was installed. The failing
+assertion compared the exact post-call bytes (or absence) with the captured
+pre-call bytes (or absence), with this diagnostic in every case:
+
+```text
+primary close failure left an orphan grant
+```
+
+Missing-file cases retained a complete proposal event instead of `None`;
+empty-file cases retained that event instead of `b''`; populated-file cases
+retained an extra complete proposal/approval event after the original bytes.
+The final recovery assertions require strict replay with no orphan and a
+fresh writer appending one correctly chained event. Test cleanup owns and
+closes descriptors deliberately leaked by its pre-close injection; production
+does not retry those ambiguous descriptor numbers.
+
+### Implementation and initial GREEN
+
+Only `jsonl.py` production behavior changed. The transaction duplicates the
+primary descriptor before any append, retaining the exact inode and original
+size independently. Primary close now runs inside the transactional `try`.
+Ownership of its descriptor number is relinquished before attempting close,
+so an exception cannot lead to a retry that closes another file after reuse.
+
+On failure, the independent rollback descriptor truncates the held inode to
+its original size and fsyncs the truncation. Original path identity is checked
+before removing a created file. Still-owned primary/rollback handles receive
+one cleanup close attempt before new-file unlink, preserving Windows cleanup
+ordering. Existing-file bytes and existence, and missing-file absence, are
+restored in the tested fault cases. Path substitutions are never truncated or
+unlinked in place of the held inode.
+
+After primary close succeeds and the final identity check passes, closing the
+redundant rollback descriptor is cleanup, not part of commit. Its `OSError`
+is suppressed to avoid reporting a false failed grant after commit. Cleanup
+never retries a descriptor number, regardless of whether its close actually
+happened before the error.
+
+The same focused RED test then passed all eight cases:
+`Ran 1 test in 0.008s`, `OK`. The prior six-module focused set plus this test
+passed **81 tests**, zero failures/errors/skips (`Ran 81 tests in 0.331s`).
+
+### Additional cleanup and path-security controls
+
+Added four methods after initial GREEN to exercise the requested boundaries;
+they passed without further production changes and are not additional RED
+evidence:
+
+- `test_redundant_rollback_close_failure_does_not_report_failed_grant`: both
+  proposal and approval, with redundant-close errors before/after actual
+  close. The call succeeds, native replay contains the committed event, the
+  machine is in the returned grant state, and subsequent abort records normally.
+- `test_primary_close_failure_never_retries_a_reused_descriptor`: the injection
+  really closes the primary and reuses that exact number for an unrelated
+  file before raising. There is one primary close attempt; the unrelated
+  descriptor stays open and its bytes unchanged; the original audit is restored.
+- `test_close_failure_rolls_back_held_inode_without_unlinking_substitution`:
+  new and existing paths are displaced and replaced with a symlink during the
+  failing close. Rollback restores bytes in the displaced original inode,
+  replay validates it, and both the symlink and its unrelated target survive.
+- `test_new_file_rollback_closes_owned_handles_before_unlink`: a Windows-style
+  unlink guard verifies both still-owned descriptors are closed before deletion
+  during append rollback. This is a cleanup-order simulation on macOS, not a
+  native Windows run or a claim that an ambiguously open handle can be closed.
+
+Final focused suffix:
+
+```sh
+-m unittest ai_assistant.tests.test_audit_atomicity \
+  ai_assistant.tests.test_transition_audit ai_assistant.tests.test_audit \
+  ai_assistant.tests.test_approval ai_assistant.tests.test_tools \
+  ai_assistant.tests.test_cli_provider_audit
+```
+
+Result: **85 passed**, zero failures/errors/skips
+(`Ran 85 tests in 0.344s`). This retains prior strict-tail, partial/full write
+rollback, concurrent writer/lifecycle, privacy, terminal-latch and Windows ACL
+backend simulation coverage.
+
+### Full verification and scope
+
+Full-suite suffix: `-m unittest discover -s ai_assistant/tests -p 'test_*.py'`.
+
+```text
+Ran 177 tests in 0.378s
+OK (skipped=9)
+168 passed, 9 unchanged optional SDK skips, 0 failures/errors
+```
+
+Fix-round-2 RED evidence totals **8 failing assertions**, across one method's
+eight subtests. Five test methods were added in this round. Expected CLI
+negative-path and stale synthetic-fixture output remained unchanged.
+
+Staged implementation verification:
+
+- Exact five-file scope: `ai_assistant/src/lrrk_litewing_ai/jsonl.py`,
+  `ai_assistant/tests/test_audit_atomicity.py`,
+  `ai_assistant/tests/test_transition_audit.py`, `ai_assistant/README.md`,
+  and `docs/AI_ASSISTANT.md`.
+- AST comparisons against the requested HEAD confirm unchanged permission
+  setters, regular-file identity guard, canonical encoding, strict tail parsing,
+  single binary write helper and process-wide lock initialization.
+- Audit/state-machine/provider/firmware/transport/dependency files are unchanged;
+  lifecycle API and metadata schemas are unchanged.
+- Added source/test lines produced no matches for network/subprocess/serial
+  clients, credential/environment lookups or patterns, or flight-command
+  additions (`rg` exit 1, empty result).
+- Changed Python files parse with Python 3.11–3.14 grammar. Executed tests use
+  macOS CPython 3.14.7; native Windows/Linux or other interpreter execution is
+  not claimed. Existing Windows ACL simulation tests passed unchanged.
+- Explicit `OPENAI_API_KEY` absence assertion, `git diff --check`, and
+  `git diff --cached --check` passed under the documented conditions.
+
+### Close semantics and compatibility limits
+
+The primary-close orphan defect is corrected for both injected close modes.
+A redundant cleanup failure after commit no longer produces a false failed
+grant. The native transaction still depends on functioning rollback storage
+and coordinated file access; no cross-process or crash-atomic guarantee is
+introduced. Rollback truncation is fsynced, but successful commits still have
+no new fsync/directory-sync crash-durability guarantee.
+
+An OS close error cannot reliably reveal whether its handle remains open.
+Retesting/retrying its numeric descriptor is unsafe because another thread
+may already have reused that number. Such a handle may therefore remain open
+until process exit. On Windows that can prevent removal of a newly created,
+already-truncated empty file; the call stays failed with no grant or orphan
+success event, but namespace cleanup then requires process/OS cleanup and
+storage inspection. Tests prove exact file existence restoration on macOS
+for both injected modes, and separately verify Windows owned-handle cleanup
+ordering and ACL behavior. They do not claim to overcome OS refusal to unlink
+an ambiguously open handle. These unavoidable limits are now explicit in both
+operator documents instead of implying arbitrary close recovery.
+
+No network/provider/API key, hardware/firmware, push/PR/merge, dependency
+installation, or subagent operation occurred. The branch and worktree remain
+available for independent re-review.
