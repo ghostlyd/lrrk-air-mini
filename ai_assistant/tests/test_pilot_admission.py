@@ -6,6 +6,22 @@ from lrrk_litewing_ai.pilot_wire import Envelope, encode, decode
 
 
 class AdmissionTests(unittest.TestCase):
+    def test_challenge_only_check_closes_without_claim_or_operator_session(self):
+        client = self.make()
+        self.assertIsNone(client.verify_challenge_only(self.challenge_wire(),200))
+        self.assertTrue(client.closed)
+        self.assertFalse(client.established)
+        self.assertIsNone(client._keys)
+        with self.assertRaises(ValueError):
+            client.receive_challenge(self.challenge_wire(),201)
+        with self.assertRaises(ValueError):
+            client.take_operator_session(201)
+
+    def test_challenge_only_invalid_proof_closes(self):
+        client = self.make()
+        with self.assertRaises(ValueError):
+            client.verify_challenge_only(self.challenge_wire(payload=b'x'*64),200)
+        self.assertTrue(client.closed)
     def test_fresh_claim_samples_are_authenticated_and_strict(self):
         client = self.make()
         samples = (1000, 1500, 1500, 1500, 1500, 1000, 2000, 1234)

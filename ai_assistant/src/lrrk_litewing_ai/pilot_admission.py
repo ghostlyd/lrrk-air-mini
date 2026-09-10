@@ -72,6 +72,17 @@ class PilotAdmission:
         frame = self._board_proof(datagram, now_us)
         return self._claim(frame, samples)
 
+    def verify_challenge_only(self, datagram: bytes, now_us: int) -> None:
+        """Verify fresh root-key reachability, then retire without making CLAIM.
+
+        No operator keys/session are produced. This neither establishes flight
+        ownership nor proves the AP password, firmware identity or reboot.
+        """
+        try:
+            self._board_proof(datagram, now_us)
+        finally:
+            self.close()
+
     def _board_proof(self, datagram, now_us):
         if self._phase != "challenge":
             raise ValueError("not awaiting challenge")
