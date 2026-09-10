@@ -60,6 +60,30 @@ compatibility with a small pack. Do not substitute a higher-voltage multi-cell
 pack, assume a LiHV charging profile, or bridge mismatched connectors. No
 battery SKU, adapter, repinning operation or purchase is approved by this list.
 
+### Charge-current evidence update — 2026-09-10
+
+The candidate V2.6.C production BOM specifies **R5 = 1.2 kΩ**. In the
+[PCB source](../hardware/LieWingV2.6.C/LieWingV2.6.C.kicad_pcb), R5 pad 1
+shares `Net-(IC1-PROG)` with IC1 pin 2; R5 pad 2 connects to ground.
+This establishes the design's programming resistor, not the fitted value.
+The [Tech Public TP4056 datasheet](https://www.techpublic.com/storage/pdf/20241129/zPyaatBvDrPvHGVh.pdf)
+lists 1.2 kΩ for nominal 1000 mA charging. Thus **nominal 1 A is a candidate
+design inference**, not a measurement or identification of the fitted charger's
+manufacturer. Thermal regulation, component variants, and source limits can
+change actual current; they are not a substitute for matching charge ratings.
+
+Before using onboard charging, identify the fitted charger and programming
+resistor and compare their specified current against the pack manufacturer's
+maximum charge rating. A pack's discharge C-rating does not establish its charge
+rating. For scale only, 1 A into a 500 mAh pack is 2C charging; this arithmetic
+is not a recommendation for a particular capacity or charge rate.
+
+If onboard charge compatibility cannot be established, use only a separately
+qualified 1S charger with the pack disconnected from the board during charging.
+An external charger does not resolve flight-current capability, connector
+polarity, retention, or pack fit. No resistor replacement or wiring modification
+is prescribed here.
+
 ## Software dependencies and validation
 
 See [port and dependency inventory](PORT_AND_DEPENDENCIES.md) for ESP-IDF,
