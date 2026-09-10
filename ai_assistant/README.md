@@ -219,6 +219,46 @@ certificate. The firmware publisher and physical radio checks are not yet
 integrated. See the [lifecycle evidence](../docs/verification/wifi-telemetry-lifecycle-2026-09-10.md).
 ## Wireless advisory handoff
 
+`AdvisoryWorker` now supplies the session-owned consumer loop. Create a fresh
+worker for each authenticated pilot session and run `worker.run` on a dedicated
+host thread. Forward only validated observations using `worker.offer(item)`.
+The worker creates its own `AssistantRuntime`; its trusted analysis callback
+receives `(runtime, observation)`, preserving the timestamp/age sidecar. Neither
+the worker API nor its runtime exposes pilot credentials or command methods.
+Do not capture those capabilities in a callback closure: this is not a sandbox.
+
+Call `worker.close()` in pilot-session cleanup. It discards pending data and
+does not join or wait for analysis. An already-admitted callback may complete
+historically after closure; it must not present its output as current-session
+authority. Join the thread from supervision, outside the pilot loop. Set finite
+API deadlines: Python cannot forcibly cancel a hung callback. An analysis
+exception terminates the worker, closes its inbox and sets `worker.failed`,
+without retaining or logging exception text. Do not retry/restart that worker.
+
+Example consumer setup (offline analysis; no network request):
+
+```python
+from threading import Thread
+from lrrk_litewing_ai.advisory_handoff import AdvisoryWorker
+from lrrk_litewing_ai.tools import run_preflight_tool
+
+def analyze(runtime, observation):
+    report = run_preflight_tool(runtime)
+    # Deliver report plus observation metadata to trusted historical display.
+
+worker = AdvisoryWorker(analyze)
+thread = Thread(target=worker.run, name="litewing-advisory")
+thread.start()
+# Pilot owner: worker.offer(validated_observation)
+# Session cleanup: worker.close()
+# Supervisor: thread.join(timeout=2); check thread.is_alive() and worker.failed
+```
+
+The idle poll interval is 50 ms, not a real-time delivery guarantee. Slow analysis
+still sees only the latest partial observation, not a synchronized full-aircraft
+snapshot. The integrated pilot launcher, physical wireless qualification and
+live wireless-to-OpenAI acceptance remain outstanding.
+
 `AdvisoryTelemetryInbox` in `lrrk_litewing_ai.advisory_handoff` transfers an
 already-accepted `TelemetryObservation` from the local pilot owner to a separate
 assistant worker. It owns no key, socket, command method, API client or thread.

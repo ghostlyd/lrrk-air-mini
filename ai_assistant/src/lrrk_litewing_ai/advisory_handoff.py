@@ -6,7 +6,7 @@ Use a fresh inbox per session and close it in the pilot owner's finally block.
 The pilot owner calls offer; a separate serialized worker owns the runtime and
 calls ingest_latest, then performs any analysis/API work outside the pilot loop.
 """
-from threading import Lock
+from threading import Event, Lock
 from typing import TYPE_CHECKING
 
 from .telemetry_session import TelemetryObservation
@@ -64,3 +64,61 @@ class AdvisoryTelemetryInbox:
         with self._lock:
             self._closed = True
             self._pending = None
+
+
+class AdvisoryWorker:
+    """One session, one runtime, one caller-owned analysis thread.
+
+    Run ``run`` on a dedicated thread, never on the pilot loop. The trusted
+    callback receives only the runtime and historical observation; do not give
+    its closure pilot keys or controls. This is capability separation by API,
+    not a Python sandbox or a hard real-time scheduling guarantee.
+
+    close rejects offers and requests cooperative termination without joining.
+    An already-admitted callback may finish after close; it must treat output
+    as historical. A hung callback cannot be killed by this worker. Configure
+    external API deadlines and join from supervision, never the pilot loop.
+    Create a new instance on session change; never reuse its runtime.
+    """
+
+    def __init__(self, analyze):
+        self._analyze = analyze
+        self._inbox = AdvisoryTelemetryInbox()
+        self._stop = Event()
+        self._failed = Event()
+        self._run_once = Lock()
+
+    @property
+    def failed(self) -> bool:
+        """Analysis failed; exception text and telemetry are not retained."""
+        return self._failed.is_set()
+
+    def offer(self, observation: TelemetryObservation) -> bool:
+        return self._inbox.offer(observation)
+
+    def close(self) -> None:
+        self._stop.set()
+        self._inbox.close()
+
+    def run(self) -> None:
+        """Consume latest-only observations until closed or analysis fails.
+
+        An idle worker waits 50 ms between polls. Offers remain nonblocking
+        on inbox contention and do not invoke callback code or signal locks.
+        No retries, network access, or analysis occur without an observation.
+        """
+        if not self._run_once.acquire(blocking=False):
+            raise RuntimeError('advisory worker cannot restart')
+        try:
+            from .tools import AssistantRuntime
+
+            runtime = AssistantRuntime()
+            while not self._stop.is_set():
+                item = self._inbox.ingest_latest(runtime)
+                if item is not None and not self._stop.is_set():
+                    self._analyze(runtime, item)
+                self._stop.wait(.05)
+        except Exception:
+            self._failed.set()
+        finally:
+            self.close()
