@@ -1,6 +1,7 @@
 /* Actual adapted UAVTalk parser + actual target receiver, without hardware. */
 #include "openpilot.h"
 #include "pios_gcsrcvr_priv.h"
+#include "pios_litewing_gcsrcvr.h"
 #include "uavtalk_priv.h"
 #include <stdio.h>
 #include <math.h>
