@@ -31,7 +31,8 @@ class IntegratedStoreTests(unittest.TestCase):
                 'tests/usb_maintenance_store_test.c')]
             run(flags + sources + ['-o', str(out / 'combined')])
             for case in ('success', 'uncertain', 'not-written', 'armed', 'owner',
-                         'admission', 'fresh-input', 'timeout', 'rollback', 'cleanup'):
+                         'admission', 'fresh-input', 'timeout', 'rollback', 'cleanup',
+                         'readback-failure', 'readback-mismatch'):
                 with self.subTest(case=case):
                     run([str(out / 'combined'), case])
             run(flags + ['-DTEST_BYPASS_STORE'] + sources + ['-o', str(out / 'bypass')])

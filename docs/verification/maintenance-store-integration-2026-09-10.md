@@ -13,6 +13,13 @@ receiver cleanup. Assertions verify exact NVS bytes, single set/commit, expected
 readback counts, balanced handles and arming inhibition during NVS operations.
 A mutation that bypasses the real store fails the NVS-set assertion.
 
+Independent review accepted this fixture with two coverage improvements. Both
+were implemented: live-handle tracking rejects duplicate closes/use-after-close
+and enforces the read-only reopen, and two added scenarios propagate readback
+failure or mismatch after successful commit as uncertainty. The resulting twelve
+scenarios pass under the same sanitizers. FlightStatus/object-manager behavior
+remains mocked here; actual generated setter enforcement is tested separately.
+
 Python produces validated submission payloads for success, uncertain, not-written
 and armed cases. The C worker consumes the 152-byte payload and emits its actual
 24-byte final status; Python checks transaction correlation and result using the
