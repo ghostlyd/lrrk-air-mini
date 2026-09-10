@@ -1,5 +1,11 @@
 # LiteWing port and dependency inventory
 
+Current checkpoint: the keyboard launcher and local advisory worker are merged
+through PR #74. Credential storage was verified, but current startup fails at
+the MPU6050 address probe before modules or Wi-Fi start. A temporary console
+diagnostic image remains installed, not flight-qualified. Historical bench
+successes below do not supersede this [live diagnostic](verification/wifi-activation-diagnostic-2026-09-10.md).
+
 Status: ESP32-S3 wrapper build and final USB configuration verified through
 2026-09-10. This document records what is evidenced in this repository and on
 the connected development host. The approved
@@ -119,9 +125,10 @@ in [`ai_assistant/pyproject.toml`](../ai_assistant/pyproject.toml). OpenAI runs 
 the host, with no API credential or model on the board. The selected wrapper's
 authenticated Wi-Fi command runtime and USB provisioning workflow are now
 source-integrated. Authenticated wireless telemetry now reaches the advisory
-runtime in localhost integration tests. Physical provisioning/activation,
-board-side wireless telemetry qualification, physical operator input integration
-and radio qualification remain unfinished.
+runtime in localhost integration tests. One-shot physical credential storage
+was verified. The Mac keyboard adapter and launcher are implemented and tested;
+live AP activation, board-side wireless telemetry and operator/radio
+qualification remain unfinished.
 The stock firmware's Wi-Fi features below do not establish
 support in this port.
 
@@ -144,10 +151,10 @@ fresh installation or live radio test.
 | Command authentication | IDF `mbedtls`, HKDF enabled by `CONFIG_MBEDTLS_HKDF_C` | Direction-separated keys, authenticated session and replay/freshness enforcement |
 | Credential loading/storage | IDF `nvs_flash` | Dedicated `lw_pilot/config`; integrated bounded USB worker, scoped writer and verified readback; private host rotation preserves old/pending copies |
 | Timing/randomness | IDF `esp_timer`, `esp_hw_support` | Monotonic challenge age and platform RNG; radio-load timing still needs measurement |
-| Host pilot protocol | CPython 3.11–3.14 standard-library networking, HMAC and randomness | Protocol/operator APIs exist; physical input-device adapter and user-facing pilot launcher remain outstanding |
+| Host pilot protocol | CPython 3.11–3.14 standard-library networking, HMAC and randomness; Tk for the GUI | Mac keyboard adapter and explicit demo/live launcher merged in PR #74; local Tk and installed-package tests passed; live pilot qualification remains outstanding |
 | USB telemetry | Optional `uavtalk` extra: `pyserial>=3.5,<4` | Existing UAVTalk path retained; stock CRTP clients cannot operate LWPL |
 | Authenticated telemetry | Pinned NinjaPilot UAVObject manager, battery acquisition boundary and IDF `mbedtls`; CPython standard library on the host | Five rotating schemas, independent telemetry key/sequence, coherent battery bytes/age; real C-to-Python localhost integration verified, not board radio qualification |
-| Host advisory AI | Optional `openai` extra: `openai-agents==0.22.1`; standard-library handoff requires no extra package | Read-only single-slot handoff reaches the actual AssistantRuntime; no pilot key shared with AI tools; deployed worker/launcher and live wireless-to-OpenAI validation remain outstanding |
+| Host advisory AI | Optional `openai` extra: `openai-agents==0.22.1`; standard-library handoff requires no extra package | Read-only worker integrated with launcher; no pilot key shared with AI tools; launcher runs local preflight analysis without API calls; live wireless-to-OpenAI validation remains outstanding |
 | Windows private audit files | `oschmod==0.3.12`, `pywin32==312` | Declared Windows-only dependencies; not yet a credential-bundle storage implementation |
 
 Provisioning update: the [operator commands](../ai_assistant/README.md#operator-provisioning)
@@ -167,9 +174,11 @@ separately records 300 assistant tests (9 optional skips) and the real
 C/UDP/Python/runtime path. That host-only change adds no third-party dependency
 and performs no OpenAI request or board operation. A slow consumer can miss
 object types: the slot holds a latest partial observation, not a complete or
-synchronized aircraft state. The pilot-device choice, its calibrated input
-adapter, user-facing launcher and deployed advisory-worker scheduling are still
-required before qualifying the complete wireless operator workflow.
+synchronized aircraft state. The selected Mac keyboard adapter, user-facing
+launcher and advisory-worker scheduling are implemented; the complete live
+wireless operator workflow still requires qualification. Tk is required for the
+GUI (locally installed as Homebrew `python-tk@3.14`), not for headless advisory
+use. See [keyboard operation and limits](../ai_assistant/README.md#mac-keyboard-pilot).
 
 No additional onboard AI computer, GPS, optical-flow sensor or range sensor is
 required by this attitude/rate pilot-link design. These exclusions do not imply
