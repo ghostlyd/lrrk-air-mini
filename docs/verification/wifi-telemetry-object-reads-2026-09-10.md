@@ -33,6 +33,23 @@ Tests run with NinjaPilot `ac77304a58de6c8bd552f94668b46903adb71cb2`:
 - Independent review found no blocking issues and confirmed the pinned
   recursive-owner path. The source CI job explicitly runs the new test with
   pinned flight source, rather than relying on the optional no-source skip.
+- Full port suite with the pinned flight root: 380 run, 359 passed, 21 optional
+  environment skips. The new contention/mutation test ran rather than skipped.
 
 This evidence does not qualify task priority/interference, radio load, battery
 timing association or physical stop latency. No board operation occurred.
+
+## Target build
+
+Clean committed source `804f9ea` builds with pinned ESP-IDF 5.3.2 for ESP32-S3.
+The image is `0xd4d90` bytes in the unchanged `0x100000`-byte application
+partition, leaving 17% free. USB ID reservations pass for 115 objects and the
+persistence link check passes. The generated object-manager compilation is
+exercised; the read guard has no publisher caller yet and is not claimed as an
+active telemetry path. Flash instructions printed by the build were not run.
+
+Core dumps remain disabled (`CONFIG_ESP_COREDUMP_ENABLE_TO_NONE=y`, neither
+flash nor UART enabled). Build output includes packed-pointer conversion
+warnings in the pinned upstream object-manager code and an upstream mbedTLS
+CMake compatibility warning. Build success is not a warning-free or physical
+execution claim.
