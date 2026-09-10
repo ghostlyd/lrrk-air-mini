@@ -8,7 +8,7 @@ import math
 import time
 
 from .live_uavtalk import _Synchronizer
-from .usb_provisioning_wire import submission, status_request
+from .usb_provisioning_wire import submission, status_request, STATUS_ID
 
 
 class SerialProvisioningError(OSError):
@@ -66,13 +66,23 @@ class ProvisioningSerial:
                     or now < previous or now - start >= 2):
                 raise ValueError()
             previous = now
-            data = self.read(1)  # stop exactly at the first CRC-valid frame boundary
+            data = self.read(1)  # consume the alignment query's status, not just telemetry
             now = clock()
             if (type(now) not in (int, float) or not math.isfinite(now)
                     or now < previous or now - start >= 2):
                 raise ValueError()
             previous = now
-            if sync.feed(data):
+            for frame in sync.feed(data):
+                if frame.object_id != STATUS_ID:
+                    continue
+                payload = frame.payload
+                if (frame.message_type != 0x20 or frame.instance_id != 0
+                        or frame.timestamp_ticks is not None or len(payload) != 24
+                        or payload[0] != 1 or payload[1] > 6 or payload[2] > 4
+                        or payload[3] or any(payload[20:24])):
+                    raise ValueError()
+                # Any transaction (including zero) is allowed for alignment
+                # only. It is not returned as a persistence result.
                 sync.finish()
                 return
         raise ValueError()

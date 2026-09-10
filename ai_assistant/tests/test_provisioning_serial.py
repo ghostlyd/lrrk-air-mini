@@ -34,7 +34,8 @@ class Port:
 
 class SerialTests(unittest.TestCase):
     def setUp(self):
-        raw = struct.pack('<BBHIH', 0x3c, 0x20, 10, 1234, 0)
+        raw = struct.pack('<BBHIH', 0x3c, 0x20, 34, 0x4C575048, 0)
+        raw += bytes([1, 1, 0, 0]) + bytes(20)
         self.frame = raw + bytes([crc8(raw)])
         self.packet = submission(b't'*16, encode_config('test', 'p'*24, b'k'*32))
         self.device = '/dev/cu.synthetic'
