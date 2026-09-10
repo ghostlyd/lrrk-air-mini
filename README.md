@@ -42,6 +42,13 @@ now passes the sampled disarmed receiver-loss/recovery checks with a complete
 capture. Exact timeout latency, electrical output, powered operation and flight
 remain unverified; this does not enable arming.
 
+The checked Stabilization startup build is now [installed and observed over
+USB](docs/verification/stabilization-startup-usb-install-2026-09-09.md). The
+application, bootloader, partition table and settings passed separate live
+comparisons; sampled runtime state remained disarmed with zero commands on the
+four motor channels. Initial startup alarms and BootFault still prevent flight
+clearance, and arming remains `Always Disarmed`.
+
 ## Firmware build
 
 The firmware is an ESP-IDF project. Install a compatible ESP-IDF toolchain,

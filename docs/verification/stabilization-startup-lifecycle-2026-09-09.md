@@ -7,6 +7,11 @@ does not install firmware, change settings, enable arming, drive a motor or
 claim asynchronous readiness. The last recorded installed firmware remains
 Always Disarmed and was not re-observed during this work.
 
+Subsequent status: after this source report merged, the exact merge application
+was [installed and observed over USB](stabilization-startup-usb-install-2026-09-09.md).
+The statements below retain the boundary at the time this source-only evidence
+was collected.
+
 ## Synchronous contract
 
 `StabilizationInitialize` is now a one-shot operation. It accepts usable
