@@ -21,8 +21,9 @@ discovery, radio association, flashing or hardware actuation in this implementat
   including expiry/STOP during MAC and interrupted sends.
 - [x] Test all five records from the real C sender over localhost UDP through
   the production Python demultiplexer and semantic consumer, then STOP or loss.
-- [ ] Complete full host/port regressions, independent review and pinned target build.
-- [ ] Publish reviewed source with truthful build/host-only evidence and merge green CI.
+- [x] Complete full host/port regressions, independent review and pinned target build.
+- [x] Prepare reviewed source with truthful build/host-only evidence for a CI-gated
+  pull request. Merge acceptance requires green live checks on its exact head.
 
 Target radio timing, stack high-water mark, association, key provisioning,
 USB recovery under live load, and motor-stop behavior are separate physical

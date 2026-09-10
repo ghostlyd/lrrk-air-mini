@@ -47,5 +47,16 @@ No board access, radio association, credentials, OpenAI requests, flash, arming
 or motor commands occurred. Localhost fixture data are synthetic. Remaining
 physical qualification includes task timing/stack usage under radio load, board
 identity, provisioning/association, USB recovery, and observed motor-stop behavior.
-No flight-readiness claim follows from these host results. Target-build evidence
-will be recorded separately against the committed source revision.
+No flight-readiness claim follows from these host results.
+
+## Reviewed target build
+
+Independent review closed the P2 assertion finding after rerunning the corrected
+omission suite; no additional production findings were reported. Clean source
+`e86d872` builds with pinned ESP-IDF 5.3.2 and ESP32-S3. Actual generated-header
+schema assertions compile, telemetry read/wire/command sources compile and link,
+USB ID reservations pass for 115 objects, and persistence link verification passes.
+The image size is `0xd53e0` bytes in the unchanged `0x100000` app partition,
+leaving `0x2ac20` bytes (17%) free. Core dumps remain disabled for flash and UART.
+The incremental build retains the upstream mbedTLS CMake compatibility warning;
+this is not a warning-free build claim. Printed flash commands were not executed.
