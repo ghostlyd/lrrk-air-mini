@@ -59,7 +59,17 @@ int main(int argc, char **argv)
     assert(lw_wire_encode(&frame, lw_pilot_mac, &key, wire, sizeof(wire), &size) == 0);
     assert(lw_session_prepare_control(&session, wire, size, 2000) == LW_PILOT_CANDIDATE);
     clock_us = 3000;
-    if (!strcmp(argv[1], "delayed")) {
+    if (!strcmp(argv[1], "released")) {
+        assert(PIOS_LiteWing_GCSReceiver_ReleaseWireless(owner,1)==0);
+        clock_us=4000;
+        GCSReceiverData usb={.Channel={1600}};
+        assert(PIOS_LiteWing_GCSReceiver_Unpack(&object,0,(const uint8_t *)&usb,clock_us)==0);
+        assert(PIOS_LiteWing_GCSReceiver_PublishWireless(owner,&session)==-1);
+        assert(session.phase==LW_CLOSED);
+        assert(pios_gcsrcvr_rcvr_driver.read(receiver_id,0)==1600);
+        assert(storage_writes==1);
+        return 0;
+    } else if (!strcmp(argv[1], "delayed")) {
         clock_us = 76001;
         assert(PIOS_LiteWing_GCSReceiver_PublishWireless(owner, &session) == -1);
         assert(session.phase == LW_CLOSED);

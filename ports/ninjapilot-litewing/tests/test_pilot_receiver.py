@@ -30,7 +30,7 @@ class PilotReceiverTests(unittest.TestCase):
             command += [str(ROOT/"tests/pilot_receiver_integration.c"),"-o",str(binary)]
             result = subprocess.run(command,capture_output=True,text=True,timeout=60)
             self.assertEqual(result.returncode,0,result.stderr)
-            for case in ("publish","delayed","wrong-owner","stop"):
+            for case in ("publish","delayed","wrong-owner","stop","released"):
                 with self.subTest(case=case):
                     result = subprocess.run([str(binary),case],capture_output=True,text=True,timeout=10)
                     self.assertEqual(result.returncode,0,result.stderr)
