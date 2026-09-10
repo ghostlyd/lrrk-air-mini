@@ -149,6 +149,7 @@ enum lw_session_result lw_session_receive(struct lw_pilot_session *s,
         s->phase = LW_ACTIVE;
         s->challenge_us = s->slots[slot].issued_us;
         s->board_sequence = 1;
+        s->pilot_sequence = 1;
         mbedtls_platform_zeroize(s->nonces, sizeof(s->nonces));
         result = LW_HANDSHAKE_REPLY;
     }
@@ -163,4 +164,69 @@ done:
     mbedtls_platform_zeroize(&frame, sizeof(frame));
     mbedtls_platform_zeroize(&response, sizeof(response));
     return result;
+}
+
+enum lw_session_result lw_session_prepare_control(struct lw_pilot_session *s,
+    const uint8_t *wire, size_t size, int64_t now)
+{
+    struct lw_wire_frame frame = {0};
+    struct lw_pilot_candidate candidate = {0};
+    enum lw_session_result result = LW_REJECT;
+    if (!s) return LW_REJECT;
+    if (lw_session_tick(s, now) != 0) return LW_RETIRED;
+    if (s->phase != LW_ACTIVE || !wire) return LW_REJECT;
+    if (read_frame(wire, size, s->keys.c2b, &frame) != 0 ||
+        (frame.kind != 5 && frame.kind != 6) ||
+        memcmp(frame.session, s->session, 16) ||
+        frame.sequence <= s->pilot_sequence) goto done;
+    int slot = -1;
+    for (unsigned i = 0; i < 4; ++i)
+        if (s->slots[i].valid && !memcmp(frame.challenge, s->slots[i].id, 16) &&
+            now - s->slots[i].issued_us <= 75000) { slot = (int)i; break; }
+    if (slot < 0) goto done;
+    if (frame.kind == 6) {
+        if (frame.payload_len) goto done;
+        lw_session_retire(s);
+        result = LW_RETIRED;
+        goto done;
+    }
+    if (frame.payload_len != 16 || s->prepared ||
+        s->slots[slot].issued_us < s->challenge_us) goto done;
+    for (unsigned i = 0; i < 8; ++i) {
+        candidate.channels[i] = ((uint16_t)frame.payload[2*i] << 8) | frame.payload[2*i+1];
+        if (candidate.channels[i] < 1000 || candidate.channels[i] > 2000) goto done;
+    }
+    if (frame.sequence == UINT64_MAX) {
+        lw_session_retire(s);
+        result = LW_RETIRED;
+        goto done;
+    }
+    candidate.sequence = frame.sequence;
+    candidate.origin_us = s->slots[slot].issued_us;
+    s->candidate = candidate;
+    s->prepared = 1;
+    result = LW_PILOT_CANDIDATE;
+done:
+    mbedtls_platform_zeroize(&candidate, sizeof(candidate));
+    mbedtls_platform_zeroize(&frame, sizeof(frame));
+    return result;
+}
+
+enum lw_session_result lw_session_commit_control(struct lw_pilot_session *s,
+    int64_t now, int owner_valid, struct lw_pilot_candidate *out)
+{
+    if (out) memset(out, 0, sizeof(*out));
+    if (!s) return LW_REJECT;
+    if (lw_session_tick(s, now) != 0) return LW_RETIRED;
+    if (s->phase != LW_ACTIVE || !s->prepared) return LW_REJECT;
+    if (!out || owner_valid != 1 || now - s->candidate.origin_us > 75000) {
+        lw_session_retire(s);
+        return LW_RETIRED;
+    }
+    s->pilot_sequence = s->candidate.sequence;
+    s->challenge_us = s->candidate.origin_us;
+    *out = s->candidate;
+    mbedtls_platform_zeroize(&s->candidate, sizeof(s->candidate));
+    s->prepared = 0;
+    return LW_PILOT_CANDIDATE;
 }

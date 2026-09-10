@@ -16,6 +16,9 @@ from test_pilot_crypto_vectors import PIN
 
 RNG = C.CFUNCTYPE(C.c_int, C.c_void_p, C.c_void_p, C.c_size_t)
 
+class Candidate(C.Structure):
+    _fields_ = [("channels", C.c_uint16 * 8), ("origin_us", C.c_int64), ("sequence", C.c_uint64)]
+
 
 class FirmwareAdmissionTests(unittest.TestCase):
     @classmethod
@@ -60,6 +63,8 @@ class FirmwareAdmissionTests(unittest.TestCase):
         cls.lib.exhaust_sequence.argtypes = [C.c_void_p]
         cls.lib.lw_session_init.argtypes = [C.c_void_p]
         cls.lib.lw_session_tick.argtypes = [C.c_void_p, C.c_int64]
+        cls.lib.lw_session_prepare_control.argtypes = [C.c_void_p, C.c_void_p, C.c_size_t, C.c_int64]
+        cls.lib.lw_session_commit_control.argtypes = [C.c_void_p, C.c_int64, C.c_int, C.POINTER(Candidate)]
         cls.lib.lw_session_issue_challenge.argtypes = [C.c_void_p, C.c_void_p,
             C.c_int64, RNG, C.c_void_p, C.c_void_p, C.c_size_t, C.POINTER(C.c_size_t)]
         cls.lib.lw_session_receive.argtypes = [C.c_void_p, C.c_void_p, C.c_size_t,
@@ -103,6 +108,99 @@ class FirmwareAdmissionTests(unittest.TestCase):
         if rc != 1:
             self.assertEqual(written.value, 0)
         return rc, reply.raw[:written.value]
+
+    def active(self):
+        client, challenge = self.start()
+        frame = decode(challenge, self.root, 1)
+        keys = derive_keys(self.root, self.host, frame.payload[32:], frame.session)
+        self.assertEqual(self.receive(client.receive_challenge(challenge, 200), 300)[0], 1)
+        return frame, keys
+
+    def control_wire(self, frame, keys, sequence=2, kind=5, payload=None):
+        if payload is None:
+            payload = b"\x05\xdc" * 8 if kind == 5 else b""
+        return encode(Envelope(0, kind, frame.session, sequence, frame.challenge, payload), keys.c2b)
+
+    def prepare(self, wire, now):
+        return self.lib.lw_session_prepare_control(self.state, wire, len(wire), now)
+
+    def commit(self, now, owner_valid=1):
+        out = Candidate()
+        C.memset(C.byref(out), 0xa5, C.sizeof(out))
+        rc = self.lib.lw_session_commit_control(self.state, now, owner_valid, C.byref(out))
+        if rc != 3:
+            self.assertEqual(bytes(out), bytes(C.sizeof(out)))
+        return rc, out
+
+    def test_control_commit_preserves_origin_and_rejects_replay(self):
+        frame, keys = self.active()
+        wire = self.control_wire(frame, keys)
+        self.assertEqual(self.prepare(wire, 500), 3)
+        rc, candidate = self.commit(600)
+        self.assertEqual(rc, 3)
+        self.assertEqual(list(candidate.channels), [1500]*8)
+        self.assertEqual((candidate.origin_us, candidate.sequence), (100, 2))
+        self.assertEqual(self.prepare(wire, 700), 0)
+        self.assertEqual(self.commit(800)[0], 0)
+        self.assertEqual(self.prepare(self.control_wire(frame, keys, 3), 900), 3)
+        self.assertEqual(self.commit(1000)[1].origin_us, 100)
+        self.assertEqual(self.lib.lw_session_tick(self.state, 100100), -1)
+
+    def test_commit_delay_and_lost_ownership_retire_without_candidate(self):
+        for now, owner in ((75101, 1), (600, 0), (499, 1)):
+            self.lib.lw_session_init(self.state)
+            frame, keys = self.active()
+            self.assertEqual(self.prepare(self.control_wire(frame, keys), 500), 3)
+            self.assertEqual(self.commit(now, owner)[0], 2)
+            self.assertEqual(self.lib.phase(self.state), 0)
+            self.assertEqual(self.lib.retired_keys(self.state), 1)
+
+    def test_stop_invalidates_prepared_control(self):
+        frame, keys = self.active()
+        self.assertEqual(self.prepare(self.control_wire(frame, keys), 500), 3)
+        self.assertEqual(self.prepare(self.control_wire(frame, keys, 3, kind=6), 600), 2)
+        self.assertEqual(self.commit(700)[0], 0)
+        self.assertEqual(self.lib.phase(self.state), 0)
+
+    def test_control_payload_sequence_and_authentication_bounds(self):
+        frame, keys = self.active()
+        for wire in (self.control_wire(frame, keys, 1),
+                     self.control_wire(frame, keys, payload=b"x"*15),
+                     self.control_wire(frame, keys, payload=b"\x03\xe7"*8),
+                     self.control_wire(frame, keys, payload=b"\x07\xd1"*8),
+                     self.control_wire(frame, keys, kind=6, payload=b"x")):
+            self.assertEqual(self.prepare(wire, 500), 0)
+        wire = self.control_wire(frame, keys)
+        self.assertEqual(self.prepare(wire[:-1] + bytes([wire[-1]^1]), 500), 0)
+        self.assertEqual(self.prepare(wire, 75101), 0)
+        self.assertEqual(self.lib.phase(self.state), 2)
+
+    def test_control_origin_cannot_regress_and_only_one_candidate_can_wait(self):
+        original, keys = self.active()
+        rc, challenge = self.issue(20100)
+        self.assertEqual(rc, 1)
+        fresh = decode(challenge, keys.b2c, 1)
+        self.assertEqual(self.prepare(self.control_wire(fresh, keys), 20200), 3)
+        self.assertEqual(self.prepare(self.control_wire(fresh, keys, 3), 20300), 0)
+        self.assertEqual(self.commit(20400)[1].origin_us, 20100)
+        self.assertEqual(self.prepare(self.control_wire(original, keys, 3), 20500), 0)
+        self.assertEqual(self.prepare(self.control_wire(fresh, keys, 3), 20600), 3)
+        self.assertEqual(self.commit(20700)[1].sequence, 3)
+
+    def test_exact_control_age_and_sequence_exhaustion(self):
+        frame, keys = self.active()
+        self.assertEqual(self.prepare(self.control_wire(frame, keys), 75100), 3)
+        self.assertEqual(self.commit(75100)[0], 3)
+        self.assertEqual(self.prepare(self.control_wire(frame, keys, 2**64-1), 75100), 2)
+        self.assertEqual(self.lib.retired_keys(self.state), 1)
+
+    def test_old_session_control_cannot_cross_readmission(self):
+        original, keys = self.active()
+        old = self.control_wire(original, keys)
+        self.assertEqual(self.prepare(self.control_wire(original, keys, kind=6), 500), 2)
+        self.active()  # Deterministic fixture RNG advances to distinct session/nonces.
+        self.assertEqual(self.prepare(old, 600), 0)
+        self.assertEqual(self.commit(700)[0], 0)
 
     def test_real_host_and_board_mutual_admission(self):
         client, challenge = self.start()
