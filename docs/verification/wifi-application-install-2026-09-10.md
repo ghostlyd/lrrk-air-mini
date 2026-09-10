@@ -44,7 +44,26 @@ not attempted. No always-disarmed policy was restored.
 
 ## Remaining acceptance
 
-Credential provisioning, AP association, authenticated wireless telemetry,
+### Subsequent USB provisioning
+
+The first one-shot alignment query produced no status reply; no credential
+submission was enabled at that point. Bounded status-only polling observed
+canonical idle status responses. The reviewed host polling correction then
+passed live read-only alignment. The previous private pending bundle was
+retained, not regenerated.
+
+After observing idle/not-attempted status with a zero transaction, that saved
+transaction was submitted once. The firmware reported matching persisted and
+finished status (commit/readback plus cleanup), and the private host `.stored`
+copy was created successfully. This later authorized provisioning writes
+credential NVS; it does not invalidate the earlier pre-provisioning equality
+comparison or imply that NVS remains equal after provisioning.
+
+No AP association, reboot durability or application-key probe follows merely
+from successful storage. Credentials and transaction identifiers are not
+included in this report.
+
+AP association, authenticated wireless telemetry,
 physical wireless STOP/link-loss timing and USB recovery qualification remain.
 The keyboard launcher and live wireless-to-OpenAI acceptance are not established
 by this installation. This report is not flight acceptance.
