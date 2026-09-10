@@ -58,3 +58,28 @@ increment the transmit-error count, and permit subsequent status and ordinary
 telemetry requests. The rejection/status group now covers 13 cases; the full
 parser suite remains 12 passing test groups, including 162 frame splits and
 Python/C envelope interoperability.
+
+## Build-time schema reservation check — `f196698`
+
+The target now runs `verify_usb_ids.py` against all generated UAVObject headers
+before adapting/compiling the parser. It checks literal 32-bit data IDs and the
+pinned manager's adjacent metadata IDs. Reserved IDs, missing/unrecognized
+definitions, and empty input fail configuration. Runtime collision rejection
+remains independent. The normal CMake pass tracks header changes and added or
+removed headers; ESP-IDF's requirements script-mode pass uses a plain glob
+because CMake prohibits CONFIGURE_DEPENDS in script mode.
+
+Four test groups passed, including both reserved data IDs, both possible
+metadata collisions, decimal/hex representations, malformed definitions and
+collisions in a later header. The actual generated schema passed with 115
+objects. An initial real target configure exposed the script-mode incompatibility;
+the conditional-glob fix was followed by a successful ESP-IDF 5.3.2 build at
+`f196698`, with USB_ID_RESERVATIONS=PASS in both passes and a passing persistence
+link check. Image size remains `0xd44a0` with 17% partition headroom.
+
+This completes the build-time collision check, not the remaining partial-buffer,
+UART-buffer, startup, or private host-bundle integration. No board operations
+were performed.
+
+Independent source review accepted the conditional-glob fix at `f196698` with
+no new issue; the successful target rebuild supplies its requested build check.
