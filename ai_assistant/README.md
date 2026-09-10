@@ -195,9 +195,10 @@ become available to the write guard only after a canonical status reply.
 The exchange ignores only an exact canonical duplicate of that recorded
 alignment status for a different transaction. Such duplicates never confirm
 storage or extend the deadline; other mismatches remain unresolved.
-USB-C can power motors without a battery. Source and simulated integration tests
-are complete for the documented paths; physical provisioning/activation is not
-yet established. See [operator CLI evidence](../docs/verification/provisioning-operator-cli-2026-09-10.md),
+USB-C can power motors without a battery. Application installation and one-shot
+credential storage were verified; AP activation and wireless qualification remain
+outstanding. See [installation evidence](../docs/verification/wifi-application-install-2026-09-10.md),
+[operator CLI evidence](../docs/verification/provisioning-operator-cli-2026-09-10.md),
 [storage promotion](../docs/verification/credential-storage-promotion-2026-09-10.md)
 and [key probe limits](../docs/verification/application-key-probe-2026-09-10.md).
 ## Pilot-owned wireless telemetry (source integration)
@@ -263,8 +264,52 @@ thread.start()
 
 The idle poll interval is 50 ms, not a real-time delivery guarantee. Slow analysis
 still sees only the latest partial observation, not a synchronized full-aircraft
-snapshot. The integrated pilot launcher, physical wireless qualification and
-live wireless-to-OpenAI acceptance remain outstanding.
+snapshot. The keyboard launcher below integrates this worker. Physical wireless
+qualification and live wireless-to-OpenAI acceptance remain outstanding.
+
+## Mac keyboard pilot
+
+Install this package to obtain `litewing-pilot`. A Python installation with Tk
+and a graphical desktop is required (locally tested with Homebrew Python 3.14
+and `python-tk@3.14`). This is a human command interface, not an AI flight tool.
+
+```text
+litewing-pilot --demo
+litewing-pilot --live --bundle EXISTING_PENDING_FILE --host EXPLICIT_IPV4
+```
+
+Demo never reads credentials or opens a radio socket. Live mode requires an
+already joined drone network; opening the window does not connect. Clicking
+Connect makes one bounded admission attempt with neutral inputs. There is no
+automatic retry, reconnection, arming, network association or firmware change.
+Never run another pilot/probe against the board concurrently.
+
+The aircraft must use the documented GCS profile: channels 1–5 are throttle,
+roll, pitch, yaw and mode, with minimum 1000, neutral 1500 and maximum 2000.
+The launcher does not discover or attest that configuration.
+
+- Hold Space at minimum throttle to request the existing yaw-right arming
+  gesture. A sampled gesture is not confirmation of arming. Release Space before
+  increasing throttle; verify actual aircraft telemetry and conditions first.
+- W/S increase/decrease throttle at 250 channel units per second, clamped to
+  1000–2000. Releasing them holds the selected throttle, not zero throttle.
+- Arrows command full pitch/roll axes; A/D command full yaw. Released axes
+  center and opposed keys cancel. Letter controls accept Shift/Caps Lock.
+  Ordinary positive yaw is suppressed below channel throttle 1500 to prevent
+  reproducing the firmware's low-throttle arming gesture. Space remains the
+  explicit arming request. Mode stays 1500; unused channels stay 1500.
+- Escape, STOP, window close, or focus leaving the control panel ends the
+  session. Returning focus does not resume it. Connect starts a new session.
+  STOP transmission is best effort, not an acknowledgement of physical stop;
+  independent board link-loss handling remains essential.
+
+Input and UDP control run on the GUI thread. A stalled GUI cannot continue
+background transmission of cached controls; this is not a real-time controller.
+The separate advisory worker receives only authenticated, key-free observations
+and runs local preflight analysis, with no OpenAI request or command authority.
+Displayed samples are not actuator acknowledgements. Telemetry/advisory results
+are historical and may be partial; `armed=None` means unknown. Native flight
+qualification is still required; source tests and demo operation do not prove it.
 
 `AdvisoryTelemetryInbox` in `lrrk_litewing_ai.advisory_handoff` transfers an
 already-accepted `TelemetryObservation` from the local pilot owner to a separate
