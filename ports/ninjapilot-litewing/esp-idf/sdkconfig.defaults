@@ -42,6 +42,9 @@ CONFIG_ESP_COREDUMP_ENABLE_TO_FLASH=y
 CONFIG_ESP_COREDUMP_DATA_FORMAT_ELF=y
 CONFIG_BT_ENABLED=n
 
+# LWPL role-separated session-key derivation requires the SDK HKDF primitive.
+CONFIG_MBEDTLS_HKDF_C=y
+
 # Make allocation corruption fail at the point of detection during bring-up.
 CONFIG_HEAP_POISONING_COMPREHENSIVE=y
 CONFIG_HEAP_TRACING_STANDALONE=n

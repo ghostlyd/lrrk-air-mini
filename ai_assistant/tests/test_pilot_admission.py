@@ -95,3 +95,23 @@ class AdmissionTests(unittest.TestCase):
         client = self.make()
         with self.assertRaises(ValueError):
             client.begin(101)
+
+    def test_accept_deadline_boundary_and_clock_rollback_retire_attempt(self):
+        keys = derive_keys(self.root, self.host, self.board, self.session)
+        accept = encode(Envelope(1, 4, self.session, 1, self.challenge, b""), keys.b2c)
+        client = self.make()
+        client.receive_challenge(self.challenge_wire(), 200)
+        client.receive_accept(accept, 1_000_099)
+        self.assertTrue(client.established)
+        for now in (199, 1_000_100, 1_000_101):
+            client = self.make()
+            client.receive_challenge(self.challenge_wire(), 200)
+            with self.assertRaises(ValueError):
+                client.receive_accept(accept, now)
+            self.assertFalse(client.established)
+            # Retirement removes this object's credential references, not a
+            # claim of Python memory zeroization.
+            for name in ("_root", "_host", "_keys", "_session", "_challenge"):
+                self.assertIsNone(getattr(client, name))
+            with self.assertRaises(ValueError):
+                client.receive_accept(accept, 300)
