@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-3.0-or-later */
 #include "pios.h"
 #include "uavobjectmanager.h"
-#include "flightstatus.h"
+#include "litewing_arming_maintenance.h"
 #include "pios_litewing_usb_maintenance.h"
 #include "pios_litewing_gcsrcvr.h"
 #include "pios_litewing_wifi_command.h"
@@ -33,12 +33,6 @@ static void set_phase(uint8_t value)
     portEXIT_CRITICAL(&lock);
 }
 
-static int disarmed(void)
-{
-    FlightStatusData flight;
-    return FlightStatusGet(&flight)==0 && flight.Armed==FLIGHTSTATUS_ARMED_DISARMED;
-}
-
 static void delay_ms(unsigned ms)
 {
     TickType_t ticks=pdMS_TO_TICKS(ms);
@@ -53,7 +47,7 @@ static int within_deadline(int64_t start, int64_t *previous)
     return 1;
 }
 
-static int stop_and_wait(uint64_t token, int64_t *start, int64_t *previous)
+static int stop_and_wait(uint64_t token, uint64_t arming, int64_t *start, int64_t *previous)
 {
     *start=esp_timer_get_time();
     if (*start<0) return -1;
@@ -62,10 +56,11 @@ static int stop_and_wait(uint64_t token, int64_t *start, int64_t *previous)
     for (;;) {
         /* Deadline wins even if shutdown finishes on/after the boundary. */
         if (!within_deadline(*start,previous)) return -1;
-        if (!disarmed() || !PIOS_LiteWing_GCSReceiver_MaintenanceHeld(token)) return -1;
+        if (!lw_arming_maintenance_held(arming) ||
+            !PIOS_LiteWing_GCSReceiver_MaintenanceHeld(token)) return -1;
         const int quiet=lw_wifi_command_is_quiescent();
-        /* A UAVObject getter may block; time observed before it is not an
-         * authorization to accept a late quiescence observation. */
+        /* Revalidate after observations, even though object-lock acquisition
+         * is now nonblocking; scheduling can still delay this task. */
         if (!within_deadline(*start,previous)) return -1;
         if (quiet) return 0;
         delay_ms(10);
@@ -97,14 +92,16 @@ static void maintenance_task(void *arg)
         wipe(pending,sizeof(pending));
         phase=WAIT_STOP;
         portEXIT_CRITICAL(&lock);
-        uint64_t token=0;
+        uint64_t token=0, arming=0;
         int64_t stop_started=0, previous=0;
         uint8_t outcome=NOT_ATTEMPTED;
-        /* Local UAVObject setters remain a trusted boundary; reservation
-         * excludes receiver ingress/loads, not arbitrary flight-module code. */
-        if (disarmed() &&
+        /* Atomically observe Disarmed and inhibit actual status writes before
+         * reserving ingress. Neither mutex is held across shutdown/storage. */
+        if (lw_arming_maintenance_begin(&arming)==0 &&
             PIOS_LiteWing_GCSReceiver_BeginMaintenance(1,&token)==0 &&
-            disarmed() && stop_and_wait(token,&stop_started,&previous)==0 && disarmed() &&
+            lw_arming_maintenance_held(arming) &&
+            stop_and_wait(token,arming,&stop_started,&previous)==0 &&
+            lw_arming_maintenance_held(arming) &&
             PIOS_LiteWing_GCSReceiver_MaintenanceHeld(token) &&
             within_deadline(stop_started,&previous)) {
             set_phase(STORING);
@@ -118,6 +115,10 @@ static void maintenance_task(void *arg)
         /* Retain only the token/result when cleanup fails. No credential
          * retries, radio restart, forced task deletion or owner release. */
         while (token && PIOS_LiteWing_GCSReceiver_EndMaintenance(token)!=0) {
+            set_phase(CLEANUP_BLOCKED);
+            delay_ms(100);
+        }
+        while (arming && lw_arming_maintenance_end(arming)!=0) {
             set_phase(CLEANUP_BLOCKED);
             delay_ms(100);
         }

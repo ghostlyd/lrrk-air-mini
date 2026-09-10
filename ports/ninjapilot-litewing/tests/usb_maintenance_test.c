@@ -2,11 +2,13 @@
 #include "pios_litewing_gcsrcvr.h"
 #include "pios_gcsrcvr_priv.h"
 #include "litewing_wifi_store.h"
+#include "litewing_arming_maintenance.h"
 #include "flightstatus.h"
 #include <freertos/task.h>
 #include <assert.h>
 #include <setjmp.h>
 #include <string.h>
+#include <pthread.h>
 
 static const char *scenario;
 static int64_t now=1000;
@@ -35,6 +37,14 @@ int32_t FlightStatusGet(FlightStatusData *out) {
     }
     return CASE("flight-read-error") ? -1 : 0;
 }
+static pthread_mutex_t object_mutex;
+static pthread_mutex_t *mutex=&object_mutex;
+static UAVObjHandle FlightStatusHandle(void) { return &object_mutex; }
+static int xSemaphoreTakeRecursive(pthread_mutex_t *m,uint32_t ticks) {
+    return (ticks ? pthread_mutex_lock(m) : pthread_mutex_trylock(m))==0;
+}
+static void xSemaphoreGiveRecursive(pthread_mutex_t *m) { assert(!pthread_mutex_unlock(m)); }
+#include "litewing_arming_maintenance.inc"
 BaseType_t xTaskCreate(TaskFunction_t fn,const char *name,uint32_t stack,void *arg,
                        UBaseType_t priority,TaskHandle_t *handle) {
     (void)name; (void)priority; assert(stack>=4096);
@@ -77,6 +87,10 @@ int lw_wifi_command_is_quiescent(void) {
     return 1;
 }
 enum lw_wifi_store_result lw_wifi_config_store(const uint8_t *blob,size_t size) {
+    uint8_t armed=2;
+    pthread_mutex_lock(mutex);
+    assert(!lw_arming_write_allowed(FlightStatusHandle(),&armed,0,1));
+    pthread_mutex_unlock(mutex);
     assert(size==136 && !memcmp(blob,expected,136)); assert(stop_calls==1);
     status(4,0);
     uint64_t token=0;
@@ -93,6 +107,9 @@ enum lw_wifi_store_result lw_wifi_config_store(const uint8_t *blob,size_t size) 
     return LW_WIFI_STORE_VERIFIED;
 }
 int main(int argc,char **argv) {
+    pthread_mutexattr_t attr; pthread_mutexattr_init(&attr);
+    pthread_mutexattr_settype(&attr,PTHREAD_MUTEX_RECURSIVE);
+    pthread_mutex_init(mutex,&attr); pthread_mutexattr_destroy(&attr);
     assert(argc==2); scenario=argv[1]; uint32_t id;
     request[0]=1; memcpy(request+16,"LWCF",4);
     request[20]=1; request[21]=1; request[22]=16; request[24]=42;

@@ -138,8 +138,20 @@ if(NOT LITEWING_STARTUP_RC EQUAL 0)
     message(FATAL_ERROR "Pinned startup service adaptation failed")
 endif()
 
-set(UAVO_CORE_SRCS
+set(LITEWING_ARMING_DIR "${CMAKE_CURRENT_BINARY_DIR}/litewing_arming")
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+    "${PORT_ROOT}/prepare_arming_maintenance.py"
     "${FLIGHT}/uavobjects/uavobjectmanager.c"
+    "${TARGET_ROOT}/include/litewing_arming_maintenance.inc")
+execute_process(COMMAND python3 "${PORT_ROOT}/prepare_arming_maintenance.py"
+    --source "${FLIGHT}/uavobjects" --output "${LITEWING_ARMING_DIR}"
+    RESULT_VARIABLE LITEWING_ARMING_RC)
+if(NOT LITEWING_ARMING_RC EQUAL 0)
+    message(FATAL_ERROR "Pinned object-manager maintenance adaptation failed")
+endif()
+
+set(UAVO_CORE_SRCS
+    "${LITEWING_ARMING_DIR}/uavobjectmanager.c"
     "${FLIGHT}/uavobjects/uavobjectpersistence.c"
     "${LITEWING_STARTUP_DIR}/eventdispatcher.c"
     "${LITEWING_UAVTALK_DIR}/uavtalk.c"

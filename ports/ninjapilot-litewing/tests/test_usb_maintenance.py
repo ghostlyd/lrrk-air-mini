@@ -14,7 +14,7 @@ class USBMaintenanceTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             binary = Path(directory) / "maintenance"
             result = subprocess.run([
-                "cc", "-std=c11", "-Wall", "-Wextra", "-Werror", "-pthread",
+                "cc", "-std=c11", "-D_XOPEN_SOURCE=700", "-Wall", "-Wextra", "-Werror", "-pthread",
                 "-fsanitize=address,undefined", "-fno-sanitize-recover=all",
                 "-I", str(ROOT / "tests/maintenance_stubs"),
                 "-I", str(ROOT / "tests/gcs_stubs"),
