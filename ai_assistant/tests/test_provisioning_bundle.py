@@ -69,3 +69,34 @@ class BundleTests(unittest.TestCase):
         path.write_bytes(b'bad')
         with self.assertRaises(BundleError):
             load_pending(path)
+
+    def test_directory_sync_failure_preserves_record_without_success(self):
+        sync = os.fsync
+        calls = 0
+        def fail_directory(fd):
+            nonlocal calls
+            calls += 1
+            if calls == 2:
+                raise OSError('synthetic directory failure')
+            return sync(fd)
+        with patch('os.fsync', side_effect=fail_directory):
+            with self.assertRaises(BundleError):
+                save_pending(self.directory, self.tx, self.blob)
+        self.assertEqual(calls, 2)
+        self.assertEqual(load_pending(self.directory / (self.tx.hex() + '.pending')),
+                         (self.tx, self.blob))
+
+    def test_ambiguous_directory_close_is_sanitized_without_retry(self):
+        close = os.close
+        calls = 0
+        def fail_after_close(fd):
+            nonlocal calls
+            calls += 1
+            close(fd)
+            if calls == 2:
+                raise OSError('synthetic sensitive close detail')
+        with patch('os.close', side_effect=fail_after_close):
+            with self.assertRaises(BundleError) as error:
+                save_pending(self.directory, self.tx, self.blob)
+        self.assertNotIn('sensitive', str(error.exception))
+        self.assertEqual(calls, 2)

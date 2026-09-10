@@ -51,7 +51,11 @@ def _directory(path):
         raise BundleError('private bundle operation failed; preserve pending records') from None
     finally:
         if descriptor is not None:
-            os.close(descriptor)
+            try:
+                os.close(descriptor)
+            except OSError:
+                # Never retry a possibly closed descriptor number.
+                raise BundleError('private bundle close failed; preserve pending records') from None
 
 
 def _record(transaction, blob):
