@@ -94,3 +94,36 @@ class TransportTests(unittest.TestCase):
         result = save_and_submit(self.directory, self.tx, self.blob, port, clock=port.clock)
         self.assertFalse(result.verified)
         self.assertEqual(port.writes, [])
+
+    def test_read_disconnect_is_unknown_and_preserves_bundle(self):
+        class Disconnected(Port):
+            def read(self, size):
+                raise OSError('synthetic credential-like private data')
+        port = Disconnected()
+        result = save_and_submit(self.directory, self.tx, self.blob, port, clock=port.clock)
+        self.assertEqual(result.outcome, 'unknown')
+        self.assertNotIn('private', repr(result))
+        self.assertTrue((self.directory / (self.tx.hex() + '.pending')).exists())
+        self.assertEqual(port.writes.count(submission(self.tx, self.blob)), 1)
+
+    def test_late_status_and_clock_rollback_are_not_accepted(self):
+        for index, observed in enumerate((6.0, -.1, float('nan'))):
+            class InvalidClock(Port):
+                def read(self, size):
+                    self.time = observed
+                    return status(self_tx)
+            self_tx = self.tx
+            directory = self.directory / str(index)
+            directory.mkdir(mode=0o700)
+            port = InvalidClock()
+            result = save_and_submit(directory, self.tx, self.blob, port, clock=port.clock)
+            self.assertEqual(result.outcome, 'unknown')
+
+    def test_matching_finished_not_written_is_distinct_from_uncertain(self):
+        for value in range(5):
+            directory = self.directory / str(value)
+            directory.mkdir(mode=0o700)
+            port = Port([status(self.tx, 6, value)])
+            result = save_and_submit(directory, self.tx, self.blob, port, clock=port.clock)
+            self.assertEqual(result.outcome,
+                             'not_written' if value < 3 else 'unknown' if value == 3 else 'verified')
