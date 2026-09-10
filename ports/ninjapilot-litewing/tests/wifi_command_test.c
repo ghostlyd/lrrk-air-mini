@@ -9,11 +9,13 @@
 #include "pios_litewing_pilot_mapping.h"
 #include "litewing_pilot_controller.h"
 #include "litewing_pilot_wire.h"
+#include "litewing_telemetry_wire.h"
 #include "pios_litewing_pilot_mac.h"
 #include "freertos/task.h"
 #include "esp_netif.h"
 #include "lwip/sockets.h"
 #include <errno.h>
+#include <math.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <string.h>
@@ -38,6 +40,8 @@ static void fixture_command_zeroize(void *data, size_t size) {
     assert(!lw_wifi_command_is_quiescent());
     mbedtls_platform_zeroize(data, size);
 }
+static int fixture_telemetry_mac(void *, const uint8_t *, size_t, uint8_t[32]);
+#define lw_pilot_mac fixture_telemetry_mac
 #define mbedtls_platform_zeroize fixture_command_zeroize
 #define socket fixture_socket
 #define fcntl fixture_fcntl
@@ -47,6 +51,7 @@ static void fixture_command_zeroize(void *data, size_t size) {
 #define sendto fixture_sendto
 #define close fixture_close
 #include "../target/pios_litewing_wifi_command.c"
+#undef lw_pilot_mac
 #undef mbedtls_platform_zeroize
 #undef socket
 #undef fcntl
@@ -68,6 +73,9 @@ static uint64_t parked_guard;
 static int stage, malformed, peer_attacks, published, fault, rng_calls, reads;
 static int turns, turn_reads, max_reads, setup_calls, proofs, accepts, nonblocking;
 static int64_t now = 1000, first_setup;
+static int telemetry_reads, telemetry_sends;
+static int64_t telemetry_started, last_telemetry_send = -1;
+static uint64_t telemetry_sequence, control_sequence = 2;
 static uint32_t receiver;
 static GCSReceiverData object;
 static struct sockaddr_in bound;
@@ -77,6 +85,7 @@ static struct lw_pilot_controller *observed;
 static struct lw_pilot_mac_key root = {.bytes = {'r'}};
 static bool is(const char *name) { return !strcmp(scenario, name); }
 static bool loopback(void) { return !strncmp(scenario, "loopback-", 9); }
+static bool telemetry_case(void) { return !strncmp(scenario, "telemetry-", 10); }
 static void request_retirement(void) {
     assert(!lw_wifi_command_is_quiescent());
     int old_turns = turns, old_stops = ap_stops, old_closes = close_attempts;
@@ -86,6 +95,14 @@ static void request_retirement(void) {
     assert(turns == old_turns && ap_stops == old_stops && close_attempts == old_closes);
     assert(!lw_wifi_command_is_quiescent());
     assert(lw_wifi_command_start() == -1);
+}
+static int fixture_telemetry_mac(void *ctx, const uint8_t *message, size_t length, uint8_t tag[32]) {
+    int result = lw_pilot_mac(ctx, message, length, tag);
+    assert(length > 6 && message[6] == 8);
+    if (is("telemetry-mac-expire")) now += 100000;
+    if (is("telemetry-mac-slow")) now += 2001;
+    if (is("telemetry-mac-stop")) request_retirement();
+    return result;
 }
 static void zeros(const void *data, size_t size) {
     const unsigned char *p = data;
@@ -117,6 +134,36 @@ int64_t esp_timer_get_time(void) {
         now = (int64_t)clock.tv_sec * 1000000 + clock.tv_nsec / 1000;
     }
     return now;
+}
+/* Only the object-read platform boundary is substituted. Framing, keys,
+ * owner expiry and task scheduling remain production code. */
+int lw_telemetry_read(unsigned index, struct lw_telemetry_record *out) {
+    static const uint32_t ids[] = {0xD7E0D964,0xEF69B6BC,0x26962352,0x6B7639EC,0xB8229FE4};
+    static const uint16_t sizes[] = {28,8,30,25,29};
+    assert(index == (unsigned)telemetry_reads % 5);
+    ++telemetry_reads;
+    assert(observed && observed->owned && observed->session.phase == LW_ACTIVE);
+    if (is("telemetry-stop")) request_retirement();
+    if (is("telemetry-expire")) now += 100000;
+    if (is("telemetry-slow")) now += 2001;
+    if (is("telemetry-rollback")) now = 500;
+    *out = (struct lw_telemetry_record){.object_id=ids[index], .data_len=sizes[index],
+        .serialized_us=(uint64_t)esp_timer_get_time(), .sample_age_us=UINT64_MAX};
+    if (index == 0) {
+        float attitude[7] = {1,0,0,0,1.25f,-2.5f,3.75f};
+        memcpy(out->data,attitude,sizeof(attitude));
+    }
+    if (index == 2) {
+        float battery[7] = {3.8f,NAN,NAN,NAN,NAN,NAN,NAN};
+        memcpy(out->data,battery,sizeof(battery)); out->data[28]=1;
+    }
+    if (index == 3) { memset(out->data,1,21); out->data[0]=2; }
+    if (index == 4) {
+        uint16_t actuators[4] = {11,22,33,44};
+        memcpy(out->data,actuators,sizeof(actuators));
+    }
+    if (!strncmp(scenario,"loopback-omit-",14) && scenario[14] == (char)('0'+index)) return -1;
+    return is("telemetry-busy") ? -1 : 0;
 }
 UAVObjHandle GCSReceiverHandle(void) { return &object; }
 int32_t UAVObjUnpack(UAVObjHandle h, uint16_t instance, const uint8_t *data) {
@@ -334,6 +381,12 @@ ssize_t fixture_recvfrom(int fd, void *out, size_t capacity, int flags,
     if (stage == 2) { stage = 3; return encode(out, capacity, 5, 2); }
     if (!published) {
         assert(pios_gcsrcvr_rcvr_driver.read(receiver, 0) == 1500); published = 1;
+        telemetry_started = now;
+    }
+    if (telemetry_case()) {
+        if (now - telemetry_started < 650000)
+            return encode(out, capacity, 5, ++control_sequence);
+        return encode(out, capacity, 6, ++control_sequence);
     }
     if (is("active-stop") || is("maintenance-stuck")) {
         request_retirement();
@@ -362,8 +415,30 @@ ssize_t fixture_sendto(int fd, const void *wire, size_t size, int flags,
     assert(peer->sin_port == htons(is("pending-expiry") && now >= 1010000 ? 43000 : 42000));
     struct lw_pilot_mac_key key = root;
     if (stage >= 2 || (size > 6 && ((const uint8_t *)wire)[6] == 4)) memcpy(key.bytes, keys.b2c, 32);
+    bool telemetry = size > 6 && ((const uint8_t *)wire)[6] == 8;
+    if (telemetry) memcpy(key.bytes, keys.telemetry, 32);
     struct lw_wire_frame response;
     assert(lw_wire_decode(wire, size, 1, lw_pilot_mac, &key, &response) == 0);
+    if (telemetry) {
+        struct lw_telemetry_record record;
+        assert(lw_telemetry_frame_validate(&response, &record) == 0);
+        assert(observed && observed->owned && observed->session.phase == LW_ACTIVE);
+        assert(!memcmp(response.session, observed->session.session, 16));
+        assert(response.sequence == ++telemetry_sequence);
+        assert(last_telemetry_send < 0 || now-last_telemetry_send >= 100000);
+        last_telemetry_send = now;
+        ++telemetry_sends;
+        /* A control/root key must not authenticate the telemetry packet. */
+        memcpy(key.bytes, keys.b2c, 32);
+        assert(lw_wire_decode(wire,size,1,lw_pilot_mac,&key,&response) != 0);
+        memcpy(key.bytes, root.bytes, 32);
+        assert(lw_wire_decode(wire,size,1,lw_pilot_mac,&key,&response) != 0);
+        if (is("telemetry-eagain")) { errno=EAGAIN; return -1; }
+        if (is("telemetry-eintr")) { errno=EINTR; return -1; }
+        if (is("telemetry-error")) { errno=EIO; return -1; }
+        if (is("telemetry-short")) return size-1;
+        return size;
+    }
     if (response.kind == 2) {
         ++proofs; proof = response;
         if (response.payload_len == 64) {
@@ -444,6 +519,18 @@ int main(int argc, char **argv) {
     if (loopback()) {
         assert(published && pios_gcsrcvr_rcvr_driver.read(receiver, 0) == PIOS_RCVR_TIMEOUT);
         assert(PIOS_LiteWing_GCSReceiver_Unpack(&object, 0, (uint8_t *)&object, now) == -1);
+    }
+    if (telemetry_case()) {
+        assert(telemetry_reads > 0);
+        if (is("telemetry-stream") || is("telemetry-eagain") || is("telemetry-eintr"))
+            assert(telemetry_reads >= 6 && telemetry_sends == telemetry_reads);
+        if (is("telemetry-busy") || is("telemetry-slow") || is("telemetry-mac-slow"))
+            assert(telemetry_reads >= 6 && telemetry_sends == 0);
+        if (is("telemetry-stop") || is("telemetry-expire") || is("telemetry-rollback") ||
+            is("telemetry-mac-expire") || is("telemetry-mac-stop"))
+            assert(telemetry_reads == 1 && telemetry_sends == 0);
+        if (is("telemetry-short") || is("telemetry-error"))
+            assert(telemetry_reads == 1 && telemetry_sends == 1);
     }
     puts("command task fixture passed"); return 0;
 }

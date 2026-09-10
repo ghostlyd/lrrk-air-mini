@@ -3,6 +3,8 @@
 #include "pios_litewing_wifi_ap.h"
 #include "pios_litewing_pilot_mapping.h"
 #include "litewing_pilot_controller.h"
+#include "litewing_telemetry_read.h"
+#include "pios_litewing_pilot_mac.h"
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
 #include <esp_netif.h>
@@ -19,7 +21,7 @@ _Static_assert(LW_WIFI_COMMAND_PORT > 0 && LW_WIFI_COMMAND_PORT <= 65535,
                "command UDP port must be 1..65535");
 enum { WIRE_MAX = 594, READ_MAX = WIRE_MAX + 1, READS_PER_TURN = 4,
        TURN_US = 2000, SETUP_INTERVAL_US = 10000, READY_TIMEOUT_US = 2000000,
-       STACK_BYTES = 8192 };
+       STACK_BYTES = 8192, TELEMETRY_INTERVAL_US = 100000 };
 /* One atomic word serializes launch reservation with the permanent stop fence.
  * STOP and QUIESCENT only accumulate. RESERVED can return to zero solely when
  * creation fails and no stop won the race; successful launch keeps it forever.
@@ -53,6 +55,9 @@ struct command_state {
     bool have_peer, healthy_ap;
     int64_t setup_refill_us;
     unsigned setup_tokens;
+    int64_t telemetry_attempt_us;
+    uint64_t telemetry_sequence;
+    unsigned telemetry_index;
 };
 
 static TickType_t cleanup_delay(void)
@@ -134,6 +139,64 @@ static int send_reply(struct command_state *s, int socket_fd, size_t written)
                   sizeof(s->peer)) == (ssize_t)written ? 0 : -1;
 }
 
+static int publish_telemetry(struct command_state *s, int socket_fd)
+{
+    struct lw_pilot_controller *c = &s->controller;
+    if (!s->have_peer || !c->owned || c->session.phase != LW_ACTIVE) return 0;
+    int64_t started = esp_timer_get_time();
+    if (lw_controller_tick(c, started) < 0 || stop_requested() || lw_wifi_ap_faults()) return -1;
+    if (s->telemetry_attempt_us >= 0 &&
+        started - s->telemetry_attempt_us < TELEMETRY_INTERVAL_US) return 0;
+    /* No sequence wrap or retry, including socket backpressure. Busy reads
+     * consume their scheduled turn too; five objects rotate without backlog. */
+    if (s->telemetry_sequence == UINT64_MAX) return 0;
+    s->telemetry_attempt_us = started;
+    unsigned index = s->telemetry_index;
+    s->telemetry_index = (index + 1) % 5;
+    struct lw_telemetry_record record = {0};
+    struct lw_wire_frame frame = {0};
+    struct lw_pilot_mac_key key = {0};
+    uint8_t wire[136] = {0};
+    size_t payload_size = 0, written = 0;
+    int result = 0;
+    int read_result = lw_telemetry_read(index, &record);
+    int64_t now = esp_timer_get_time();
+    if (lw_controller_tick(c, now) < 0 || stop_requested() || lw_wifi_ap_faults()) {
+        result = -1; goto end;
+    }
+    /* Elapsed budget is checked between operations, not a hard real-time
+     * guarantee. Recheck expiry after authentication before any send. */
+    if (read_result || now - started >= TURN_US) goto end;
+    if (record.serialized_us > (uint64_t)now ||
+        lw_telemetry_payload_encode(&record, frame.payload, sizeof(frame.payload), &payload_size))
+        goto end;
+    frame.direction = 1;
+    frame.kind = 8;
+    frame.sequence = ++s->telemetry_sequence;
+    frame.payload_len = (uint16_t)payload_size;
+    memcpy(frame.session, c->session.session, sizeof(frame.session));
+    memcpy(key.bytes, c->session.keys.telemetry, sizeof(key.bytes));
+    if (lw_wire_encode(&frame, lw_pilot_mac, &key, wire, sizeof(wire), &written)) {
+        result = -1; goto end;
+    }
+    now = esp_timer_get_time();
+    if (lw_controller_tick(c, now) < 0 || stop_requested() || lw_wifi_ap_faults()) {
+        result = -1; goto end;
+    }
+    if (now - started >= TURN_US) goto end;
+    ssize_t sent = sendto(socket_fd, wire, written, 0,
+        (struct sockaddr *)&s->peer, sizeof(s->peer));
+    int error = errno;
+    if (sent != (ssize_t)written &&
+        !(sent < 0 && (error == EAGAIN || error == EWOULDBLOCK || error == EINTR))) result = -1;
+end:
+    mbedtls_platform_zeroize(&key, sizeof(key));
+    mbedtls_platform_zeroize(&frame, sizeof(frame));
+    mbedtls_platform_zeroize(&record, sizeof(record));
+    mbedtls_platform_zeroize(wire, sizeof(wire));
+    return result;
+}
+
 static int service(struct command_state *s, int socket_fd)
 {
     if (stop_requested() || lw_wifi_ap_faults()) return -1;
@@ -155,13 +218,14 @@ static int service(struct command_state *s, int socket_fd)
         if (result == LW_RETIRED) return -1;
         if (result == LW_HANDSHAKE_REPLY && send_reply(s, socket_fd, written)) return -1;
     }
-    return stop_requested() ? -1 : 0;
+    return stop_requested() ? -1 : publish_telemetry(s, socket_fd);
 }
 
 static void command_task(void *arg)
 {
     (void)arg;
-    struct command_state state = {.setup_refill_us = -1, .setup_tokens = 2};
+    struct command_state state = {.setup_refill_us = -1, .setup_tokens = 2,
+        .telemetry_attempt_us = -1};
     struct command_state *s = &state;
     lw_controller_init(&s->controller, NULL);
     int socket_fd = -1;

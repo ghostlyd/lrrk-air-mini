@@ -35,6 +35,7 @@ class WifiCommandTests(unittest.TestCase):
                         ('md.c', 'sha256.c', 'hkdf.c', 'platform_util.c')]
             command += [str(ROOT/'target'/name) for name in (
                 'litewing_pilot_session.c',
+                'litewing_telemetry_wire.c',
                 'litewing_pilot_wire.c', 'pios_litewing_pilot_mac.c',
                 'pios_litewing_pilot_keys.c', 'pios_litewing_gcsrcvr.c',
                 'litewing_pilot_neutral.c')]
@@ -50,7 +51,11 @@ class WifiCommandTests(unittest.TestCase):
                      'admission-rollback', 'stop-before-start', 'create-stop-success',
                      'create-stop-failure', 'create-complete-before-return', 'queued-stop',
                      'ap-start-stop', 'ready-stop', 'mapping-stop', 'rng-stop',
-                     'active-stop', 'cleanup-stop', 'close-stop', 'maintenance-stuck')
+                     'active-stop', 'cleanup-stop', 'close-stop', 'maintenance-stuck',
+                     'telemetry-stream', 'telemetry-busy', 'telemetry-slow',
+                     'telemetry-expire', 'telemetry-stop', 'telemetry-rollback',
+                     'telemetry-eagain', 'telemetry-eintr', 'telemetry-short', 'telemetry-error',
+                     'telemetry-mac-expire', 'telemetry-mac-slow', 'telemetry-mac-stop')
             for case in cases:
                 with self.subTest(case=case):
                     result = subprocess.run([str(binary), case], capture_output=True,
@@ -59,8 +64,11 @@ class WifiCommandTests(unittest.TestCase):
             for mode in ('loopback-stop', 'loopback-loss'):
                 with self.subTest(case=mode):
                     self.loopback(binary, mode)
+            for index, missing in enumerate(('attitude','status','battery','alarms','actuators')):
+                with self.subTest(omitted=missing):
+                    self.loopback(binary, f'loopback-omit-{index}', missing)
 
-    def loopback(self, binary, mode):
+    def loopback(self, binary, mode, missing=None):
         if sys.version_info < (3, 11):
             self.skipTest('operator loopback requires supported Python 3.11+; C cases still run')
         sys.path.insert(0, str(ROOT.parents[1]/'ai_assistant/src'))
@@ -82,7 +90,39 @@ class WifiCommandTests(unittest.TestCase):
             sample = lambda: (1000,1500,1500,1500,1500,1000,2000,1234)
             link = admit_udp(host, b'r'*32, sample, lambda: time.monotonic_ns()//1000)
             self.assertTrue(any(link.step(sample) for _ in range(4)))
-            if mode == 'loopback-stop': self.assertTrue(link.stop())
+            # Real C session/task/HMAC -> UDP -> production Python demux,
+            # replay consumer and pinned semantic parser, all five objects.
+            observed = set()
+            deadline = time.monotonic() + 1
+            while len(observed) < 5 and time.monotonic() < deadline:
+                link.step(sample)
+                observation = link.take_telemetry()
+                if observation is not None:
+                    snapshot = observation.snapshot
+                    self.assertIsNone(snapshot.link_age_ms)
+                    self.assertIsNone(observation.sample_age_us)
+                    if snapshot.attitude.roll_deg is not None:
+                        self.assertEqual(snapshot.attitude.roll_deg, 1.25)
+                        observed.add('attitude')
+                    if snapshot.armed is not None: observed.add('status')
+                    if snapshot.battery.voltage_v is not None:
+                        self.assertAlmostEqual(snapshot.battery.voltage_v, 3.8, places=5)
+                        self.assertIsNone(snapshot.battery.current_a)
+                        observed.add('battery')
+                    if snapshot.alarms is not None: observed.add('alarms')
+                    if snapshot.actuators:
+                        self.assertEqual(snapshot.actuators, (11,22,33,44))
+                        observed.add('actuators')
+                time.sleep(.001)
+            expected = {'attitude','status','battery','alarms','actuators'}
+            if missing is not None:
+                with self.assertRaises(AssertionError):
+                    self.assertEqual(observed, expected)
+                expected.remove(missing)
+            self.assertEqual(observed, expected)
+            if mode != 'loopback-loss':
+                self.assertTrue(link.stop())
+                self.assertIsNone(link.take_telemetry())
             stdout, stderr = proc.communicate(timeout=5)
             self.assertEqual(proc.returncode, 0, stderr)
             self.assertIn('command task fixture passed', stdout)
