@@ -66,6 +66,13 @@ allowlist contains only telemetry handshake states, five selected object-read
 requests, and required acknowledgements. There is no receiver, arming,
 settings, persistence, actuator, navigation, or flight-command write API.
 
+The host package supports CPython 3.11 through 3.14 on macOS, Linux, and
+Windows. Audit files are made private before any record bytes are written:
+macOS and Linux use descriptor-bound `fchmod`, while Windows installs the
+pinned `oschmod` 0.3.12 and `pywin32` 312 ACL backend. The destination is
+checked against the open descriptor before and after permissions are applied,
+so a symlink or path replacement is rejected instead of receiving telemetry.
+
 Version 0.2 emits snapshot schema 2. Missing/null alarm telemetry remains
 unknown; only an explicit empty alarm array reports clear. Schema 1 input is
 still accepted with these corrected unknown-state semantics. Preflight needs
