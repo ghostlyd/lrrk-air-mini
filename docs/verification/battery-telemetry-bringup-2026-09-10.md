@@ -294,6 +294,9 @@ ESP-IDF 5.3.2 build passed at `34b25c5`:
 
 The first full-port invocation selected system Python for nested build-script
 tests and failed two wrappers because that interpreter lacks `enterContext`.
-Those three build-script tests pass with Homebrew Python first on PATH; the
-complete suite is being rerun with the documented host environment.
+Those three build-script tests pass with Homebrew Python first on PATH. The
+complete rerun with that documented host environment passed: 323 tests run,
+311 passed, 12 skipped, in 112.197 seconds. Independent review of `34b25c5`
+approved the fix with no merge-blocking findings, after separately running the
+18 battery methods and eight prepared-protocol methods.
 No device access, flashing, arming, settings changes, or motor output occurred.
