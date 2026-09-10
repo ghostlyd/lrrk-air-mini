@@ -1,3 +1,4 @@
+import math
 import sys
 import unittest
 from dataclasses import fields
@@ -21,6 +22,11 @@ NUMERIC_POLICY_FIELDS = (
     "min_battery_voltage_v",
     "warn_battery_percent",
 )
+ZERO_ALLOWED_POLICY_FIELDS = (
+    "max_link_age_ms",
+    "max_future_skew_ms",
+    "warn_battery_percent",
+)
 
 
 def snapshot(**changes):
@@ -41,6 +47,77 @@ def snapshot(**changes):
 
 
 class SafetyTests(unittest.TestCase):
+    def test_accepted_imu_identities_reject_malformed_collections_and_entries(self):
+        malformed_collections = (
+            "MPU6050",
+            b"MPU6050",
+            None,
+            42,
+            {"MPU6050"},
+            frozenset(("MPU6050",)),
+            {"identity": "MPU6050"},
+        )
+        for value in malformed_collections:
+            with self.subTest(value=value):
+                with self.assertRaisesRegex(
+                    ValueError, "accepted_imu_identities must be a list or tuple"
+                ):
+                    SafetyPolicy(accepted_imu_identities=value)
+
+        malformed_entries = (
+            [""],
+            ["   "],
+            [None],
+            [104],
+            [True],
+            [b"MPU6050"],
+            ("MPU6050", ""),
+        )
+        for value in malformed_entries:
+            with self.subTest(value=value):
+                with self.assertRaisesRegex(
+                    ValueError, "accepted_imu_identities must contain non-empty strings"
+                ):
+                    SafetyPolicy(accepted_imu_identities=value)
+
+    def test_accepted_imu_identities_are_exact_canonical_immutable_values(self):
+        list_policy = SafetyPolicy(
+            accepted_imu_identities=["0x68", "CUSTOM-B", "MPU6050", "0x68"]
+        )
+        tuple_policy = SafetyPolicy(
+            accepted_imu_identities=("CUSTOM-B", "0x68", "MPU6050")
+        )
+
+        expected = ("MPU6050", "0x68", "CUSTOM-B")
+        self.assertEqual(list_policy.accepted_imu_identities, expected)
+        self.assertEqual(tuple_policy.accepted_imu_identities, expected)
+        self.assertIsInstance(list_policy.accepted_imu_identities, tuple)
+        self.assertEqual(list_policy.policy_hash(), tuple_policy.policy_hash())
+
+        exact_policy = SafetyPolicy(accepted_imu_identities=["MPU6050"])
+        state = snapshot(sensors=SensorHealth(True, "MPU", True))
+        report = run_preflight(state, policy=exact_policy, now=NOW)
+        self.assertEqual(
+            next(item for item in report.findings if item.finding_id == "imu.identity").status,
+            "BLOCK",
+        )
+
+    def test_malformed_imu_policy_cannot_be_hashed_or_analyzed(self):
+        policy = SafetyPolicy()
+        object.__setattr__(policy, "accepted_imu_identities", "MPU6050")
+        operations = {
+            "identity": policy.policy_hash,
+            "preflight": lambda: run_preflight(
+                snapshot(sensors=SensorHealth(True, "MPU", True)), policy=policy, now=NOW
+            ),
+        }
+        for operation, call in operations.items():
+            with self.subTest(operation=operation):
+                with self.assertRaisesRegex(
+                    ValueError, "accepted_imu_identities must be a list or tuple"
+                ):
+                    call()
+
     def test_nonfinite_policy_values_are_rejected_at_construction(self):
         self.assertEqual(
             set(NUMERIC_POLICY_FIELDS),
@@ -103,6 +180,14 @@ class SafetyTests(unittest.TestCase):
         )
         self.assertEqual(integer_policy, float_policy)
         self.assertEqual(integer_policy.policy_hash(), float_policy.policy_hash())
+
+    def test_signed_zero_policy_values_share_canonical_identity(self):
+        for name in ZERO_ALLOWED_POLICY_FIELDS:
+            with self.subTest(field=name):
+                positive = SafetyPolicy(**{name: 0.0})
+                negative = SafetyPolicy(**{name: -0.0})
+                self.assertEqual(positive.policy_hash(), negative.policy_hash())
+                self.assertEqual(math.copysign(1.0, getattr(negative, name)), 1.0)
 
     def test_canonical_json_rejects_nonstandard_numeric_constants(self):
         for value in (float("nan"), float("inf"), float("-inf")):

@@ -24,6 +24,11 @@ POLICY_CHANGES = {
     "warn_battery_percent": 90.0,
     "accepted_imu_identities": ("0x68",),
 }
+ZERO_ALLOWED_POLICY_FIELDS = (
+    "max_link_age_ms",
+    "max_future_skew_ms",
+    "warn_battery_percent",
+)
 
 
 def snapshot(snapshot_id="approval-1", complete=True):
@@ -42,6 +47,23 @@ def snapshot(snapshot_id="approval-1", complete=True):
 
 
 class ApprovalTests(unittest.TestCase):
+    def test_bare_string_imu_policy_cannot_reach_approved(self):
+        policy = SafetyPolicy()
+        object.__setattr__(policy, "accepted_imu_identities", "MPU6050")
+        state = replace(snapshot(), sensors=SensorHealth(True, "MPU", True))
+
+        with self.assertRaisesRegex(
+            ValueError, "accepted_imu_identities must be a list or tuple"
+        ):
+            machine = ApprovalStateMachine("operator-1", policy=policy)
+            proposal = machine.create_proposal(
+                state, "inspect_telemetry", "inspect", "show report", now=NOW
+            )
+            machine.approve(
+                proposal.proposal_id, "human-confirmation", state, now=NOW
+            )
+            self.assertNotEqual(machine.state, APPROVED)
+
     def test_policy_replacement_aborts_pending_and_approved_records(self):
         for name, value in POLICY_CHANGES.items():
             for approved in (False, True):
@@ -68,6 +90,40 @@ class ApprovalTests(unittest.TestCase):
         machine.policy = SafetyPolicy()
         self.assertEqual(machine.state, APPROVED)
         self.assertTrue(machine.approval_is_current(snapshot(), now=NOW))
+
+    def test_signed_zero_policy_replacement_preserves_active_records(self):
+        state = replace(snapshot(), link_age_ms=0)
+        for name in ZERO_ALLOWED_POLICY_FIELDS:
+            for approved in (False, True):
+                with self.subTest(field=name, approved=approved):
+                    machine = ApprovalStateMachine(
+                        "operator-1", policy=SafetyPolicy(**{name: 0.0})
+                    )
+                    proposal = machine.create_proposal(
+                        state, "inspect_telemetry", "inspect", "show report", now=NOW
+                    )
+                    if approved:
+                        machine.approve(
+                            proposal.proposal_id,
+                            "human-confirmation",
+                            state,
+                            now=NOW,
+                        )
+
+                    machine.policy = SafetyPolicy(**{name: -0.0})
+
+                    expected = APPROVED if approved else PROPOSAL_READY
+                    self.assertEqual(machine.state, expected)
+                    if approved:
+                        self.assertTrue(machine.approval_is_current(state, now=NOW))
+                    else:
+                        machine.approve(
+                            proposal.proposal_id,
+                            "human-confirmation",
+                            state,
+                            now=NOW,
+                        )
+                        self.assertEqual(machine.state, APPROVED)
 
     def test_analyzer_drift_is_rechecked_before_approval_and_currentness(self):
         for check in ("approve", "pending_currentness", "approved_currentness"):

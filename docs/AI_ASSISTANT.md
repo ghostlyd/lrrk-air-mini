@@ -24,9 +24,14 @@ JSON containing the analyzer version and every `SafetyPolicy` field). Both
 fields are included in `proposal_hash`. Default thresholds remain unchanged;
 new proposal hashes include the policy binding, so regenerate earlier proposals.
 Numeric policy values accept integers or floats and are normalized to floats
-before hashing. Booleans, non-numeric values, NaN, and infinities are rejected.
+before hashing; signed zero is normalized to `0.0`. Booleans, non-numeric
+values, NaN, and infinities are rejected.
 Link-age and future-skew limits must be non-negative, minimum battery voltage
 must be positive, and battery warning percentage must be between 0 and 100.
+`accepted_imu_identities` accepts only a list or tuple of non-empty strings.
+It is normalized to an immutable, duplicate-free tuple in deterministic order,
+while preserving the existing default order and policy hash. IMU identity
+matching is exact; a substring such as `MPU` does not match `MPU6050`.
 Canonical JSON also rejects non-standard numeric constants.
 
 Configure `AssistantRuntime(policy=SafetyPolicy(...))`, and replace a policy
@@ -38,9 +43,11 @@ a pending or approved record to `ABORTED` and clears its approval digest.
 Replacement through either public path also invalidates the runtime's cached
 preflight report, including direct assignment to `runtime.approvals.policy`.
 An invalid replacement is rejected before changing the policy or cached report.
-Replacing a policy with the same identity preserves the record. Approval and
-currentness checks recheck the bound identity and apply that exact configured
-policy, including customized freshness budgets; they never revert to defaults.
+Replacing a policy with the same identity preserves the record. This includes
+signed-zero variants and accepted-identity list/tuple inputs that differ only
+in order or duplicates. Approval and currentness checks recheck the bound
+identity and apply that exact configured policy, including customized
+freshness budgets; they never revert to defaults.
 
 `runtime.ingest(snapshot)` immediately aborts a pending or approved record when
 the incoming snapshot hash differs from the proposal's snapshot hash.

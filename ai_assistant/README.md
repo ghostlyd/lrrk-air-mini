@@ -15,7 +15,10 @@ an equivalent policy does not create drift or extend freshness. Approval
 requires an explicit human token, which is never stored or returned raw, and
 grants no flight execution authority. See [approval policy binding](../docs/AI_ASSISTANT.md#offline-first).
 Policy numeric fields must be finite numbers within their documented ranges;
-policy replacement through either `runtime.policy` or
+signed zero is canonicalized to `0.0`. Accepted IMU identities must be a list
+or tuple of non-empty strings and are normalized to a deterministic immutable
+tuple for exact identity matching; bare strings are rejected.
+Policy replacement through either `runtime.policy` or
 `runtime.approvals.policy` clears the cached preflight report.
 
 The default mode is offline. It needs no API key, network, firmware change, or

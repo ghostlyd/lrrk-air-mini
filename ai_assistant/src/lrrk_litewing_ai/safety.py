@@ -19,6 +19,10 @@ _NUMERIC_POLICY_FIELDS = (
     "min_battery_voltage_v",
     "warn_battery_percent",
 )
+_DEFAULT_ACCEPTED_IMU_IDENTITIES = ("MPU6050", "0x68", "0x69", "104", "105")
+_DEFAULT_IMU_IDENTITY_ORDER = {
+    identity: index for index, identity in enumerate(_DEFAULT_ACCEPTED_IMU_IDENTITIES)
+}
 
 
 @dataclass(frozen=True)
@@ -27,11 +31,14 @@ class SafetyPolicy:
     max_future_skew_ms: float = 5000.0
     min_battery_voltage_v: float = 3.30
     warn_battery_percent: float = 20.0
-    accepted_imu_identities: Tuple[str, ...] = ("MPU6050", "0x68", "0x69", "104", "105")
+    accepted_imu_identities: Tuple[str, ...] = _DEFAULT_ACCEPTED_IMU_IDENTITIES
 
     def __post_init__(self) -> None:
         for name, value in self._validated_numeric_values().items():
             object.__setattr__(self, name, value)
+        object.__setattr__(
+            self, "accepted_imu_identities", self._validated_accepted_imu_identities()
+        )
 
     def _validated_numeric_values(self) -> Dict[str, float]:
         values = {}
@@ -42,6 +49,8 @@ class SafetyPolicy:
             converted = float(value)
             if not math.isfinite(converted):
                 raise ValueError("%s must be finite" % name)
+            if converted == 0.0:
+                converted = 0.0
             values[name] = converted
         if values["max_link_age_ms"] < 0:
             raise ValueError("max_link_age_ms is outside its valid range")
@@ -53,8 +62,17 @@ class SafetyPolicy:
             raise ValueError("warn_battery_percent is outside its valid range")
         return values
 
+    def _validated_accepted_imu_identities(self) -> Tuple[str, ...]:
+        identities = self.accepted_imu_identities
+        if not isinstance(identities, (list, tuple)):
+            raise ValueError("accepted_imu_identities must be a list or tuple")
+        if any(not isinstance(identity, str) or not identity.strip() for identity in identities):
+            raise ValueError("accepted_imu_identities must contain non-empty strings")
+        return tuple(sorted(set(identities), key=_imu_identity_sort_key))
+
     def validate(self) -> None:
         self._validated_numeric_values()
+        self._validated_accepted_imu_identities()
 
     @property
     def policy_version(self) -> str:
@@ -64,6 +82,12 @@ class SafetyPolicy:
         self.validate()
         fields = {"analyzer_version": self.policy_version, "policy": asdict(self)}
         return hashlib.sha256(canonical_json(fields).encode("utf-8")).hexdigest()
+
+
+def _imu_identity_sort_key(identity: str) -> Tuple[int, Any]:
+    if identity in _DEFAULT_IMU_IDENTITY_ORDER:
+        return (0, _DEFAULT_IMU_IDENTITY_ORDER[identity])
+    return (1, identity)
 
 
 @dataclass(frozen=True)
