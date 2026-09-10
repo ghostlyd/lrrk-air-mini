@@ -25,7 +25,7 @@ class BatteryWorkerTests(unittest.TestCase):
                             str(ROOT / "target/litewing_battery_voltage.c"),
                             "-o", str(binary)], capture_output=True, text=True, check=True)
             for case in ("success", "handle", "get-meta", "set-meta", "initial-publish",
-                         "create", "adc-init", "read", "stale"):
+                         "create", "adc-init", "read", "stale", "runtime-publish"):
                 with self.subTest(case=case):
                     result = subprocess.run([str(binary), case], capture_output=True,
                                             text=True, timeout=5)

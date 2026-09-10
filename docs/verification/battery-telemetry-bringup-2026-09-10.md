@@ -1,7 +1,8 @@
 # Battery telemetry implementation status
 
 Latest status: native ESP-IDF adapter compiles at `4f96dfd`; worker/startup and
-publication integration are pending. Native SDK-boundary fault tests now pass.
+publication code compiles at `fad34d9`, but the main module table does not call
+it yet. Native SDK-boundary and worker tests now pass.
 Sections below record incremental work
 and their then-current limitations, not independent current completion claims.
 
@@ -205,3 +206,27 @@ subcases). The boundary fixtures assert the actual native configuration and
 read timeout/size, and feed raw data through production code. They cannot prove
 ESP-IDF interrupt affinity or physical ADC accuracy. No hardware access occurs.
 Worker lifecycle and telemetry publication tests are still needed.
+
+## Worker and publication code implemented
+
+`litewing_battery_module.c` initializes the object to unknown, switches its
+flight telemetry to on-change (no periodic cached-voltage retransmission), and
+provides a one-shot start entry point for a core-0, priority-1 worker with a
+3072-byte native IDF stack. The worker owns ADC initialization and every read,
+exports current/unknown voltage, and delays 100 ms between bursts. ADC failure
+does not alter arming settings. A publication error latches acquisition off and
+causes subsequent attempts to publish unknown values.
+
+Ten worker scenarios exercise initial object/metadata/publication failures,
+duplicate and out-of-order lifecycle calls, task-creation failure, ADC init/read
+failure, stale samples, successful publication, and runtime publication failure.
+The combined battery suite passes 17 methods. These tests use the real worker
+and exporter with simulated RTOS and storage boundaries. The worker-missing
+test was observed failing before implementation.
+
+ESP-IDF 5.3.2 build passed at `fad34d9`. The worker is compiled, but its entry
+points are not connected to `InitMods.c`, so final-link garbage collection can
+discard it. Startup integration and its regression tests remain next; this is
+not enabled live battery telemetry. The inherited wire object still lacks an
+acquisition timestamp; on-change metadata alone is not proof of end-to-end
+acquisition freshness for explicitly requested or delayed packets.

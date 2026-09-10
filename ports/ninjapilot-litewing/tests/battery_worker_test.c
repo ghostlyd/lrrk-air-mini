@@ -6,7 +6,7 @@
 #include <stdio.h>
 #include <string.h>
 static const char *scenario;
-static int creates, adc_inits, publications, delays;
+static int creates, adc_inits, publications, delays, reads;
 static void (*entry)(void *);
 static bool in_worker;
 static int64_t now=1000000;
@@ -24,9 +24,10 @@ int FlightBatteryStateSet(const FlightBatteryStateData *s) {
     assert(s->NbCells==1 && s->NbCellsAutodetected==0);
     assert(isnan(s->Current) && isnan(s->BoardSupplyVoltage) && isnan(s->PeakCurrent));
     assert(isnan(s->AvgCurrent) && isnan(s->ConsumedEnergy) && isnan(s->EstimatedFlightTime));
-    if(!in_worker || fail("adc-init") || fail("read") || fail("stale")) assert(isnan(s->Voltage));
+    if(!in_worker || fail("adc-init") || fail("read") || fail("stale") ||
+       (fail("runtime-publish") && publications>=3)) assert(isnan(s->Voltage));
     else assert(fabsf(s->Voltage-3.9f)<0.0001f);
-    return fail("initial-publish")?-1:0;
+    return fail("initial-publish") || (fail("runtime-publish") && publications==2) ? -1 : 0;
 }
 int xTaskCreatePinnedToCore(void (*f)(void *),const char *name,unsigned stack,void *arg,
                           unsigned priority,void *handle,int core) {
@@ -36,6 +37,7 @@ int xTaskCreatePinnedToCore(void (*f)(void *),const char *name,unsigned stack,vo
 int PIOS_LiteWing_BatteryADC_Init(void) { assert(in_worker); adc_inits++; return fail("adc-init")?-1:0; }
 bool PIOS_LiteWing_BatteryADC_Read(struct litewing_battery_sample *s) {
     assert(in_worker && adc_inits==1 && !fail("adc-init"));
+    reads++;
     *s=(struct litewing_battery_sample){.valid=!fail("read"),.millivolts=3900,
                                       .captured_us=fail("stale")?0:now-16000};
     return s->valid;
@@ -59,6 +61,7 @@ int main(int argc,char **argv) {
         if(!fail("create")) {
             if(!setjmp(finished)) { in_worker=true; entry(NULL); assert(false); }
             assert(adc_inits==1 && publications==3 && delays==2);
+            if(fail("runtime-publish")) assert(reads==1);
         }
     }
     puts("PASS"); return 0;
