@@ -72,3 +72,44 @@ Latest checks: assistant suite 179 run, 170 passed, 9 optional-SDK skips;
 battery C/host integration suite 6/6 passed. Initial decoder test exposed the
 old blanket NaN rejection; exporter test failed for the missing C entry point
 before implementation. No live ADC or ESP32-S3 build claim is made.
+
+## Pinned driver inspection and next producer implementation
+
+Inspected local ESP-IDF v5.3.2 headers and implementation, not an unversioned
+API example:
+
+- `components/esp_adc/include/esp_adc/adc_continuous.h`: bounded read timeout
+  is in milliseconds; `ADC_MAX_DELAY` can block forever and must not be used.
+  A frame and pool size are bytes, not sample counts. Callbacks run in ISR
+  context and do not transfer ownership of the conversion buffer.
+- `components/esp_adc/adc_continuous.c`, conversion callback dispatch: the
+  driver attempts ring-buffer insertion, calls `on_conv_done`, then calls
+  `on_pool_ovf` if insertion failed. Completion alone does not prove acceptance.
+- `components/soc/esp32s3/include/soc/soc_caps.h`: continuous sampling bounds
+  are 611 through 83333 Hz, so proposed 1000 Hz is within the target range.
+- `components/esp_adc/include/esp_adc/adc_cali_scheme.h`: curve-fitting
+  calibration creation can return `ESP_ERR_NOT_SUPPORTED` when required eFuse
+  bits are absent. No guessed reference-voltage fallback is justified.
+
+Implementation requirements for the next patch:
+
+1. One task owns ADC start/read/stop and calibration calls. Configure ADC1,
+   GPIO2/channel1, 12-bit, 12 dB, 1000 Hz; use 64-byte frames and a bounded
+   256-byte pool. Confirm GPIO/channel through the SDK map during initialization.
+2. Keep the read timeout finite (20 ms), check every sample's unit/channel and
+   raw range, and reject partial/malformed frames. Do not timestamp queued old
+   samples with the time of reading them as though newly acquired.
+3. Establish a tested frame/timestamp association or a conservative acquisition
+   age bound before publishing. An ISR-completion timestamp must not be attached
+   to unrelated earlier bytes dequeued from the pool. Overflow invalidates the
+   association; no plausible voltage may survive that failure.
+4. Publish through the existing exporter. Missing calibration, initialization
+   failure, timeout, overflow, and stale data produce unavailable voltage.
+   Publishing unknown data must not silently alter the persistent arming policy.
+5. Cover initialization cleanup, duplicate starts, task-creation failure,
+   overflow ordering, malformed samples, timestamp association, and delayed
+   publication in executable tests. Then integrate with the checked module
+   lifecycle and add `esp_adc` to the component dependencies.
+
+The driver implementation and startup wiring are still pending. Draft PR #54
+collects this work; it must not be treated as a ready-to-flash producer.
