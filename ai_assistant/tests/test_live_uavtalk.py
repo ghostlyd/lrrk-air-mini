@@ -109,6 +109,120 @@ class FakeTransport:
 
 
 class LiveUAVTalkTests(unittest.TestCase):
+    def test_optional_nack_allows_legacy_collection_and_clears_health(self):
+        health = packet(0x20, 0xDA60A0C6, bytes.fromhex('130000000101680101'))
+        nack = packet(0x24, 0xDA60A0C6)
+        legacy = complete_stream()
+        for prior_health in (b'', health):
+            with self.subTest(cached=bool(prior_health)), tempfile.TemporaryDirectory() as directory:
+                transport = FakeTransport([legacy[:48] + prior_health + nack, legacy[48:]])
+                result = self.collector(transport, Path(directory) / 'capture').collect()
+                self.assertIsNone(result.sensors.imu_healthy)
+                self.assertIsNone(result.sensors.imu_identity)
+                self.assertIsNone(result.sensors.imu_sample_age_ms)
+                self.assertEqual(result.attitude.roll_deg, 10)
+                self.assertEqual(result.alarms, ())
+                self.assertNotIn(('ack', 0xDA60A0C6, 0), transport.operations)
+
+    def test_optional_nack_must_be_canonical(self):
+        for payload, instance in ((b'x', 0), (b'', 1)):
+            with self.subTest(payload=payload, instance=instance), tempfile.TemporaryDirectory() as directory:
+                transport = FakeTransport([complete_stream() + packet(0x24, 0xDA60A0C6, payload, instance)])
+                with self.assertRaises(UAVTalkLiveError):
+                    self.collector(transport, Path(directory) / 'capture').collect()
+
+    def test_optional_imu_protocol_admits_only_data_object(self):
+        writes = []
+        protocol = OutboundProtocol(lambda value: writes.append(value) or len(value))
+        protocol.request(0xDA60A0C6)
+        protocol.ack(0xDA60A0C6, 0)
+        decoded = [UAVTalkDecoder().feed(value)[0] for value in writes]
+        self.assertEqual([(f.message_type, f.object_id) for f in decoded], [(0x21, 0xDA60A0C6), (0x23, 0xDA60A0C6)])
+        for oid in (0xDA60A0C7, 0xDA60A0C4, 0xffffffff):
+            with self.assertRaises(UAVTalkLiveError):
+                protocol.request(oid)
+            with self.assertRaises(UAVTalkLiveError):
+                protocol.ack(oid, 0)
+        with self.assertRaises(UAVTalkLiveError):
+            protocol.ack(0xDA60A0C6, 1)
+
+    def test_optional_imu_aggregation_age_and_reset(self):
+        collector = self.collector(FakeTransport([]), Path('unused'))
+        for f in UAVTalkDecoder().feed(complete_stream()):
+            collector._observe(f, 0, CAPTURED)
+        health = UAVTalkDecoder().feed(packet(0x20, 0xDA60A0C6, bytes.fromhex('130000000101680101')))[0]
+        collector._observe(health, 0, CAPTURED)
+        # UTC can jump: align to the wall time paired with newest monotonic receipt.
+        attitude = UAVTalkDecoder().feed(complete_stream())[1]
+        collector._observe(attitude, .001, CAPTURED - timedelta(seconds=1))
+        result = collector._aggregate()
+        self.assertEqual(result.sensors.imu_sample_age_ms, 20)
+        self.assertEqual(result.captured_at, CAPTURED - timedelta(seconds=1))
+        self.assertIsNone(result.source.board)
+        self.assertEqual(result.alarms, ())
+        for status in (0, 1):
+            collector._observe(health, .002, CAPTURED)
+            reset = UAVTalkDecoder().feed(packet(0x20, FLIGHT_TELEMETRY_STATS, bytes(36) + bytes([status])))[0]
+            collector._observe(reset, .003, CAPTURED)
+            for f in UAVTalkDecoder().feed(complete_stream()):
+                collector._observe(f, .004, CAPTURED)
+            self.assertIsNone(collector._aggregate().sensors.imu_healthy)
+
+    def test_old_optional_health_does_not_age_mandatory_link(self):
+        collector = self.collector(FakeTransport([]), Path('unused'))
+        for f in UAVTalkDecoder().feed(complete_stream()):
+            collector._observe(f, 0, CAPTURED)
+        health = UAVTalkDecoder().feed(packet(0x20, 0xDA60A0C6, bytes.fromhex('130000000101680101')))[0]
+        collector._observe(health, 0, CAPTURED)
+        for f in UAVTalkDecoder().feed(complete_stream())[1:]:
+            collector._observe(f, 1, CAPTURED + timedelta(seconds=1))
+        result = collector._aggregate()
+        self.assertEqual(result.sensors.imu_sample_age_ms, 1019)
+        self.assertEqual(result.link_age_ms, 0)
+
+    def test_invalid_optional_live_object_fails_closed(self):
+        for payload, instance in ((bytes(8), 0), (bytes.fromhex('130000000201680101'), 0),
+                                  (bytes.fromhex('130000000101680101'), 1)):
+            transport = FakeTransport([complete_stream() + packet(0x20, 0xDA60A0C6, payload, instance)])
+            with tempfile.TemporaryDirectory() as directory:
+                with self.assertRaisesRegex(UAVTalkLiveError, 'invalid'):
+                    self.collector(transport, Path(directory) / 'capture').collect()
+            self.assertTrue(transport.closed)
+
+    def test_collect_optional_imu_and_legacy_without_it(self):
+        for extra in (b'', packet(0x22, 0xDA60A0C6, bytes.fromhex('130000000101680101'))):
+            transport = FakeTransport([complete_stream() + extra])
+            with tempfile.TemporaryDirectory() as directory:
+                result = self.collector(transport, Path(directory) / 'capture').collect()
+            self.assertIn(('request', 0xDA60A0C6), transport.operations)
+            self.assertEqual(result.sensors.imu_healthy, True if extra else None)
+            if extra:
+                self.assertIn(('ack', 0xDA60A0C6, 0), transport.operations)
+
+    def test_close_discards_cached_health(self):
+        transport = FakeTransport([complete_stream() + packet(0x20, 0xDA60A0C6, bytes.fromhex('130000000101680101'))])
+        with tempfile.TemporaryDirectory() as directory:
+            collector = self.collector(transport, Path(directory) / 'capture')
+            collector.collect()
+            with self.assertRaisesRegex(UAVTalkLiveError, 'handshake'):
+                collector._aggregate()
+
+    def test_collection_uses_receipt_time_after_blocking_read(self):
+        clock = FakeClock()
+        health = packet(0x20, 0xDA60A0C6, bytes.fromhex('000000000101680101'))
+        frames = complete_stream()
+        class DelayedTransport(FakeTransport):
+            def read(self, maximum):
+                clock.value += .010
+                return super().read(maximum)
+        transport = DelayedTransport([frames[:48] + health, frames[48:]])
+        with tempfile.TemporaryDirectory() as directory:
+            collector = LiveUAVTalkCollector(transport, Path(directory) / 'capture',
+                monotonic=clock.monotonic, wall_clock=clock.wall, sleep=clock.sleep)
+            result = collector.collect()
+        self.assertEqual(result.captured_at, clock.wall())
+        self.assertGreaterEqual(result.sensors.imu_sample_age_ms, 10)
+
     def collector(self, transport, capture):
         clock = FakeClock()
         return LiveUAVTalkCollector(
@@ -308,7 +422,8 @@ class LiveUAVTalkTests(unittest.TestCase):
         reads = [item[1] for item in transport.operations if item[0] == "read"]
         requests = [item for item in transport.operations if item[0] == "request"]
         self.assertEqual(reads, [4096, len(tail)])
-        self.assertEqual(len(requests), len(SELECTED_OBJECT_IDS))
+        self.assertEqual({item[1] for item in requests}, SELECTED_OBJECT_IDS | {0xDA60A0C6})
+        self.assertEqual(len(requests), 6)
         self.assertTrue(snapshot.armed)
 
     def test_timed_out_completion_still_captures_every_consumed_byte(self):

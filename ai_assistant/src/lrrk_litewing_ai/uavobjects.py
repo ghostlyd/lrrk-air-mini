@@ -14,7 +14,7 @@ import struct
 from datetime import datetime
 from typing import Optional
 
-from .models import Attitude, BatteryState, SourceIdentity, TelemetrySnapshot
+from .models import Attitude, BatteryState, SensorHealth, SourceIdentity, TelemetrySnapshot
 from .uavtalk import UAVTalkError, UAVTalkFrame
 
 ATTITUDE_STATE = 0xD7E0D964
@@ -22,11 +22,14 @@ FLIGHT_STATUS = 0xEF69B6BC
 BATTERY_STATE = 0x26962352
 SYSTEM_ALARMS = 0x6B7639EC
 ACTUATOR_COMMAND = 0xB8229FE4
+# Port schema v1: metadata 0xDA60A0C7 is not a telemetry observation.
+LITEWING_IMU_HEALTH = 0xDA60A0C6
 _LAYOUTS = {ATTITUDE_STATE: struct.Struct("<7f"),
             FLIGHT_STATUS: struct.Struct("<8B"),
             BATTERY_STATE: struct.Struct("<7f2B"),
             SYSTEM_ALARMS: struct.Struct("<25B"),
-            ACTUATOR_COMMAND: struct.Struct("<12hHHB")}
+            ACTUATOR_COMMAND: struct.Struct("<12hHHB"),
+            LITEWING_IMU_HEALTH: struct.Struct("<I5B")}
 _ALARM_NAMES = ("SystemConfiguration", "BootFault", "OutOfMemory", "StackOverflow",
                 "CPUOverload", "EventSystem", "Telemetry", "Receiver", "ManualControl",
                 "Actuator", "Attitude", "Sensors", "Magnetometer", "Airspeed",
@@ -65,7 +68,19 @@ def snapshot_from_frame(frame: UAVTalkFrame, captured_at: datetime) -> Optional[
            for value in values):
         raise UAVTalkError("object contains non-finite numeric values")
     fields = {}
-    if frame.object_id == ATTITUDE_STATE:
+    if frame.object_id == LITEWING_IMU_HEALTH:
+        age, version, verified, who_am_i, seen, health = values
+        if version != 1 or verified not in (0, 1) or seen not in (0, 1) or health not in (0, 1, 2):
+            raise UAVTalkError("invalid LiteWingIMUHealth version or enum")
+        sample_age = age if seen and age != 0xFFFFFFFF else None
+        fields["sensors"] = SensorHealth(
+            imu_present=True if verified else None,
+            imu_identity="0x%02x" % who_am_i if verified else None,
+            imu_healthy=(False if health == 2 else
+                         True if health == 1 and verified and sample_age is not None else None),
+            imu_sample_age_ms=sample_age,
+        )
+    elif frame.object_id == ATTITUDE_STATE:
         fields["attitude"] = Attitude(*values[4:7])
     elif frame.object_id == BATTERY_STATE:
         if values[8] not in (0, 1):

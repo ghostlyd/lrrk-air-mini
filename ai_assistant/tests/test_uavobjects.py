@@ -1,10 +1,13 @@
 import contextlib
 import io
 import json
+import os
+import re
 import struct
+import subprocess
 import tempfile
 import unittest
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from lrrk_litewing_ai.cli import main
@@ -20,6 +23,88 @@ def frame(object_id, payload, instance=0, kind=0x20):
 
 
 class UAVObjectTests(unittest.TestCase):
+    @unittest.skipUnless(os.environ.get('LW_IMU_GENERATOR'), 'set LW_IMU_GENERATOR for native generated interoperability')
+    def test_native_generated_imu_bytes_decode(self):
+        root = Path(__file__).resolve().parents[2] / 'ports/ninjapilot-litewing'
+        generator = Path(os.environ['LW_IMU_GENERATOR'])
+        with tempfile.TemporaryDirectory() as directory:
+            generated = subprocess.run([str(generator), '-flight', str(root / 'uavobjects'),
+                                        str(generator.parents[2]), 'LiteWingIMUHealth'],
+                                       cwd=directory, capture_output=True, text=True, timeout=30)
+            self.assertEqual(generated.returncode, 0, generated.stdout + generated.stderr)
+            header = (Path(directory) / 'flight/litewingimuhealth.h').read_text()
+            declarations = re.search(r'typedef struct \{.*?LiteWingIMUHealthData;', header, re.S).group()
+            probe = Path(directory) / 'probe.c'
+            probe.write_text('#include <stdint.h>\n#include <stdio.h>\n#include <string.h>\n'
+                             '#include "litewing_imu_health.h"\n' + declarations + '''
+int main(void) {
+    LiteWingIMUHealthDataPacked data = {0x12345678, 1, 1, 0x68, 1, 1};
+    struct lw_imu_observation observation = {1, 0x68, 1, 1, 0};
+    uint8_t bytes[9];
+    lw_imu_health_export(&observation, 0x12345678, UINT32_MAX, bytes);
+    if (sizeof(data) != 9 || memcmp(&data, bytes, 9)) return 1;
+    return fwrite(bytes, 1, 9, stdout) == 9 ? 0 : 2;
+}
+''')
+            binary = Path(directory) / 'probe'
+            compiled = subprocess.run(['cc', '-std=c11', '-Wall', '-Wextra', '-Werror',
+                                       '-I', str(root / 'target/include'), str(probe),
+                                       str(root / 'target/litewing_imu_health.c'), '-o', str(binary)],
+                                      capture_output=True, text=True, timeout=30)
+            self.assertEqual(compiled.returncode, 0, compiled.stdout + compiled.stderr)
+            native = subprocess.run([str(binary)], capture_output=True, timeout=10)
+            self.assertEqual(native.returncode, 0, native.stderr)
+            self.assertEqual(native.stdout, bytes.fromhex('785634120101680101'))
+            oid = int(re.search(r'#define LITEWINGIMUHEALTH_OBJID (\S+)', header).group(1), 0)
+            result = snapshot_from_frame(frame(oid, native.stdout), CAPTURED)
+            self.assertIsNotNone(result)
+            self.assertEqual(result.sensors.imu_sample_age_ms, 0x12345678)
+            self.assertEqual(result.sensors.imu_identity, '0x68')
+
+    def test_imu_golden_bytes_and_analysis_expiry(self):
+        result = snapshot_from_frame(frame(0xDA60A0C6, bytes.fromhex('130000000101680101')), CAPTURED)
+        self.assertIsNotNone(result)
+        self.assertEqual(result.sensors.imu_identity, '0x68')
+        self.assertTrue(result.sensors.imu_present)
+        self.assertTrue(result.sensors.imu_healthy)
+        self.assertEqual(result.to_dict()['sensors']['imu_sample_age_ms'], 19)
+        self.assertIsNone(result.sensors.barometer_present)
+        self.assertIsNone(result.alarms)
+        for delay, expected in ((0, 'PASS'), (1, 'UNKNOWN'), (100, 'UNKNOWN')):
+            report = run_preflight(result, now=CAPTURED + timedelta(milliseconds=delay))
+            self.assertEqual(next(f.status for f in report.findings if f.finding_id == 'imu.health'), expected)
+
+    def test_imu_unknown_fault_and_unverified_observations(self):
+        for age, verified, seen, health, expected in (
+            (20, 1, 1, 1, 'UNKNOWN'), (0, 1, 1, 0, 'UNKNOWN'),
+            (0xffffffff, 1, 1, 1, 'UNKNOWN'), (0, 1, 0, 1, 'UNKNOWN'),
+            (0, 0, 1, 1, 'UNKNOWN'), (100, 1, 1, 2, 'BLOCK'),
+            (0xffffffff, 0, 0, 2, 'BLOCK'),
+        ):
+            with self.subTest(age=age, verified=verified, seen=seen, health=health):
+                result = snapshot_from_frame(frame(0xDA60A0C6, struct.pack('<I5B', age, 1, verified, 0x68, seen, health)), CAPTURED)
+                self.assertIsNotNone(result)
+                report = run_preflight(result, now=CAPTURED + timedelta(milliseconds=1))
+                self.assertEqual(next(f.status for f in report.findings if f.finding_id == 'imu.health'), expected)
+                if not verified:
+                    self.assertIsNone(result.sensors.imu_identity)
+                    self.assertIsNone(result.sensors.imu_present)
+                if age == 0xffffffff or not seen:
+                    self.assertIsNone(result.sensors.imu_sample_age_ms)
+
+    def test_imu_rejects_malformed_schema(self):
+        golden = bytes.fromhex('130000000101680101')
+        invalid = [golden[:n] for n in range(9)] + [golden + b'\x00']
+        for index, value in ((4, 0), (4, 2), (5, 2), (7, 2), (8, 3), (8, 255)):
+            payload = bytearray(golden)
+            payload[index] = value
+            invalid.append(bytes(payload))
+        for payload in invalid:
+            with self.subTest(payload=payload), self.assertRaises(UAVTalkError):
+                snapshot_from_frame(frame(0xDA60A0C6, payload), CAPTURED)
+        with self.assertRaises(UAVTalkError):
+            snapshot_from_frame(frame(0xDA60A0C6, golden, instance=1), CAPTURED)
+
     def test_alarm_capture_exposes_critical_and_uninitialised_evidence(self):
         # Pinned generated layout: 21 alarm bytes, 2 extended enums, 2 substatus.
         # Representative bench condition, not a raw owner capture.

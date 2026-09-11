@@ -12,6 +12,7 @@
 #ifdef PIOS_INCLUDE_I2C
 
 #include <esp_err.h>
+#include <esp_timer.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
 #include <driver/gpio.h>
@@ -38,7 +39,6 @@
 #define LITEWING_MPU6050_CLOCK_PLL_X 0x01u
 #define LITEWING_MPU6050_INT_DATA_READY 0x01u
 #define LITEWING_MPU6050_QUEUE_LENGTH 4u
-#define LITEWING_MPU6050_STALE_TIMEOUT_MS 20u
 #define LITEWING_MPU6050_SENSOR_COUNT 2u
 #define LITEWING_MPU6050_DATA_SIZE \
     (sizeof(PIOS_SENSORS_3Axis_SensorsWithTemp) + \
@@ -58,6 +58,48 @@ struct litewing_mpu6050_device {
 
 static struct litewing_mpu6050_device device;
 static PIOS_SENSORS_3Axis_SensorsWithTemp *queue_data;
+
+static portMUX_TYPE observation_lock = portMUX_INITIALIZER_UNLOCKED;
+static struct lw_imu_observation observation;
+static int64_t observation_sample_us;
+static uint64_t observation_generation;
+
+static uint64_t invalidate_observation(void)
+{
+    portENTER_CRITICAL(&observation_lock);
+    observation = (struct lw_imu_observation){0};
+    observation_sample_us = 0;
+    uint64_t generation = ++observation_generation;
+    portEXIT_CRITICAL(&observation_lock);
+    return generation;
+}
+
+static bool record_identity(uint8_t who_am_i, uint64_t generation)
+{
+    portENTER_CRITICAL(&observation_lock);
+    bool current = generation == observation_generation;
+    if (current) {
+        observation.identity_verified = true;
+        observation.who_am_i = who_am_i;
+    }
+    portEXIT_CRITICAL(&observation_lock);
+    return current;
+}
+
+void PIOS_LiteWing_MPU6050_GetTimedObservation(struct lw_imu_observation *out,
+                                              int64_t *sample_us)
+{
+    portENTER_CRITICAL(&observation_lock);
+    *out = observation;
+    *sample_us = observation_sample_us;
+    portEXIT_CRITICAL(&observation_lock);
+}
+
+void PIOS_LiteWing_MPU6050_GetObservation(struct lw_imu_observation *out)
+{
+    int64_t sample_us;
+    PIOS_LiteWing_MPU6050_GetTimedObservation(out, &sample_us);
+}
 
 static bool transfer_write(uint8_t reg, uint8_t value)
 {
@@ -106,6 +148,7 @@ static bool read_who_am_i(uint8_t *who_am_i)
 static bool configure_sensor(void)
 {
     uint8_t who_am_i = 0;
+    const uint64_t generation = invalidate_observation();
 
     if (!read_who_am_i(&who_am_i) ||
         !litewing_mpu6050_identity_valid(who_am_i)) {
@@ -137,8 +180,9 @@ static bool configure_sensor(void)
         return false;
     }
 
-    return read_who_am_i(&who_am_i) &&
-           litewing_mpu6050_identity_valid(who_am_i);
+    if (!read_who_am_i(&who_am_i) ||
+        !litewing_mpu6050_identity_valid(who_am_i)) return false;
+    return record_identity(who_am_i, generation);
 }
 
 static void orient_sample(const struct litewing_mpu6050_sample *raw,
@@ -229,9 +273,23 @@ static void sensor_task(__attribute__((unused)) void *argument)
             pdTRUE, pdMS_TO_TICKS(LITEWING_MPU6050_STALE_TIMEOUT_MS));
         const uint32_t now_ms = (uint32_t)(xTaskGetTickCount() *
                                            portTICK_PERIOD_MS);
+        uint64_t generation;
+        bool identity_verified_at_start;
+        portENTER_CRITICAL(&observation_lock);
+        generation = observation_generation;
+        identity_verified_at_start = observation.identity_verified;
+        portEXIT_CRITICAL(&observation_lock);
+        /* Keep a conservative acquisition timestamp across I2C and queue
+         * publication, either of which may yield before telemetry commits. */
+        const int64_t captured_us = esp_timer_get_time();
 
         if (notified == 0u || !transfer_read(LITEWING_MPU6050_REG_ACCEL_XOUT_H,
                                               frame, sizeof(frame))) {
+            /* Telemetry records read/notification failure explicitly. The
+             * existing motor freshness decision below is unchanged. */
+            portENTER_CRITICAL(&observation_lock);
+            if (generation == observation_generation) observation.healthy = false;
+            portEXIT_CRITICAL(&observation_lock);
             const bool fresh = litewing_mpu6050_sample_is_fresh(
                 device.sample_seen, now_ms, device.last_sample_ms,
                 LITEWING_MPU6050_STALE_TIMEOUT_MS);
@@ -242,6 +300,15 @@ static void sensor_task(__attribute__((unused)) void *argument)
         publish_sample(frame);
         device.sample_seen = true;
         device.last_sample_ms = now_ms;
+        portENTER_CRITICAL(&observation_lock);
+        if (identity_verified_at_start && generation == observation_generation &&
+            observation.identity_verified) {
+            observation.sample_seen = true;
+            observation.healthy = true;
+            observation.sample_ms = (uint32_t)(captured_us / 1000);
+            observation_sample_us = captured_us;
+        }
+        portEXIT_CRITICAL(&observation_lock);
         set_health(true);
     }
 }
@@ -252,6 +319,7 @@ static bool driver_test(__attribute__((unused)) uintptr_t context)
     const bool valid = read_who_am_i(&who_am_i) &&
                        litewing_mpu6050_identity_valid(who_am_i);
     if (!valid) {
+        invalidate_observation();
         set_health(false);
     }
     return valid;
@@ -259,6 +327,7 @@ static bool driver_test(__attribute__((unused)) uintptr_t context)
 
 static void driver_reset(__attribute__((unused)) uintptr_t context)
 {
+    invalidate_observation();
     set_health(false);
     (void)configure_sensor();
 }
@@ -301,6 +370,7 @@ int32_t PIOS_LiteWing_MPU6050_Init(uint32_t i2c_id, uint8_t address)
     device.healthy = false;
     device.sample_seen = false;
     device.last_sample_ms = 0;
+    invalidate_observation();
 
     if (!PIOS_ESP32_I2C_Probe(i2c_id, address) || !configure_sensor()) {
         set_health(false);
@@ -348,6 +418,7 @@ bool PIOS_LiteWing_MPU6050_IsHealthy(void)
 
 void PIOS_LiteWing_MPU6050_Shutdown(void)
 {
+    invalidate_observation();
     set_health(false);
 }
 

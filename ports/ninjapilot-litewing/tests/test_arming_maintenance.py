@@ -21,6 +21,28 @@ def function(code, name):
 
 
 class ArmingMaintenanceTests(unittest.TestCase):
+    def test_imu_inbound_data_and_metadata_are_read_only(self):
+        upstream = os.environ.get("LRRK_TEST_FLIGHT_ROOT")
+        if not upstream:
+            self.skipTest("pinned flight checkout not supplied")
+        spec = importlib.util.spec_from_file_location("arming_prepare", ROOT / "prepare_arming_maintenance.py")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        with tempfile.TemporaryDirectory() as directory:
+            out = Path(directory)
+            module.prepare(Path(upstream) / "flight/uavobjects", out / "generated")
+            code = (out / "generated/uavobjectmanager.c").read_text()
+            (out / "writes.inc").write_text("\n".join(function(code, name) for name in (
+                "UAVObjUnpack", "UAVObjSetInstanceData", "UAVObjSetInstanceDataField")))
+            command = ["cc", "-std=c11", "-D_XOPEN_SOURCE=700", "-DIMU_ACCESS_TEST", "-pthread",
+                       "-Wall", "-Wextra", "-Werror", "-fsanitize=address,undefined",
+                       "-I", str(out), "-I", str(ROOT / "target/include"),
+                       str(ROOT / "tests/arming_maintenance_test.c"), "-o", str(out / "access")]
+            result = subprocess.run(command, capture_output=True, text=True, timeout=30)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            result = subprocess.run([str(out / "access")], capture_output=True, text=True, timeout=10)
+            self.assertEqual(result.returncode, 0, result.stderr)
+
     def test_paused_writes_cannot_cross_reservation(self):
         generator = ROOT / "prepare_arming_maintenance.py"
         self.assertTrue(generator.exists(), "object-manager arming exclusion missing")

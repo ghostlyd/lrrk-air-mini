@@ -9,6 +9,10 @@
 #include "litewing_wifi_config.h"
 #include "pios_litewing_usb_maintenance.h"
 
+int32_t LiteWingImuHealthPack(UAVObjHandle obj,uint16_t instance,uint8_t *out) {
+    (void)obj; (void)instance; (void)out; assert(false); return -1;
+}
+
 static int64_t now_us=1000;
 static int64_t connection_delay, lookup_delay;
 static GCSReceiverData object;

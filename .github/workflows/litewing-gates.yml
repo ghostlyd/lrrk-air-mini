@@ -180,6 +180,46 @@ jobs:
           git -C "$RUNNER_TEMP/litewing-external/NinjaPilot" apply --check \
             "$GITHUB_WORKSPACE/ports/ninjapilot-litewing/patches/litewing-target.patch" \
             "$GITHUB_WORKSPACE/ports/ninjapilot-litewing/patches/simlitewing-loopback.patch"
+      - name: Build pinned IMU generator with Qt5 Core and XML
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends build-essential qtbase5-dev qt5-qmake
+          upstream="$RUNNER_TEMP/litewing-external/NinjaPilot"
+          output="$(mktemp -d "$RUNNER_TEMP/litewing-imu.XXXXXX")"
+          # Tests resolve templates from generator.parents[2]. Preserve that layout
+          # in temporary output without building or editing the pinned source tree.
+          mkdir -p "$output/ground/uavobjgenerator" "$output/existing"
+          ln -s "$upstream/flight" "$output/flight"
+          cd "$output/ground/uavobjgenerator"
+          export QT_SELECT=qt5
+          [[ "$(qmake -query QT_VERSION)" == 5.* ]]
+          qmake "$upstream/ground/uavobjgenerator/uavobjgenerator.pro" 'QT=core xml'
+          make -j2
+          generator="$PWD/uavobjgenerator"
+          test -x "$generator"
+          # The pinned commit has no checked-in build/uavobject-synthetics/flight.
+          # Generate the full pinned object corpus for the collision check.
+          cd "$output/existing"
+          "$generator" -flight "$upstream/shared/uavobjectdefinition" "$upstream"
+          test -s "$output/existing/flight/attitudestate.h"
+          echo "LW_IMU_GENERATOR=$generator" >> "$GITHUB_ENV"
+          echo "LW_IMU_EXISTING_HEADERS=$output/existing/flight" >> "$GITHUB_ENV"
+      - name: Test generated IMU schema publication and host C-byte interoperability without skips
+        shell: bash
+        env:
+          PYTHONPATH: ai_assistant/src:ai_assistant/tests:ports/ninjapilot-litewing/tests
+        run: |
+          python3 - <<'PY'
+          import unittest
+          suite = unittest.defaultTestLoader.loadTestsFromNames([
+              'test_imu_health', 'test_imu_publication', 'test_uavobjects'])
+          result = unittest.TextTestRunner(verbosity=2).run(suite)
+          if result.skipped:
+              print('IMU CI gate rejects skipped tests:', result.skipped)
+          raise SystemExit(0 if result.wasSuccessful() and result.testsRun and not result.skipped else 1)
+          PY
       - name: Test receiver freshness through the real pinned UAVTalk parser
         run: |
           LRRK_TEST_FLIGHT_ROOT="$RUNNER_TEMP/litewing-external/NinjaPilot" \

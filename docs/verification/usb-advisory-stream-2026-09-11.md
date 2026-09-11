@@ -62,9 +62,10 @@ cost or input-token usage. Local SDK configuration/cleanup tests cover these
 settings. The bounded fixture provider check below verifies a real invocation,
 not live aircraft acquisition.
 
-Remaining work: review and CI for the handshake correction, followed by broader
-operational qualification. The bounded end-to-end OpenAI session and reconnect
-checks succeeded as recorded here; neither qualifies firmware for flight.
+The handshake correction passed review and CI and merged in PR #75 as
+`01c22bd3e281c597b011cf105c57995e585b6d83`. Broader operational qualification
+remains. The bounded end-to-end OpenAI session and reconnect checks succeeded
+as recorded here; neither qualifies firmware for flight.
 
 ## Follow-up review fixes
 

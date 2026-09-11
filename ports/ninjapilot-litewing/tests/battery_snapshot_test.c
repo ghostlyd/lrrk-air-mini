@@ -1,5 +1,8 @@
 #include "litewing_battery_pack.h"
 #include <assert.h>
+int32_t LiteWingImuHealthPack(UAVObjHandle obj,uint16_t inst,uint8_t *data) {
+    (void)obj; (void)inst; (void)data; assert(false); return -1;
+}
 #include <math.h>
 #include <string.h>
 

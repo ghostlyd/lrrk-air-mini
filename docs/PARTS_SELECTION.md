@@ -94,12 +94,17 @@ is prescribed here.
 
 The approved tethered path is drone USB serial → Mac advisory worker → OpenAI
 over the Mac's existing internet connection. It does not require IP networking
-on the drone's USB-C port. The host launcher `litewing-usb-advisory` is implemented
-on the draft development branch, with offline analysis as its default and
-explicit `--live-agent` opt-in. See the [streaming verification record](verification/usb-advisory-stream-2026-09-11.md)
-for local tests and the unresolved intermittent live framing failure. No new
-hardware purchase is needed to continue this software integration. This is not
-proof of reliable live streaming or flight readiness.
+on the drone's USB-C port. The host launcher `litewing-usb-advisory` merged in
+PR #75 (`01c22bd3e281c597b011cf105c57995e585b6d83`), with offline analysis as its
+default and explicit `--live-agent` opt-in. The retained normal image delivered
+74 snapshots in one 15-second USB-to-OpenAI session. After the handshake fix,
+three five-second reconnect checks delivered 25, 24 and 24 snapshots. The
+installed wheel also passed a separate five-second, 25-snapshot offline check.
+See the [streaming verification record](verification/usb-advisory-stream-2026-09-11.md)
+and [installed-package checkpoint](PORT_AND_DEPENDENCIES.md).
+Earlier failures remain investigation history, not the latest result. No new
+hardware purchase is needed for this tethered integration. These bounded checks
+do not establish indefinite reliability or flight readiness.
 
 ### Separate wireless operating mode
 

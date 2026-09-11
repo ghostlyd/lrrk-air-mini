@@ -14,15 +14,17 @@ from pathlib import Path
 import stat
 import struct
 import time
+from dataclasses import replace
 from datetime import datetime, timezone
 from typing import Any, Callable, Dict, Optional, Protocol, Tuple
 
-from .models import SourceIdentity, TelemetrySnapshot
+from .models import SensorHealth, SourceIdentity, TelemetrySnapshot
 from .uavobjects import (
     ACTUATOR_COMMAND,
     ATTITUDE_STATE,
     BATTERY_STATE,
     FLIGHT_STATUS,
+    LITEWING_IMU_HEALTH,
     SYSTEM_ALARMS,
     snapshot_from_frame,
 )
@@ -38,7 +40,8 @@ SELECTED_OBJECT_IDS = frozenset((
     SYSTEM_ALARMS,
     ACTUATOR_COMMAND,
 ))
-_ACK_OBJECT_IDS = SELECTED_OBJECT_IDS | frozenset((FLIGHT_TELEMETRY_STATS,))
+_REQUEST_OBJECT_IDS = SELECTED_OBJECT_IDS | frozenset((LITEWING_IMU_HEALTH,))
+_ACK_OBJECT_IDS = _REQUEST_OBJECT_IDS | frozenset((FLIGHT_TELEMETRY_STATS,))
 _FRAME_TYPES = frozenset((0x20, 0x21, 0x22, 0x23, 0x24, 0xA0, 0xA2))
 _CAPTURE_LIMIT = 1024 * 1024
 
@@ -77,7 +80,7 @@ class OutboundProtocol:
         self._send(_packet(0x20, GCST_TELEMETRY_STATS, payload))
 
     def request(self, object_id: int) -> None:
-        if object_id not in SELECTED_OBJECT_IDS:
+        if object_id not in _REQUEST_OBJECT_IDS:
             raise UAVTalkLiveError("outbound object request is not allowed")
         self._send(_packet(0x21, object_id))
 
@@ -392,7 +395,14 @@ class LiveUAVTalkCollector:
                 if respond and reconnecting and status_value == 0:
                     self.transport.handshake(1)
             return
-        if frame.object_id not in SELECTED_OBJECT_IDS:
+        if frame.object_id not in _REQUEST_OBJECT_IDS:
+            return
+        if frame.object_id == LITEWING_IMU_HEALTH and frame.message_type == 0x24:
+            if frame.instance_id != 0 or frame.payload or frame.timestamp_ticks is not None:
+                raise UAVTalkLiveError("invalid optional IMU NACK")
+            # Older firmware can reject this optional request. Revoke any
+            # cached health without interrupting the mandatory telemetry set.
+            self._latest.pop(LITEWING_IMU_HEALTH, None)
             return
         try:
             snapshot = snapshot_from_frame(frame, received_wall)
@@ -410,9 +420,18 @@ class LiveUAVTalkCollector:
             names = ["0x%08x" % value for value in sorted(missing)]
             raise UAVTalkLiveError("live telemetry is incomplete: %s" % ", ".join(names))
         newest_mono = max(value[1] for value in self._latest.values())
-        oldest_mono = min(value[1] for value in self._latest.values())
-        newest_wall = max(value[2] for value in self._latest.values())
-        parts = [self._latest[value][0] for value in sorted(SELECTED_OBJECT_IDS)]
+        oldest_mono = min(self._latest[object_id][1] for object_id in SELECTED_OBJECT_IDS)
+        # Pair the host UTC anchor with the newest monotonic receipt. This is
+        # snapshot metadata, not an inferred board timestamp.
+        newest_wall = max(self._latest.values(), key=lambda value: value[1])[2]
+        parts = [self._latest[value][0] for value in sorted(self._latest)]
+        sensors = SensorHealth()
+        if LITEWING_IMU_HEALTH in self._latest:
+            observation, received_mono, _ = self._latest[LITEWING_IMU_HEALTH]
+            sensors = observation.sensors
+            if sensors.imu_sample_age_ms is not None:
+                sensors = replace(sensors, imu_sample_age_ms=(
+                    sensors.imu_sample_age_ms + (newest_mono - received_mono) * 1000.0))
         digest = hashlib.sha256(
             "".join(value.snapshot_hash() for value in parts).encode("ascii")
         ).hexdigest()[:16]
@@ -431,6 +450,7 @@ class LiveUAVTalkCollector:
             flight_mode=by_id[FLIGHT_STATUS].flight_mode,
             attitude=by_id[ATTITUDE_STATE].attitude,
             battery=by_id[BATTERY_STATE].battery,
+            sensors=sensors,
             alarms=tuple(system_alarms) + tuple(actuator_alarms),
             actuators=by_id[ACTUATOR_COMMAND].actuators,
         )
@@ -445,10 +465,10 @@ class LiveUAVTalkCollector:
             if self._now() - completion_started >= 0.25:
                 raise UAVTalkLiveError("current-frame completion timed out")
             maximum = synchronizer.bytes_to_frame_boundary
-            received_mono = self._now()
-            received_wall = self._wall_now()
             data = self.transport.read(maximum)
             after_read = self._now()
+            received_mono = after_read
+            received_wall = self._wall_now()
             if data:
                 # The capture records every byte consumed from the device,
                 # even when the completion deadline expires during this read.
@@ -512,7 +532,7 @@ class LiveUAVTalkCollector:
                     self.transport.handshake(self._handshake_status)
                     next_handshake = now + 1.0
                 if now >= next_request:
-                    for object_id in sorted(SELECTED_OBJECT_IDS):
+                    for object_id in sorted(_REQUEST_OBJECT_IDS):
                         self.transport.request(object_id)
                     next_request = now + 0.2
                 data = self.transport.read(4096)
@@ -550,6 +570,9 @@ class LiveUAVTalkCollector:
                 self.capture_bytes = capture.total
                 self.capture_sha256 = capture.digest.hexdigest()
                 self.initial_discarded_bytes = synchronizer.discarded
+                self._latest.clear()
+                self._connected = False
+                self._handshake_status = 1
                 self.transport.close()
 
     def collect(self) -> TelemetrySnapshot:
@@ -566,13 +589,12 @@ class LiveUAVTalkCollector:
                     self.transport.handshake(self._handshake_status)
                     next_handshake = now + 1.0
                 if now >= next_request:
-                    for object_id in sorted(SELECTED_OBJECT_IDS):
+                    for object_id in sorted(_REQUEST_OBJECT_IDS):
                         self.transport.request(object_id)
                     next_request = now + 0.2
+                data = self.transport.read(4096)
                 received_mono = self._now()
                 received_wall = self._wall_now()
-                data = self.transport.read(4096)
-                self._now()
                 if data:
                     capture.write(data)
                     frames = synchronizer.feed(data)
@@ -597,4 +619,7 @@ class LiveUAVTalkCollector:
                 self.capture_bytes = capture.total
                 self.capture_sha256 = capture.digest.hexdigest()
                 self.initial_discarded_bytes = synchronizer.discarded
+                self._latest.clear()
+                self._connected = False
+                self._handshake_status = 1
                 self.transport.close()

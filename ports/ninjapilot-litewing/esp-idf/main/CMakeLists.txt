@@ -62,6 +62,18 @@ endif()
 # servo-pulse or ICM-20602 implementations for LiteWing.
 include("${TARGET_ROOT}/sources.cmake")
 
+set(LITEWING_IMU_DIR "${CMAKE_CURRENT_BINARY_DIR}/litewing_imu")
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+    "${PORT_ROOT}/prepare_imu_health.py"
+    "${PORT_ROOT}/uavobjects/litewingimuhealth.xml"
+    "${NINJAPILOT_ROOT}/ground/uavobjgenerator/uavobjgenerator")
+execute_process(COMMAND python3 "${PORT_ROOT}/prepare_imu_health.py"
+    --upstream "${NINJAPILOT_ROOT}" --output "${LITEWING_IMU_DIR}"
+    RESULT_VARIABLE LITEWING_IMU_RC)
+if(NOT LITEWING_IMU_RC EQUAL 0)
+    message(FATAL_ERROR "Custom IMU health generation or schema verification failed")
+endif()
+
 # --- PiOS: pinned ESP32 backend ---------------------------------------
 set(PIOS_ESP32_SRCS
     "${ESP32PORT}/pios/esp32/pios_sys.c"
@@ -292,6 +304,7 @@ foreach(UAVO_NAME IN LISTS UAVO_NAMES)
 endforeach()
 
 set(ALL_PORT_SRCS
+    "${LITEWING_IMU_DIR}/flight/litewingimuhealth.c"
     ${BOARD_SRCS}
     ${LITEWING_TARGET_SRCS}
     ${PIOS_ESP32_SRCS}
@@ -344,6 +357,7 @@ endif()
 idf_component_register(
     SRCS ${ALL_PORT_SRCS}
     INCLUDE_DIRS
+        "${LITEWING_IMU_DIR}/flight"
         "${CMAKE_CURRENT_BINARY_DIR}"
         "${LITEWING_UAVTALK_DIR}"
         "${BOARD_ROOT}"

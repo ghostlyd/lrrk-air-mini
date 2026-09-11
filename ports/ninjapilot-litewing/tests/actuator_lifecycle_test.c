@@ -161,6 +161,8 @@ LATER(Receiver) LATER(ManualControl) LATER(Telemetry)
 /* Battery lifecycle has its own real-table and worker tests. */
 int32_t LiteWingBatteryInitialize(void) { return 0; }
 int32_t LiteWingBatteryStart(void) { return 0; }
+int32_t LiteWingImuHealthInitialize(void) { return 0; }
+int32_t LiteWingImuHealthStart(void) { return 0; }
 
 int main(int argc, char **argv) {
     CHECK(argc == 2); const char *s = argv[1];
