@@ -6,6 +6,13 @@ from lrrk_litewing_ai.live_uavtalk import LiveUAVTalkCollector, UAVTalkLiveError
 
 
 class USBStreamTests(unittest.TestCase):
+    def test_initial_disconnected_status_reissues_handshake_before_timeout(self):
+        disconnected = packet(0x20, FLIGHT_TELEMETRY_STATS, bytes(37))
+        observations = []
+        self.run_stream([disconnected, complete_stream()], observations.append)
+        self.assertEqual(self.transport.operations.count(('handshake', 1)), 2)
+        self.assertEqual(len(observations), 1)
+
     def test_disconnect_in_deadline_completion_is_failure(self):
         clock = FakeClock()
         disconnected = packet(0x20, FLIGHT_TELEMETRY_STATS, bytes(37))

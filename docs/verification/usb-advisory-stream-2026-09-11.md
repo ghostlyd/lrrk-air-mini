@@ -1,5 +1,21 @@
 # USB advisory streaming implementation
 
+## Handshake reconnect correction
+
+The upstream `flight/modules/Telemetry/telemetry.c` state machine first moves
+CONNECTED to DISCONNECTED when a new host sends HANDSHAKEREQ. Another request
+is required to advance to HANDSHAKEACK. The host's one-second retry raced its
+one-second complete-telemetry timeout. It now reissues the request on initial
+DISCONNECTED status; an established-session disconnect still fails, and final-
+frame completion still sends no handshake. A regression test failed before the
+change; all 361 host tests pass afterward.
+
+Three consecutive bounded five-second live sessions then delivered 25, 24 and
+24 snapshots (22,245; 22,346; 22,273 captured bytes). No reset, flash, provider
+call or motor command was performed. This verifies this reconnect sequence,
+not indefinite reliability or flight qualification. Earlier failures below are
+retained as investigation history.
+
 Current status: one bounded live USB-to-OpenAI session verified on the retained
 normal image. A subsequent two-session reopen check succeeded once and then
 failed, so reconnect reliability remains unresolved. Not a flight qualification

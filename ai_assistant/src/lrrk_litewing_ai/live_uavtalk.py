@@ -382,9 +382,15 @@ class LiveUAVTalkCollector:
                 self._handshake_status = 3
                 self._connected = True
             else:
+                reconnecting = not self._connected
                 self._latest.clear()
                 self._handshake_status = 1
                 self._connected = False
+                # A request received while firmware is still CONNECTED first
+                # transitions it to DISCONNECTED. Complete the second step
+                # without waiting for the periodic retry/stream timeout race.
+                if respond and reconnecting and status_value == 0:
+                    self.transport.handshake(1)
             return
         if frame.object_id not in SELECTED_OBJECT_IDS:
             return
