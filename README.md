@@ -36,6 +36,11 @@ and flight remain incomplete. Parts and purchase uncertainties are listed in
 the [parts inventory](docs/PARTS_SELECTION.md). The bench records below are
 historical checkpoints, not proof that the currently installed image is ready.
 
+The [USB-to-Mac OpenAI advisory path](docs/verification/usb-openai-resume-2026-09-11.md)
+was reverified using a captured board observation and the existing project key.
+This tethered path needs no Ethernet or internet interface on the drone;
+continuous acquisition and flight qualification remain separate work.
+
 This repository is the maintained `lrrk-air-mini` source tree. The original
 LiteWing repository is retained as the `upstream` Git remote for provenance and
 source comparison. AI assistance is being added as a host-side, advisory layer:

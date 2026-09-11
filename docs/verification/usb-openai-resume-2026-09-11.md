@@ -1,0 +1,47 @@
+# USB-to-Mac OpenAI advisory verification
+
+Date: 2026-09-11. Host source: `4c2799bfd10be872dfba89a3f9842dfcaf38e6fa`.
+
+The operator selected reuse of the existing project key. A bounded reset-neutral
+USB collector obtained one current aggregate from the connected WCH bridge.
+Only telemetry handshake, selected object requests and acknowledgements were
+sent. No modem-control reset, flash, settings, receiver or motor command was
+issued. FlightStatus reported disarmed and the four mapped motor values were
+zero. Physical battery state was not established by this check.
+
+That aggregate was saved privately and then consumed by the existing JSONL CLI
+with its live OpenAI provider. This is a captured-observation advisory test, not
+continuous acquisition during inference. The Mac retained its internet route;
+neither Ethernet nor internet networking on the drone was necessary.
+
+The existing key was loaded into the child process environment without shell
+evaluation, printing, rewriting, or sending it to the aircraft. SDK tracing was
+disabled. Raw capture, snapshot, provider output and audit remain outside Git
+in an owner-only directory, with files created mode 0600.
+
+Results:
+
+- Installed the declared Agents SDK 0.22.1 into the existing host environment;
+  its resolved OpenAI SDK was 3.13.0. All nine provider SDK tests passed.
+- `pip check` reported no broken requirements. Tests emitted non-fatal
+  no-active-span diagnostics; this was not a warning-free run.
+- The advisory CLI exited zero. It correctly returned BLOCKED for the captured
+  observation, including stale data (about 51.5 seconds), reported alarms and
+  unknown IMU information. It did not claim flight readiness.
+- The four-event audit chain validated: snapshot_received, preflight_result,
+  provider_request, provider_result. Provider outcome was completed, with zero
+  action events and no matches from the existing audit secret-pattern scanner.
+
+| Private artifact | Bytes | SHA-256 |
+| --- | ---: | --- |
+| USB capture | 906 | `c9bc1275ef0f4b5eae241876584b22d96ede2ec6ca153851b34ee6ef59d63fc8` |
+| Normalized snapshot | 1297 | `c93881da00a4d1837bf71c1f1af9fce946f10478e43f132acd702c8674ce788c` |
+| Advisory audit | 5616 | `34d7d1ef9e83003014c45ebe465efe05f740742a525d64ecead4a84e6376909d` |
+
+This verifies the existing tethered data-to-advice path and provider audit
+events. It does not qualify the currently installed diagnostic firmware,
+continuous USB acquisition, wireless control, sensor health, battery selection
+or flight. The CLI's ordinary serial constructor still differs from the
+reset-neutral diagnostic collector used here; integrating that proven access
+method requires implementation and regression tests, not a documentation-only
+claim that the launcher already uses it.
