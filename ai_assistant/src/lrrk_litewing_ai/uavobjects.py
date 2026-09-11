@@ -15,6 +15,7 @@ from datetime import datetime
 from typing import Optional
 
 from .models import Attitude, BatteryState, SensorHealth, SourceIdentity, TelemetrySnapshot
+from .configuration import ConfigurationObservation, STABILIZATION_MODES, AIRFRAME_TYPES, THRUST_CONTROLS
 from .uavtalk import UAVTalkError, UAVTalkFrame
 
 ATTITUDE_STATE = 0xD7E0D964
@@ -24,12 +25,16 @@ SYSTEM_ALARMS = 0x6B7639EC
 ACTUATOR_COMMAND = 0xB8229FE4
 # Port schema v1: metadata 0xDA60A0C7 is not a telemetry observation.
 LITEWING_IMU_HEALTH = 0xDA60A0C6
+FLIGHT_MODE_SETTINGS = 0x4D896486
+SYSTEM_SETTINGS = 0xD9D093B8
 _LAYOUTS = {ATTITUDE_STATE: struct.Struct("<7f"),
             FLIGHT_STATUS: struct.Struct("<8B"),
             BATTERY_STATE: struct.Struct("<7f2B"),
             SYSTEM_ALARMS: struct.Struct("<25B"),
             ACTUATOR_COMMAND: struct.Struct("<12hHHB"),
-            LITEWING_IMU_HEALTH: struct.Struct("<I5B")}
+            LITEWING_IMU_HEALTH: struct.Struct("<I5B"),
+            FLIGHT_MODE_SETTINGS: struct.Struct("<5f3H33B"),
+            SYSTEM_SETTINGS: struct.Struct("<4I2f22B")}
 _ALARM_NAMES = ("SystemConfiguration", "BootFault", "OutOfMemory", "StackOverflow",
                 "CPUOverload", "EventSystem", "Telemetry", "Receiver", "ManualControl",
                 "Actuator", "Attitude", "Sensors", "Magnetometer", "Airspeed",
@@ -68,7 +73,27 @@ def snapshot_from_frame(frame: UAVTalkFrame, captured_at: datetime) -> Optional[
            for value in values):
         raise UAVTalkError("object contains non-finite numeric values")
     fields = {}
-    if frame.object_id == LITEWING_IMU_HEALTH:
+    if frame.object_id == FLIGHT_MODE_SETTINGS:
+        # Five floats and three uint16 fields precede all 33 byte enums.
+        enums = values[8:]
+        bounds = (11,) + (len(STABILIZATION_MODES),) * 24 + (18,) * 6 + (2, 2)
+        if any(value >= bound for value, bound in zip(enums, bounds)):
+            raise UAVTalkError("invalid FlightModeSettings enum")
+        fields['configuration'] = ConfigurationObservation(
+            stabilization_slots=tuple(tuple(STABILIZATION_MODES[v] for v in enums[i:i + 4])
+                                      for i in range(1, 25, 4)),
+            flight_mode_settings_age_ms=0,
+        )
+    elif frame.object_id == SYSTEM_SETTINGS:
+        # Validate the complete payload, then discard GUI data and aircraft name.
+        airframe, thrust = values[6], values[27]
+        if airframe >= len(AIRFRAME_TYPES) or thrust >= len(THRUST_CONTROLS):
+            raise UAVTalkError("invalid SystemSettings enum")
+        fields['configuration'] = ConfigurationObservation(
+            airframe_type=AIRFRAME_TYPES[airframe], thrust_control=THRUST_CONTROLS[thrust],
+            system_settings_age_ms=0,
+        )
+    elif frame.object_id == LITEWING_IMU_HEALTH:
         age, version, verified, who_am_i, seen, health = values
         if version != 1 or verified not in (0, 1) or seen not in (0, 1) or health not in (0, 1, 2):
             raise UAVTalkError("invalid LiteWingIMUHealth version or enum")

@@ -149,11 +149,11 @@ class ApprovalTests(unittest.TestCase):
         self.assertIn("policy_version", record)
         self.assertIn("policy_hash", record)
         # Independent canonical wire fixture: every effective field plus analyzer version.
-        policy_bytes = (b'{"analyzer_version":"litewing-safety-3","policy":{'
+        policy_bytes = (b'{"analyzer_version":"litewing-safety-4","policy":{'
                         b'"accepted_imu_identities":["MPU6050","0x68","0x69","104","105"],'
                         b'"max_future_skew_ms":5000.0,"max_link_age_ms":500.0,'
                         b'"min_battery_voltage_v":3.8,"warn_battery_percent":20.0}}')
-        self.assertEqual(record["policy_version"], "litewing-safety-3")
+        self.assertEqual(record["policy_version"], "litewing-safety-4")
         self.assertEqual(record["policy_hash"], hashlib.sha256(policy_bytes).hexdigest())
         hash_fields = {key: value for key, value in record.items() if key != "proposal_hash"}
         self.assertEqual(record["proposal_hash"], hashlib.sha256(json.dumps(

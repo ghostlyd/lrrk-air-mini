@@ -182,8 +182,8 @@ mode `0600`, capped at 1 MiB, and never committed automatically. The default liv
 transport uses a reset-neutral POSIX descriptor without DTR/RTS modem-control
 ioctls or inbound flushing, uses exclusive 57600-baud access, and matches USB
 `1A86:7522` plus the exact topology location before opening. Its outbound
-allowlist contains only telemetry handshake states, five selected object-read
-requests, and required acknowledgements. There is no receiver, arming,
+allowlist contains only telemetry handshake states, five mandatory object-read
+requests, optional IMU/settings reads, and required acknowledgements. There is no receiver, arming,
 settings, persistence, actuator, navigation, or flight-command write API.
 
 This callout-device live transport requires POSIX terminal support; it does not
@@ -197,9 +197,9 @@ pinned `oschmod` 0.3.12 and `pywin32` 312 ACL backend. The destination is
 checked against the open descriptor before and after permissions are applied,
 so a symlink or path replacement is rejected instead of receiving telemetry.
 
-Version 0.2 emits snapshot schema 2. Missing/null alarm telemetry remains
-unknown; only an explicit empty alarm array reports clear. Schema 1 input is
-still accepted with these corrected unknown-state semantics. Preflight needs
+The host emits snapshot schema 3. Missing/null alarm telemetry remains
+unknown; only an explicit empty alarm array reports clear. Schema 1 and 2 input
+are still accepted with these corrected unknown-state semantics. Preflight needs
 a known mode and exactly four numeric motor observations, and approved
 proposals cannot outlive their telemetry freshness budget. See
 [the protocol and migration details](../docs/AI_ASSISTANT.md).
@@ -210,6 +210,44 @@ partial snapshots: no missing battery, sensor health, timestamp freshness or
 physical output measurement is inferred from a successfully decoded frame.
 The live aggregate likewise identifies the USB bridge in `source.transport`
 while leaving `source.board` unknown; a CH340 identity is not aircraft identity.
+
+### Sampled stabilization configuration
+
+Schema 3 adds optional `configuration` (null when unobserved), containing
+`stabilization_slots`, `airframe_type`, `thrust_control`,
+`flight_mode_settings_age_ms`, and `system_settings_age_ms`. Slots serialize as
+six arrays of four symbolic strings in Roll/Pitch/Yaw/Thrust order, or an empty
+array when unobserved. The frozen Python model uses tuples. Ages are finite,
+nonnegative milliseconds or null. Partial settings observations retain only the
+component received. Schema 1/2 readers ignore any supplied configuration field;
+legacy recordings cannot manufacture this new evidence. Aircraft-name bytes
+are discarded before normalization.
+
+The collector reads FlightModeSettings (`0x4D896486`, 59 bytes) and SystemSettings
+(`0xD9D093B8`, 46 bytes), pinned to NinjaPilot
+`ac77304a58de6c8bd552f94668b46903adb71cb2`. It requests both at session start and
+at most once per second, without catch-up bursts. Mandatory telemetry and the
+optional IMU object retain their 200 ms polling cadence. Missing settings never
+delay ordinary aggregate delivery or become a mandatory-object timeout.
+Canonical NACK clears just the rejected component; invalid settings/NACK frames
+fail strictly. Disconnect, termination, and a new session clear observations.
+
+Settings ages derive from monotonic receipt times. Settings never move the
+fast-telemetry UTC anchor. A settings receipt newer than that anchor is assigned
+age zero; adding elapsed time since capture conservatively over-ages it rather
+than making older telemetry younger. Both component ages plus elapsed time must
+be strictly below 2000 ms; the boundary is stale.
+
+Analyzer `litewing-safety-4` selects the observed slot using FlightStatus modes
+`stabilized1` through `stabilized6`, not the FlightModePosition selector mapping.
+Only fresh, complete QuadX/Throttle configuration with Rate or Attitude on all
+three rotational axes and Manual thrust receives a mode-dependency PASS.
+Other configurations remain UNKNOWN, even with a generic positioning capability.
+The finding includes the selected tuple and reason. This is sampled configuration
+from two non-atomic responses, not a guarantee that settings cannot change
+between reads. Battery, IMU, link, alarms, and all other findings still apply.
+Configuration participates in canonical snapshot hashes, report bindings, and
+approval invalidation; old analyzer policy identities cannot retain approval.
 
 ## Operator provisioning
 

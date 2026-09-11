@@ -15,8 +15,10 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Dict, Optional, Tuple
 
+from .configuration import ConfigurationObservation
 
-SCHEMA_VERSION = 2
+
+SCHEMA_VERSION = 3
 
 
 def _finite(value: Optional[float], field_name: str) -> Optional[float]:
@@ -155,6 +157,7 @@ class TelemetrySnapshot:
     alarms: Optional[Tuple[str, ...]] = None
     actuators: Tuple[float, ...] = ()
     capabilities: Tuple[str, ...] = ()
+    configuration: Optional[ConfigurationObservation] = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.snapshot_id, str) or not self.snapshot_id.strip():
@@ -170,6 +173,8 @@ class TelemetrySnapshot:
             raise ValueError("attitude and battery must use their telemetry models")
         if not isinstance(self.sensors, SensorHealth):
             raise ValueError("sensors must use SensorHealth")
+        if self.configuration is not None and not isinstance(self.configuration, ConfigurationObservation):
+            raise ValueError("configuration must use ConfigurationObservation")
         for name, values in (("alarms", self.alarms), ("capabilities", self.capabilities)):
             if name == "alarms" and values is None:
                 continue
@@ -197,6 +202,7 @@ class TelemetrySnapshot:
             "actuators": list(self.actuators),
             "capabilities": list(self.capabilities),
             "source": self.source.to_dict(),
+            "configuration": None if self.configuration is None else self.configuration.to_dict(),
         }
 
     def canonical_json(self) -> str:
@@ -213,7 +219,7 @@ class TelemetrySnapshot:
         if not isinstance(value, dict):
             raise ValueError("telemetry snapshot must be an object")
         version = value.get("schema_version", SCHEMA_VERSION)
-        if type(version) is not int or version not in (1, SCHEMA_VERSION):
+        if type(version) is not int or version not in (1, 2, 3):
             raise ValueError("unsupported telemetry schema_version")
         required = ("snapshot_id", "captured_at", "source")
         missing = [key for key in required if key not in value]
@@ -254,6 +260,8 @@ class TelemetrySnapshot:
             alarms=None if alarm_value is None else tuple(alarm_value),
             actuators=() if actuator_value is None else tuple(actuator_value),
             capabilities=() if capability_value is None else tuple(capability_value),
+            configuration=(ConfigurationObservation.from_dict(value['configuration'])
+                           if version == 3 and value.get('configuration') is not None else None),
         )
 
     @classmethod

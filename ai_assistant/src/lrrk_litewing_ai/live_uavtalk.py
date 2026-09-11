@@ -19,13 +19,16 @@ from datetime import datetime, timezone
 from typing import Any, Callable, Dict, Optional, Protocol, Tuple
 
 from .models import SensorHealth, SourceIdentity, TelemetrySnapshot
+from .configuration import ConfigurationObservation
 from .uavobjects import (
     ACTUATOR_COMMAND,
     ATTITUDE_STATE,
     BATTERY_STATE,
     FLIGHT_STATUS,
+    FLIGHT_MODE_SETTINGS,
     LITEWING_IMU_HEALTH,
     SYSTEM_ALARMS,
+    SYSTEM_SETTINGS,
     snapshot_from_frame,
 )
 from .uavtalk import UAVTalkDecoder, UAVTalkError, UAVTalkFrame, crc8
@@ -40,7 +43,9 @@ SELECTED_OBJECT_IDS = frozenset((
     SYSTEM_ALARMS,
     ACTUATOR_COMMAND,
 ))
-_REQUEST_OBJECT_IDS = SELECTED_OBJECT_IDS | frozenset((LITEWING_IMU_HEALTH,))
+CONFIGURATION_OBJECT_IDS = frozenset((FLIGHT_MODE_SETTINGS, SYSTEM_SETTINGS))
+_FAST_OBJECT_IDS = SELECTED_OBJECT_IDS | frozenset((LITEWING_IMU_HEALTH,))
+_REQUEST_OBJECT_IDS = _FAST_OBJECT_IDS | CONFIGURATION_OBJECT_IDS
 _ACK_OBJECT_IDS = _REQUEST_OBJECT_IDS | frozenset((FLIGHT_TELEMETRY_STATS,))
 _FRAME_TYPES = frozenset((0x20, 0x21, 0x22, 0x23, 0x24, 0xA0, 0xA2))
 _CAPTURE_LIMIT = 1024 * 1024
@@ -397,12 +402,12 @@ class LiveUAVTalkCollector:
             return
         if frame.object_id not in _REQUEST_OBJECT_IDS:
             return
-        if frame.object_id == LITEWING_IMU_HEALTH and frame.message_type == 0x24:
+        if frame.object_id in CONFIGURATION_OBJECT_IDS | {LITEWING_IMU_HEALTH} and frame.message_type == 0x24:
             if frame.instance_id != 0 or frame.payload or frame.timestamp_ticks is not None:
-                raise UAVTalkLiveError("invalid optional IMU NACK")
+                raise UAVTalkLiveError("invalid optional object NACK")
             # Older firmware can reject this optional request. Revoke any
-            # cached health without interrupting the mandatory telemetry set.
-            self._latest.pop(LITEWING_IMU_HEALTH, None)
+            # cached observation without interrupting the mandatory telemetry set.
+            self._latest.pop(frame.object_id, None)
             return
         try:
             snapshot = snapshot_from_frame(frame, received_wall)
@@ -419,11 +424,12 @@ class LiveUAVTalkCollector:
         if missing:
             names = ["0x%08x" % value for value in sorted(missing)]
             raise UAVTalkLiveError("live telemetry is incomplete: %s" % ", ".join(names))
-        newest_mono = max(value[1] for value in self._latest.values())
+        fast_observations = [value for oid, value in self._latest.items() if oid in _FAST_OBJECT_IDS]
+        newest_mono = max(value[1] for value in fast_observations)
         oldest_mono = min(self._latest[object_id][1] for object_id in SELECTED_OBJECT_IDS)
         # Pair the host UTC anchor with the newest monotonic receipt. This is
         # snapshot metadata, not an inferred board timestamp.
-        newest_wall = max(self._latest.values(), key=lambda value: value[1])[2]
+        newest_wall = max(fast_observations, key=lambda value: value[1])[2]
         parts = [self._latest[value][0] for value in sorted(self._latest)]
         sensors = SensorHealth()
         if LITEWING_IMU_HEALTH in self._latest:
@@ -432,6 +438,23 @@ class LiveUAVTalkCollector:
             if sensors.imu_sample_age_ms is not None:
                 sensors = replace(sensors, imu_sample_age_ms=(
                     sensors.imu_sample_age_ms + (newest_mono - received_mono) * 1000.0))
+        configuration = None
+        if CONFIGURATION_OBJECT_IDS.intersection(self._latest):
+            components = {}
+            for oid in sorted(CONFIGURATION_OBJECT_IDS.intersection(self._latest)):
+                observation, received_mono, _ = self._latest[oid]
+                config = observation.configuration
+                # A response newer than the fast UTC anchor gets age zero.
+                # Assessment elapsed time then conservatively over-ages that
+                # response, without making mandatory telemetry any younger.
+                age = max(0.0, (newest_mono - received_mono) * 1000.0)
+                if oid == FLIGHT_MODE_SETTINGS:
+                    components.update(stabilization_slots=config.stabilization_slots,
+                                      flight_mode_settings_age_ms=age)
+                else:
+                    components.update(airframe_type=config.airframe_type,
+                                      thrust_control=config.thrust_control, system_settings_age_ms=age)
+            configuration = ConfigurationObservation(**components)
         digest = hashlib.sha256(
             "".join(value.snapshot_hash() for value in parts).encode("ascii")
         ).hexdigest()[:16]
@@ -451,6 +474,7 @@ class LiveUAVTalkCollector:
             attitude=by_id[ATTITUDE_STATE].attitude,
             battery=by_id[BATTERY_STATE].battery,
             sensors=sensors,
+            configuration=configuration,
             alarms=tuple(system_alarms) + tuple(actuator_alarms),
             actuators=by_id[ACTUATOR_COMMAND].actuators,
         )
@@ -493,6 +517,18 @@ class LiveUAVTalkCollector:
                     raise UAVTalkLiveError("live telemetry disconnected")
         synchronizer.finish()
 
+    def _request_due(self, now: float, next_fast: float, next_configuration: float) -> Tuple[float, float]:
+        """Independent receipt-session polling deadlines, without catch-up bursts."""
+        if now >= next_fast:
+            for object_id in sorted(_FAST_OBJECT_IDS):
+                self.transport.request(object_id)
+            next_fast = now + 0.2
+        if now >= next_configuration:
+            for object_id in sorted(CONFIGURATION_OBJECT_IDS):
+                self.transport.request(object_id)
+            next_configuration = now + 1.0
+        return next_fast, next_configuration
+
     def stream(
         self,
         offer: Callable[[TelemetrySnapshot], object],
@@ -522,7 +558,7 @@ class LiveUAVTalkCollector:
                 return 0
             capture.open()
             started = self._now()
-            next_handshake = next_request = started
+            next_handshake = next_request = next_configuration_request = started
             last_complete = started
             while not stop() and self._now() - started < duration_s:
                 now = self._now()
@@ -531,10 +567,8 @@ class LiveUAVTalkCollector:
                 if now >= next_handshake:
                     self.transport.handshake(self._handshake_status)
                     next_handshake = now + 1.0
-                if now >= next_request:
-                    for object_id in sorted(_REQUEST_OBJECT_IDS):
-                        self.transport.request(object_id)
-                    next_request = now + 0.2
+                next_request, next_configuration_request = self._request_due(
+                    now, next_request, next_configuration_request)
                 data = self.transport.read(4096)
                 received_mono = self._now()
                 received_wall = self._wall_now()
@@ -583,15 +617,14 @@ class LiveUAVTalkCollector:
             started = self._now()
             next_handshake = started
             next_request = started
+            next_configuration_request = started
             while self._now() - started < self.duration_s:
                 now = self._now()
                 if now >= next_handshake:
                     self.transport.handshake(self._handshake_status)
                     next_handshake = now + 1.0
-                if now >= next_request:
-                    for object_id in sorted(_REQUEST_OBJECT_IDS):
-                        self.transport.request(object_id)
-                    next_request = now + 0.2
+                next_request, next_configuration_request = self._request_due(
+                    now, next_request, next_configuration_request)
                 data = self.transport.read(4096)
                 received_mono = self._now()
                 received_wall = self._wall_now()
