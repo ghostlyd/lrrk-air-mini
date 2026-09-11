@@ -8,15 +8,18 @@ See the [normal-image comparison](verification/usb-advisory-stream-2026-09-11.md
 This supersedes older statements below that the diagnostic image is installed,
 but does not establish repeated-start reliability or flight qualification.
 
-USB-first update (2026-09-11): the draft branch adds `litewing-usb-advisory`,
+USB-first update (2026-09-11): PR #75 merged as
+`01c22bd3e281c597b011cf105c57995e585b6d83` and adds `litewing-usb-advisory`,
 combining reset-neutral USB acquisition, a separate latest-only advisory worker,
 bounded provider attempts and cooperative deadlines. Mac internet stays on its
 normal connection; no drone USB network stack or additional network hardware is
-required for this path. The latest local suite passed 355 tests, but live startup
-framing is intermittent and unresolved. See the [streaming record](verification/usb-advisory-stream-2026-09-11.md).
-This draft source is not a merged release or installed firmware claim.
+required for this path. The merged tree passed 362 local host tests and 25 CI
+checks. A two-step handshake correction passed three consecutive five-second
+live reconnect sessions (25, 24 and 24 snapshots). See the
+[streaming record](verification/usb-advisory-stream-2026-09-11.md).
+This is merged host-source evidence, not a new firmware flash or flight claim.
 
-Current checkpoint: the keyboard launcher and local advisory worker are merged
+Historical pre-PR-75 checkpoint: the keyboard launcher and local advisory worker were merged
 through PR #74. Credential storage was verified. A complete USB power cycle
 recovered live USB telemetry and changing attitude samples with disarmed/zero
 motor outputs; the earlier MPU6050 probe failure is not yet explained or proven
@@ -66,7 +69,8 @@ LiteWing contract and native simulator loopback patches.
 
 ## LiteWing hardware baseline
 
-Owner inventory update (2026-09-09): no battery is currently available.
+Owner inventory update (2026-09-11): the battery is expected today; the owner
+will post an update. Receipt and pack/connector compatibility are unverified.
 Battery-powered checks and flight verification therefore remain pending. USB-C
 nevertheless powers the motor path: the bounded software-arm transaction has
 now produced nonzero flight-stack motor commands without a battery. That result
