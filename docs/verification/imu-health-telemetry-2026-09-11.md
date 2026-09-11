@@ -70,7 +70,22 @@ Header isolation is implemented in `33fdf44`. Native regression tests confirm
 that the actual adapted parser resolves the upstream aggregate bound, all 115
 upstream packed layouts and the custom nine-byte layout fit, and 16- and 30-byte
 objects transmit successfully. The controller reports that the normal ESP-IDF
-build of `33fdf44` completed with exit 0. Verification of the actual target
-compile limit and live verification remain pending. The temporary console-enabled diagnostic image is
-currently installed; it is not a flight release. All raw boot/serial captures
-and flash backups remain private.
+build of `33fdf44` completed with exit 0. Preprocessing the actual target
+compile command confirms the upstream bound of 217.
+
+The normal, console-disabled `33fdf44` application is now installed, replacing
+the temporary diagnostic image. Its SHA-256 is
+`75ca0ada9ec93ce94dca882348a1d26de3ed4067b1bbcd3be51838a43326e1bb`.
+Application readback matched exactly; boot/partition/NVS/PHY bytes and the
+settings region were preserved. The initial post-flash session received no
+bytes; an explicit RTS reset was required before successful acceptance.
+
+The installed USB advisory launcher then completed a five-second offline
+session: 23,683 captured bytes, 632 valid frames, zero NACKs, and all five
+mandatory telemetry objects present (149 attitude, 25 flight status, 68 battery,
+30 alarms, and 30 actuator frames). All 75 IMU reports were healthy with verified
+identity, samples present, and ages no greater than two milliseconds. Observed
+flight status remained disarmed and all four reported motor commands were zero.
+No motor commands or OpenAI requests were issued by this acceptance session.
+This establishes telemetry recovery, not flight qualification. All raw
+boot/serial captures and flash backups remain private.
