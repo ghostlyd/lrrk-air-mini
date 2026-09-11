@@ -24,6 +24,14 @@ def prepare(source, output):
     if hashlib.sha256(data).hexdigest() != PIN:
         raise ValueError("unreviewed object-manager input")
     code = data.decode("utf-8")
+    # This upstream Unpack does not consult GCS access metadata. Enforce the
+    # custom generated read-only contract at the common inbound boundary,
+    # including metadata writes which could otherwise remove the restriction.
+    code = replace_exact(code,
+        "int32_t UAVObjUnpack(UAVObjHandle obj_handle, uint16_t instId, const uint8_t *dataIn)\n{",
+        "int32_t UAVObjUnpack(UAVObjHandle obj_handle, uint16_t instId, const uint8_t *dataIn)\n{\n"
+        "    if (obj_handle && (UAVObjGetID(obj_handle) == 0xDA60A0C6u ||\n"
+        "                       UAVObjGetID(obj_handle) == 0xDA60A0C7u)) return -1;")
     code = replace_exact(code, '#include "inc/uavobjectprivate.h"',
                          '#include "inc/uavobjectprivate.h"\n#include <stddef.h>\n'
                          '#include "flightstatus.h"\n#include "litewing_arming_maintenance.h"\n'

@@ -12,6 +12,17 @@ struct UAVOMeta { uint8_t bytes[8]; };
 struct UAVOData { size_t instance_size; uint8_t bytes[8]; };
 typedef struct UAVOData *InstanceHandle;
 static struct UAVOData flight={.instance_size=8}, other={.instance_size=8};
+#ifdef IMU_ACCESS_TEST
+static struct UAVOData imu={.instance_size=8};
+static struct UAVOMeta imu_meta;
+#endif
+uint32_t UAVObjGetID(UAVObjHandle h) {
+#ifdef IMU_ACCESS_TEST
+    if(h==&imu) return 0xDA60A0C6;
+    if(h==&imu_meta) return 0xDA60A0C7;
+#endif
+    (void)h; return 0;
+}
 static pthread_mutex_t storage;
 static pthread_mutex_t *mutex=&storage;
 #define portMAX_DELAY UINT32_MAX
@@ -61,6 +72,14 @@ int main(void) {
     pthread_mutexattr_t attr; pthread_mutexattr_init(&attr);
     pthread_mutexattr_settype(&attr,PTHREAD_MUTEX_RECURSIVE);
     pthread_mutex_init(mutex,&attr); pthread_mutexattr_destroy(&attr);
+#ifdef IMU_ACCESS_TEST
+    uint8_t forged[8]={1};
+    assert(UAVObjUnpack(&imu,0,forged)==-1);
+    assert(UAVObjUnpack(&imu_meta,0,forged)==-1);
+    assert(imu.bytes[0]==0 && imu_meta.bytes[0]==0 && events==0);
+    assert(UAVObjSetInstanceData(&imu,0,forged)==0 && imu.bytes[0]==1);
+    events=0;
+#endif
     pthread_t thread;
     /* Bounded acquisition must not wait behind another task's object lock. */
     pthread_mutex_lock(mutex); pthread_create(&thread,NULL,busy_begin,NULL);

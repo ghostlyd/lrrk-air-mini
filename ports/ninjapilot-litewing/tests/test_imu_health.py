@@ -44,6 +44,13 @@ class ImuHealthTests(unittest.TestCase):
             self.assertIn("LITEWINGIMUHEALTH_ISSINGLEINST 1", header)
             self.assertIn("LITEWINGIMUHEALTH_ISSETTINGS 0", header)
             declarations = re.search(r"typedef struct \{.*?LiteWingIMUHealthData;", header, re.S).group()
+            enums = "\n".join(re.findall(r"typedef enum \{.*?\} \w+;", header, re.S))
+            enum_assertions = "\n".join(
+                f'_Static_assert(LITEWINGIMUHEALTH_{name} == {value}, "{name}");'
+                for name, value in {"IDENTITYVERIFIED_FALSE": 0, "IDENTITYVERIFIED_TRUE": 1,
+                                    "SAMPLESEEN_FALSE": 0, "SAMPLESEEN_TRUE": 1,
+                                    "HEALTH_UNKNOWN": 0, "HEALTH_HEALTHY": 1,
+                                    "HEALTH_UNHEALTHY": 2}.items())
             defaults = "\n".join(re.findall(r"    data\.\w+ = .*?;", source))
             offsets = {"SampleAgeMs": 0, "Version": 4, "IdentityVerified": 5,
                        "WhoAmI": 6, "SampleSeen": 7, "Health": 8}
@@ -57,7 +64,7 @@ class ImuHealthTests(unittest.TestCase):
 #include <string.h>
 #include <stdio.h>
 #include "litewing_imu_health.h"
-''' + declarations + "\n" + assertions + '''
+''' + declarations + "\n" + enums + "\n" + enum_assertions + "\n" + assertions + '''
 _Static_assert(sizeof(LiteWingIMUHealthDataPacked) == 9, "packed size");
 _Static_assert(sizeof(LiteWingIMUHealthData) == 9, "registered size");
 int main(void) {

@@ -1,6 +1,7 @@
 /* Target-only packing boundary: cached UAVObjects never renew voltage age. */
 #include "openpilot.h"
 #include "litewing_battery_pack.h"
+#include "litewing_imu_health_pack.h"
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include <string.h>
@@ -17,6 +18,8 @@ void LiteWingBatteryStoreSample(const struct litewing_battery_sample *sample)
 
 int32_t LiteWingBatteryPack(UAVObjHandle obj, uint16_t instance, uint8_t *data)
 {
+    if (UAVObjGetID(obj) == UINT32_C(0xDA60A0C6))
+        return LiteWingImuHealthPack(obj, instance, data);
     if (UAVObjGetID(obj) != UINT32_C(0x26962352))
         return UAVObjPack(obj, instance, data);
     /* Pinned FlightBatteryState wire schema: seven float32s and two bytes.

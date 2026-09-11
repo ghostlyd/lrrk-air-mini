@@ -12,6 +12,9 @@ static void (*entry)(void *);
 static bool in_worker;
 static int64_t now=1000000;
 static jmp_buf finished;
+int32_t LiteWingImuHealthPack(UAVObjHandle obj,uint16_t inst,uint8_t *data) {
+    (void)obj; (void)inst; (void)data; assert(false); return -1;
+}
 static int fail(const char *s) { return strcmp(scenario,s)==0; }
 uint32_t UAVObjGetID(UAVObjHandle obj) { (void)obj; return 0x26962352; }
 uint16_t UAVObjGetNumBytes(UAVObjHandle obj) { (void)obj; return 30; }
