@@ -36,7 +36,15 @@ provider response hashes, not response text. The provider helper has a 30-second
 cooperative deadline and a four-turn limit; session termination signals
 cancellation. These are not hard process deadlines or dollar-spend limits.
 
-Remaining work: review SDK retry/token limits, live USB qualification, and a
+Provider limits now use a per-run client with zero client and model retries,
+a 20-second request timeout, a 1,024-token output limit per model turn, and
+disabled tracing. The client closes after each run. Together with the four-turn
+limit and session attempt budget these constrain requests, not total dollar
+cost or input-token usage. Local SDK configuration/cleanup tests cover these
+settings. The bounded fixture provider check below verifies a real invocation,
+not live aircraft acquisition.
+
+Remaining work: live USB qualification and a
 bounded end-to-end OpenAI streaming session. These host tests do not
 resolve the previously observed intermittent framing failure or qualify the
 temporary diagnostic firmware for flight.
@@ -102,3 +110,19 @@ did not produce a complete post-handshake aggregate. All five selected object
 types occurred somewhere in that capture; that is not equivalent to receiving
 all five after connection establishment. The complete host suite passed 355
 tests after the deadline correction.
+
+## Bounded provider smoke
+
+The CLI processed the checked-in telemetry fixture and made one application-level
+OpenAI advisory invocation using the approved existing local key. It exited 0;
+the hash-chained audit recorded a completed provider result. The returned answer
+correctly identified the fixture as BLOCKED because snapshot and link data were
+stale, while distinguishing other nominal fixture fields. The response hash
+matched the audit record and the audit file was mode 0600. No secret pattern was
+found in the response. Keys and response text were not committed.
+
+This used the new zero-retry scoped client/model configuration, four-turn limit,
+1,024 output tokens per turn, disabled tracing and cooperative deadline. One
+application invocation is not a claim of exactly one underlying model request.
+The complete host suite passed 356 tests. No board access occurred during this
+smoke, and live USB-to-OpenAI streaming remains unqualified.

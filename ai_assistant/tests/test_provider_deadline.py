@@ -47,6 +47,24 @@ class ProviderDeadlineTests(unittest.IsolatedAsyncioTestCase):
 
 @unittest.skipUnless(importlib.util.find_spec('agents'), 'optional Agents SDK unavailable')
 class LivePromptDeadlineTests(unittest.TestCase):
+    def test_cli_supplies_scoped_provider_limits(self):
+        from lrrk_litewing_ai.cli import _live_prompt
+        configurations = []
+        async def complete(agent, prompt, **kwargs):
+            configurations.append(kwargs.get('run_config'))
+            return SimpleNamespace(final_output='advice')
+        with patch.dict('os.environ', {'OPENAI_API_KEY': 'sk-test-not-a-real-key'}):
+            with patch('agents.Runner.run', new=complete):
+                self.assertEqual(_live_prompt(None, 'status'), 'advice')
+        config = configurations[0]
+        self.assertIsNotNone(config, 'scoped provider limits missing')
+        self.assertEqual(config.model_settings.max_tokens, 1024)
+        self.assertIsNotNone(config.model_settings.retry)
+        self.assertEqual(config.model_settings.retry.max_retries, 0)
+        self.assertTrue(config.tracing_disabled)
+        self.assertEqual(config.model_provider._client.max_retries, 0)
+        self.assertTrue(config.model_provider._client.is_closed())
+
     def test_cli_provider_cancels_hung_sdk_run(self):
         from lrrk_litewing_ai.cli import _live_prompt
         cancelled, turns = [], []
@@ -56,7 +74,8 @@ class LivePromptDeadlineTests(unittest.TestCase):
                 await asyncio.Event().wait()
             finally:
                 cancelled.append(True)
-        with patch('lrrk_litewing_ai.cli.create_assistant', return_value=object()):
+        with patch('lrrk_litewing_ai.cli.create_assistant', return_value=object()), patch.dict(
+                'os.environ', {'OPENAI_API_KEY': 'sk-test-not-a-real-key'}):
             with patch('agents.Runner.run', new=hung):
                 clock = SimpleNamespace(time=lambda: 2 if turns else 0)
                 with patch('lrrk_litewing_ai.provider_deadline.asyncio.get_running_loop', return_value=clock):
