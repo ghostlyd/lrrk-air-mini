@@ -71,3 +71,20 @@ send-buffer mutex around normal transmission. The ESP32 UART backend calls
 `uart_write_bytes` without inspecting its return value; this is an investigation
 lead, not proof of byte loss. No decoder relaxation or firmware modification was
 made on the basis of these observations.
+
+## Single-connection phase isolation
+
+On one new connection, one second each of passive reception, handshake-only,
+and selected-object requests captured 11,017 bytes and 264 consecutive CRC-valid
+frames, with no interframe gaps. Phase offsets were 0, 3,544, and 7,079 bytes.
+Replay through the production synchronizer at chunk sizes 1, 7, 48, 256, and
+4,096 produced the same 264 frames, 53 initial discarded bytes, and the same
+partial final frame (36 bytes still needed). Thus this sample does not support
+either request traffic alone or input chunk size as the cause.
+
+A separate immediate-handshake-and-requests capture also remained continuous:
+7,330 bytes, 178 CRC-valid frames, zero interframe gaps. A subsequent lsof check
+found no open owner of the callout device at that instant; it does not exclude
+an earlier competing reader. The launcher failure remains intermittent and
+unresolved. These diagnostic captures did not bypass the production decoder,
+change the firmware, or authorize flight readiness.
