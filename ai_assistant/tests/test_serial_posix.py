@@ -97,7 +97,7 @@ class ResetNeutralPosixPortTests(unittest.TestCase):
 
     def test_partial_nonblocking_writes_complete_without_modem_controls(self):
         os_api,termios_api,fcntl_api,select_api=self.fixtures([1,2])
-        ticks=iter((0.,0.,0.001,0.001))
+        ticks=iter((0.,0.,0.001,0.001,0.002))
         port=probe.ResetNeutralPosixPort('/dev/cu.example',57600,
             os_api=os_api,termios_api=termios_api,fcntl_api=fcntl_api,
             select_api=select_api,clock=lambda:next(ticks))
@@ -129,3 +129,16 @@ class ResetNeutralPosixPortTests(unittest.TestCase):
         self.assertEqual(len(os_api.writes), 2)
         port.close()
 
+    def test_final_write_overrun_is_reported(self):
+        os_api,termios_api,fcntl_api,select_api=self.fixtures()
+        now = [0.]
+        def late_write(fd, data):
+            now[0] += .025
+            return len(data)
+        os_api.write = late_write
+        port=probe.ResetNeutralPosixPort('/dev/cu.example',57600,
+            os_api=os_api,termios_api=termios_api,fcntl_api=fcntl_api,
+            select_api=select_api,clock=lambda:now[0])
+        with self.assertRaisesRegex(OSError, 'deadline'):
+            port.write(b'abc')
+        port.close()

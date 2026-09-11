@@ -80,6 +80,8 @@ class ResetNeutralPosixPort:
             if written:
                 total += written
                 view = view[written:]
+                if self._clock() >= deadline:
+                    raise OSError('serial write deadline exceeded')
                 continue
             remaining = deadline - self._clock()
             if remaining <= 0:
@@ -100,6 +102,5 @@ class ResetNeutralPosixPort:
         if self._fd is not None:
             fd, self._fd = self._fd, None
             self._os.close(fd)
-
 
 
