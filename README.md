@@ -24,22 +24,24 @@ and the authenticated LWPL Wi-Fi protocol. Stock CRTP clients do not control LWP
 The Mac keyboard launcher is merged in [PR #74](https://github.com/ghostlyd/lrrk-air-mini/pull/74),
 with explicit connection, Escape STOP and session termination on focus loss.
 See the [pilot guide](ai_assistant/README.md#mac-keyboard-pilot).
-Application installation and one-shot credential storage were verified. After a
-complete USB power cycle, reset-neutral status polling recovered live USB
-telemetry, changing attitude samples, and disarmed/zero motor outputs. Earlier
-MPU6050 probe failures are not yet explained or proven fixed across resets.
-A temporary console diagnostic image is installed; it is not a
-flight-qualified image. See the [current diagnostic record](docs/verification/wifi-activation-diagnostic-2026-09-10.md).
+The current installed application is the normal, console-disabled `33fdf44`
+candidate, whose source is included in merged PR #78. Exact application readback
+and preservation of settings were verified. The corrected telemetry path passed
+a five-second check with all required objects, zero NACKs, and fresh healthy IMU
+reports. See the [image and telemetry record](docs/verification/imu-health-telemetry-2026-09-11.md).
+Earlier startup failures are not proven resolved across repeated cold starts.
 
 Live wireless telemetry, wireless-to-OpenAI validation, battery qualification
 and flight remain incomplete. Parts and purchase uncertainties are listed in
 the [parts inventory](docs/PARTS_SELECTION.md). The bench records below are
 historical checkpoints, not proof that the currently installed image is ready.
 
-The [USB-to-Mac OpenAI advisory path](docs/verification/usb-openai-resume-2026-09-11.md)
-was reverified using a captured board observation and the existing project key.
-This tethered path needs no Ethernet or internet interface on the drone;
-continuous acquisition and flight qualification remain separate work.
+The [USB-to-Mac OpenAI advisory path](docs/verification/current-usb-ai-checkpoint-2026-09-11.md)
+was verified on that corrected image: 74 snapshots offered during a 15-second
+session and one completed advisory invocation. This tethered path needs no
+Ethernet or internet interface on the drone. Indefinite operation and flight
+qualification remain separate; the advisory report still identifies unresolved
+configuration/interpretation findings rather than declaring flight readiness.
 
 This repository is the maintained `lrrk-air-mini` source tree. The original
 LiteWing repository is retained as the `upstream` Git remote for provenance and
