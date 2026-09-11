@@ -65,6 +65,25 @@ is not preempted by the deadline.
 These offline results do not prove which defect caused the physical reconnect
 failure. Follow-up review and a new bounded hardware check remain required.
 
+### Corrected-transport reconnect check
+
+At `a1dc168`, two consecutive five-second collector sessions were attempted
+without reset, flash, provider calls or motor commands. The first delivered
+25 snapshots from 22,248 bytes. The second terminated with complete-telemetry
+timeout after 4,432 bytes, before a snapshot was delivered.
+
+Private-capture replay found 558 and 110 CRC-valid frames respectively, no
+pending partial frame, and 64/22 initial discarded bytes. Both captures contained
+all five selected object types. FlightTelemetryStats statuses were `[2, 3, 3]`
+in the successful session and `[0, 0]` in the failed session. This particular
+failure is incomplete handshake, not observed post-sync framing corruption or
+absence of selected telemetry. Startup handshake timing/state handling needs
+investigation; these observations alone do not establish the root cause.
+
+Follow-up independent review cleared the important fixes. Its minor final-write
+overrun caveat was subsequently reproduced and fixed in `a1dc168`; all 360 host
+tests pass. Late writes are detected after return, not preempted or undone.
+
 ## First live launcher check
 
 One connected matching USB bridge was enumerated. A five-second offline-only
