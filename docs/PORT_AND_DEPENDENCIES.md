@@ -19,6 +19,17 @@ live reconnect sessions (25, 24 and 24 snapshots). See the
 [streaming record](verification/usb-advisory-stream-2026-09-11.md).
 This is merged host-source evidence, not a new firmware flash or flight claim.
 
+Installed-package checkpoint: the merged assistant package was built as a wheel
+and installed into the dedicated host environment using normal isolated build
+dependencies. `pip check` found no broken requirements and the installed
+`litewing-usb-advisory --help` entry point succeeded. A five-second board session
+through that installed entry point, with `PYTHONPATH` removed and no live-agent
+flag, exited zero and offered 25 snapshots from 22,372 capture bytes. Its private
+audit contained session-start, advisory-result and session-end events; the final
+event recorded 25 offered snapshots, and audit permissions were 0600. This
+checks deployment beyond source-path tests. No provider request, reset, flash or
+motor command was made by that check.
+
 Historical pre-PR-75 checkpoint: the keyboard launcher and local advisory worker were merged
 through PR #74. Credential storage was verified. A complete USB power cycle
 recovered live USB telemetry and changing attitude samples with disarmed/zero
