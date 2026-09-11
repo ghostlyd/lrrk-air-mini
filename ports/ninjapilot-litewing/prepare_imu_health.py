@@ -3,7 +3,9 @@
 import argparse
 from pathlib import Path
 import re
+import shutil
 import subprocess
+import tempfile
 
 from verify_usb_ids import DEFINITION, RESERVED, verify
 
@@ -16,9 +18,21 @@ def prepare(upstream, output):
     generator = upstream / "ground/uavobjgenerator/uavobjgenerator"
     existing = upstream / "build/uavobject-synthetics/flight"
     output.mkdir(parents=True, exist_ok=True)
-    subprocess.run([str(generator), "-flight", str(root / "uavobjects"),
-                    str(upstream), "LiteWingIMUHealth"], cwd=output, check=True)
-    generated = output / "flight"
+    # The generator also emits an aggregate initializer whose transport bound
+    # only covers this one object. Never expose that directory to the compiler.
+    with tempfile.TemporaryDirectory(prefix="generate-", dir=output) as staging:
+        subprocess.run([str(generator), "-flight", str(root / "uavobjects"),
+                        str(upstream), "LiteWingIMUHealth"], cwd=staging, check=True)
+        generated = Path(staging) / "flight"
+        validate(generated, existing)
+        isolated = output / "object"
+        isolated.mkdir(parents=True, exist_ok=True)
+        for name in ("litewingimuhealth.h", "litewingimuhealth.c"):
+            shutil.copyfile(generated / name, isolated / name)
+    print("IMU_SCHEMA=PASS id=0xDA60A0C6 metadata=0xDA60A0C7 gcs=readonly")
+
+
+def validate(generated, existing):
     verify(existing)
     verify(generated)
     header = (generated / "litewingimuhealth.h").read_text()
@@ -37,7 +51,6 @@ def prepare(upstream, output):
         raise ValueError("IMU generated GCS metadata must be read-only")
     if not re.search(r"LITEWINGIMUHEALTH_ISSINGLEINST\s+1", header):
         raise ValueError("IMU must remain single instance")
-    print("IMU_SCHEMA=PASS id=0xDA60A0C6 metadata=0xDA60A0C7 gcs=readonly")
 
 
 if __name__ == "__main__":

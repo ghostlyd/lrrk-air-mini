@@ -304,7 +304,7 @@ foreach(UAVO_NAME IN LISTS UAVO_NAMES)
 endforeach()
 
 set(ALL_PORT_SRCS
-    "${LITEWING_IMU_DIR}/flight/litewingimuhealth.c"
+    "${LITEWING_IMU_DIR}/object/litewingimuhealth.c"
     ${BOARD_SRCS}
     ${LITEWING_TARGET_SRCS}
     ${PIOS_ESP32_SRCS}
@@ -357,7 +357,9 @@ endif()
 idf_component_register(
     SRCS ${ALL_PORT_SRCS}
     INCLUDE_DIRS
-        "${LITEWING_IMU_DIR}/flight"
+        # Only the custom object pair is exported here. The pinned UAVOSYNTH
+        # remains authoritative for uavobjectsinit.h and transport-wide limits.
+        "${LITEWING_IMU_DIR}/object"
         "${CMAKE_CURRENT_BINARY_DIR}"
         "${LITEWING_UAVTALK_DIR}"
         "${BOARD_ROOT}"
