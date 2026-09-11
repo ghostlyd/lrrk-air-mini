@@ -165,7 +165,7 @@ def _link_finding(snapshot: TelemetrySnapshot, policy: SafetyPolicy, elapsed_ms:
     return _finding("link.freshness", "PASS", "INFO", "link age %.1f ms" % age, "No action required.")
 
 
-def _imu_findings(snapshot: TelemetrySnapshot, policy: SafetyPolicy) -> Iterable[Finding]:
+def _imu_findings(snapshot: TelemetrySnapshot, policy: SafetyPolicy, elapsed_ms: float) -> Iterable[Finding]:
     health = snapshot.sensors
     if health.imu_present is False:
         yield _finding("imu.presence", "BLOCK", "CRITICAL", "MPU6050 is reported absent", "Connect and verify the required MPU6050 before arming.")
@@ -185,6 +185,8 @@ def _imu_findings(snapshot: TelemetrySnapshot, policy: SafetyPolicy) -> Iterable
         yield _finding("imu.health", "BLOCK", "CRITICAL", "IMU health is faulted", "Keep outputs disabled and inspect the sensor transport.")
     elif health.imu_healthy is None:
         yield _finding("imu.health", "UNKNOWN", "HIGH", "IMU health is unknown", "Collect a fresh, valid sensor sample.")
+    elif health.imu_sample_age_ms is not None and health.imu_sample_age_ms + elapsed_ms >= 20:
+        yield _finding("imu.health", "UNKNOWN", "HIGH", "IMU sample age %.1f ms is at least 20 ms" % (health.imu_sample_age_ms + elapsed_ms), "Collect a fresh, valid sensor sample.")
     else:
         yield _finding("imu.health", "PASS", "INFO", "IMU health is nominal", "No action required.")
 
@@ -262,7 +264,7 @@ def run_preflight(
     else:
         findings.append(_finding("flight.armed", "UNKNOWN", "CRITICAL", "armed state is unknown", "Do not assume the aircraft is safe; verify the flight-controller state."))
 
-    findings.extend(_imu_findings(snapshot, policy))
+    findings.extend(_imu_findings(snapshot, policy, elapsed_ms))
     findings.extend(_battery_findings(snapshot, policy))
     findings.append(_actuator_finding(snapshot))
     findings.append(_mode_finding(snapshot))

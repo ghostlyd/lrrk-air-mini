@@ -47,6 +47,24 @@ def snapshot(**changes):
 
 
 class SafetyTests(unittest.TestCase):
+    def test_imu_age_validates_serializes_and_preserves_legacy(self):
+        for age in (-1, float('nan'), float('inf'), -float('inf'), True, '19'):
+            with self.subTest(age=age), self.assertRaises(ValueError):
+                SensorHealth(imu_sample_age_ms=age)
+        for version in (1, 2):
+            data = snapshot().to_dict()
+            data['schema_version'] = version
+            data['sensors'].pop('imu_sample_age_ms', None)
+            legacy = TelemetrySnapshot.from_dict(data)
+            self.assertEqual(run_preflight(legacy, now=NOW).overall, 'PASS')
+        for age, delay, healthy, expected in ((19, 0, True, 'PASS'), (20, 0, True, 'UNKNOWN'),
+                                             (19, 1, True, 'UNKNOWN'), (20, 100, False, 'BLOCK')):
+            state = snapshot(sensors=SensorHealth(True, '0x68', healthy, imu_sample_age_ms=age))
+            state = TelemetrySnapshot.from_json(state.to_json())
+            self.assertEqual(state.sensors.imu_sample_age_ms, age)
+            report = run_preflight(state, now=NOW + timedelta(milliseconds=delay))
+            self.assertEqual(next(f.status for f in report.findings if f.finding_id == 'imu.health'), expected)
+
     def test_accepted_imu_identities_reject_malformed_collections_and_entries(self):
         malformed_collections = (
             "MPU6050",

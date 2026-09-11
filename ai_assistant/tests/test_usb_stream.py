@@ -6,6 +6,15 @@ from lrrk_litewing_ai.live_uavtalk import LiveUAVTalkCollector, UAVTalkLiveError
 
 
 class USBStreamTests(unittest.TestCase):
+    def test_optional_health_ages_across_deliveries_without_blocking_legacy(self):
+        observations = []
+        health = packet(0x22, 0xDA60A0C6, bytes.fromhex('130000000101680101'))
+        self.run_stream([complete_stream() + health, complete_stream()], observations.append)
+        self.assertEqual(len(observations), 2)
+        self.assertEqual(observations[0].sensors.imu_sample_age_ms, 19)
+        self.assertGreater(observations[1].sensors.imu_sample_age_ms, 20)
+        self.assertIn(('request', 0xDA60A0C6), self.transport.operations)
+
     def test_reconnect_responder_requires_second_request(self):
         class Responder(FakeTransport):
             def __init__(self):

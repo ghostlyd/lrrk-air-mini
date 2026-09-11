@@ -110,6 +110,8 @@ class SensorHealth:
     barometer_present: Optional[bool] = None
     optical_flow_present: Optional[bool] = None
     tof_present: Optional[bool] = None
+    # Sample age at snapshot captured_at; absent in legacy observations.
+    imu_sample_age_ms: Optional[float] = None
 
     def __post_init__(self) -> None:
         for name in (
@@ -122,6 +124,9 @@ class SensorHealth:
             _optional_bool(getattr(self, name), "sensors.%s" % name)
         if self.imu_identity is not None and not isinstance(self.imu_identity, str):
             raise ValueError("sensors.imu_identity must be a string or null")
+        _finite(self.imu_sample_age_ms, "sensors.imu_sample_age_ms")
+        if self.imu_sample_age_ms is not None and self.imu_sample_age_ms < 0:
+            raise ValueError("sensors.imu_sample_age_ms must not be negative")
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -131,6 +136,7 @@ class SensorHealth:
             "barometer_present": self.barometer_present,
             "optical_flow_present": self.optical_flow_present,
             "tof_present": self.tof_present,
+            "imu_sample_age_ms": self.imu_sample_age_ms,
         }
 
 
