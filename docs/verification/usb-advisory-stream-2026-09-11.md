@@ -55,3 +55,19 @@ The check also exposed a missing terminal failure audit event. The launcher now
 records `usb_session_failed` with the exception class only, and reports an audit
 write failure separately. A regression test verifies corruption produces that
 terminal event. This does not repair or bypass the serial framing failure.
+
+## Passive versus active follow-up
+
+A two-second reset-neutral passive read, with no protocol writes, captured
+7,171 bytes. Offline CRC scanning found 174 consecutive valid frames after an
+initial 34-byte fragment, with zero gaps between those frames. The next active
+launcher attempt failed after 21 bytes with invalid synchronization; its audit
+now correctly ended with `usb_session_failed` (`UAVTalkLiveError`). No API call
+was made. This comparison narrows investigation toward startup buffering or
+request/response behavior, but it does not isolate either as the cause.
+
+Source inspection found both the UAVTalk connection lock and the PIOS COM
+send-buffer mutex around normal transmission. The ESP32 UART backend calls
+`uart_write_bytes` without inspecting its return value; this is an investigation
+lead, not proof of byte loss. No decoder relaxation or firmware modification was
+made on the basis of these observations.
