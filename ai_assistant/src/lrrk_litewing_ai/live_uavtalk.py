@@ -527,7 +527,10 @@ class LiveUAVTalkCollector:
                         refreshed.clear()
                 self._sleep(0.005)
             if not stop():
-                synchronizer.finish()
+                if synchronizer.bytes_to_frame_boundary:
+                    self._finish_current_frame(synchronizer, capture)
+                else:
+                    synchronizer.finish()
                 if not delivered:
                     raise UAVTalkLiveError("stream ended without complete telemetry")
             return delivered

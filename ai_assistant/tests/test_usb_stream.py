@@ -43,3 +43,17 @@ class USBStreamTests(unittest.TestCase):
         self.assertEqual(self.run_stream([], lambda s: self.fail(), lambda: True), 0)
         self.assertEqual(self.transport.operations, [])
         self.assertTrue(self.transport.closed)
+
+    def test_normal_deadline_finishes_started_frame_before_closing(self):
+        clock = FakeClock()
+        # Split a real packet header across the session deadline.
+        packet = complete_stream()[:48]
+        transport = FakeTransport([complete_stream() + packet[:5], packet[5:]])
+        observations = []
+        with tempfile.TemporaryDirectory() as directory:
+            collector = LiveUAVTalkCollector(transport, Path(directory)/'capture',
+                monotonic=clock.monotonic, wall_clock=clock.wall,
+                sleep=lambda seconds: clock.sleep(.1))
+            count = collector.stream(observations.append, lambda: False, duration_s=.1)
+        self.assertEqual(count, 1)
+        self.assertTrue(transport.closed)

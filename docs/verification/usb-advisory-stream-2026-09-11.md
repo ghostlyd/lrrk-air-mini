@@ -88,3 +88,17 @@ found no open owner of the callout device at that instant; it does not exclude
 an earlier competing reader. The launcher failure remains intermittent and
 unresolved. These diagnostic captures did not bypass the production decoder,
 change the firmware, or authorize flight readiness.
+
+## Deadline-boundary correction
+
+A synthetic fragmented-packet regression reproduced a separate shutdown defect:
+normal session expiration called decoder finalization with a partial valid frame.
+Streaming now uses the existing 250-ms bounded, read-only frame-completion helper
+before finalization. Explicit cancellation remains immediate. This fixes normal
+deadline truncation, not the startup synchronization failures.
+
+Semantic replay accepted all 264 frames from the phase-isolation capture, but
+did not produce a complete post-handshake aggregate. All five selected object
+types occurred somewhere in that capture; that is not equivalent to receiving
+all five after connection establishment. The complete host suite passed 355
+tests after the deadline correction.
