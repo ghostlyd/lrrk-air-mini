@@ -71,6 +71,7 @@ the current clock and a copied observation, not a cached healthy payload.
 ## Task 3: Optional host decoding and acquisition
 
 Modify `ai_assistant/src/lrrk_litewing_ai/uavobjects.py` and `live_uavtalk.py`;
+also modify `models.py` and `safety.py` for health age at analysis time;
 extend `test_live_uavtalk.py`, `test_usb_stream.py` and schema decoder tests.
 
 Interface: decode the generated object ID and exact nine-byte layout as an
@@ -84,8 +85,16 @@ prevent delivery of otherwise complete legacy telemetry.
 
 - [ ] Add red tests for missing-object legacy operation, exact golden C bytes,
       malformed versions/enums/length, host-age expiry and reconnect clearing.
-- [ ] Decode verified identity and explicit health into existing SensorState;
+- [ ] Decode verified identity and explicit health into existing SensorHealth;
       keep unrelated sensors/alarms unchanged.
+- [ ] Add optional `imu_sample_age_ms` to SensorHealth, finite and nonnegative
+      when present. At aggregation it includes board sample age plus monotonic
+      receipt age, aligned to snapshot captured_at. Serialize it in model JSON.
+      At preflight add elapsed snapshot time; healthy at age >=20ms becomes
+      UNKNOWN, while explicit unhealthy stays BLOCK. New health-object input
+      must supply age for a healthy result; UINT32_MAX maps to unknown. Legacy
+      fixture input without age retains its prior semantics. Add tests at 19ms,
+      exactly20ms, deferred analysis, malformed age and old-schema fixtures.
 - [ ] Add native-generated-byte interoperability coverage, then run the full
       assistant suite with the optional OpenAI SDK installed; commit.
 
