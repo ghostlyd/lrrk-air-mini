@@ -126,3 +126,18 @@ This used the new zero-retry scoped client/model configuration, four-turn limit,
 application invocation is not a claim of exactly one underlying model request.
 The complete host suite passed 356 tests. No board access occurred during this
 smoke, and live USB-to-OpenAI streaming remains unqualified.
+
+## Collector-only isolation
+
+The production streaming collector, with a simple list sink and no advisory
+thread or provider, reproduced invalid synchronization after 35 captured bytes
+and zero snapshots. The capture began with a CRC-valid 22-byte object packet
+plus checksum (not one of the five selected schemas), followed by 12 bytes that
+did not form the next valid frame. AI execution and advisory worker contention
+are therefore not necessary triggers.
+
+A separate two-second diagnostic capture using the same synchronizer, but
+recording beyond a potential first error, received 7,305 bytes and 178 consecutive
+CRC-valid frames without an error. This does not establish a repair: the
+production-path failure is still intermittent. No production resynchronization,
+firmware change, or motor operation was introduced by these checks.
