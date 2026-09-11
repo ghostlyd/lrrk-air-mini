@@ -141,3 +141,12 @@ recording beyond a potential first error, received 7,305 bytes and 178 consecuti
 CRC-valid frames without an error. This does not establish a repair: the
 production-path failure is still intermittent. No production resynchronization,
 firmware change, or motor operation was introduced by these checks.
+
+The initial CRC-valid packets in three failed captures were checked against
+the pinned generated headers: `0x8C2D810A` is GyroState, `0xC7009F28` is
+AirspeedState, and `0x0BC57454` is GPSVelocitySensor. Their instance IDs were zero.
+They are not arbitrary unknown schema IDs; this weakens the hypothesis of
+accidentally synchronizing on an embedded payload pattern. The target defines
+`PIOS_INCLUDE_FREERTOS`, so the previously inspected conditional COM send mutex
+is enabled by source configuration. Neither finding proves runtime lock
+correctness or the absence of startup/driver byte loss.
