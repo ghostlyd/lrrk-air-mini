@@ -78,6 +78,11 @@ def main(argv=None):
         return 0
     except KeyboardInterrupt:
         cancellation.set()
+        if audit is not None:
+            try:
+                audit.append('usb_session_cancelled', {})
+            except Exception:
+                print('USB advisory cancellation audit could not be written', file=sys.stderr)
         return 130
     except Exception as exc:
         cancellation.set()

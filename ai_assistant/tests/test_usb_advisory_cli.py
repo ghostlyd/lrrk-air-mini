@@ -45,6 +45,17 @@ class USBAdvisoryCLITests(unittest.TestCase):
         self.assertEqual(result, 2)
         transport.assert_not_called()
 
+    def test_keyboard_interrupt_records_cancelled_session(self):
+        module = self.module()
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            with patch.object(module, 'SerialTelemetryTransport', side_effect=KeyboardInterrupt):
+                result = module.main(['--device', '/dev/cu.fixture', '--usb-location', 'fixture',
+                    '--private-capture', str(root/'capture'), '--audit-log', str(root/'audit')])
+            events = validate_replay(root/'audit')
+        self.assertEqual(result, 130)
+        self.assertEqual(events[-1]['event_type'], 'usb_session_cancelled')
+
     def test_framing_failure_records_terminal_audit_without_raw_error(self):
         module = self.module()
         with tempfile.TemporaryDirectory() as directory:
