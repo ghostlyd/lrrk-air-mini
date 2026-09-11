@@ -17,10 +17,9 @@ not indefinite reliability or flight qualification. Earlier failures below are
 retained as investigation history.
 
 Current status: one bounded live USB-to-OpenAI session verified on the retained
-normal image. A subsequent two-session reopen check succeeded once and then
-failed, so reconnect reliability remains unresolved. Not a flight qualification
-or indefinite-service claim. Earlier failures below describe the diagnostic-image
-investigation.
+normal image, followed by the three successful reconnect checks above after
+the handshake correction. Earlier failed checks are retained below. This is
+not a flight qualification or indefinite-service claim.
 
 The collector now offers repeated, complete five-object snapshots on one
 reset-neutral transport. Every subsequent delivery requires fresh receipt of
@@ -63,9 +62,9 @@ cost or input-token usage. Local SDK configuration/cleanup tests cover these
 settings. The bounded fixture provider check below verifies a real invocation,
 not live aircraft acquisition.
 
-Remaining work: repeatable live USB/reconnect qualification. The bounded
-end-to-end OpenAI session succeeded as recorded below; that success does not
-resolve the intermittent failure or qualify firmware for flight.
+Remaining work: review and CI for the handshake correction, followed by broader
+operational qualification. The bounded end-to-end OpenAI session and reconnect
+checks succeeded as recorded here; neither qualifies firmware for flight.
 
 ## Follow-up review fixes
 
@@ -78,8 +77,9 @@ clears HUPCL, checks the deadline before each write, and rejects a connected-to-
 disconnected transition during completion. Nonblocking syscall duration itself
 is not preempted by the deadline.
 
-These offline results do not prove which defect caused the physical reconnect
-failure. Follow-up review and a new bounded hardware check remain required.
+These offline results alone did not prove which defect caused the physical
+reconnect failure. Subsequent review and hardware investigation are recorded
+in the correction section above.
 
 ### Corrected-transport reconnect check
 
