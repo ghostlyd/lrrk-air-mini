@@ -2,6 +2,7 @@ import asyncio
 import importlib
 import unittest
 from unittest.mock import patch
+from types import SimpleNamespace
 
 
 class ProviderDeadlineTests(unittest.IsolatedAsyncioTestCase):
@@ -13,13 +14,19 @@ class ProviderDeadlineTests(unittest.IsolatedAsyncioTestCase):
     async def test_deadline_cancels_inflight_operation(self):
         run = self.runner()
         cancelled = []
+        entered = []
         async def operation():
             try:
+                entered.append(True)
                 await asyncio.Event().wait()
             finally:
                 cancelled.append(True)
-        with self.assertRaises(TimeoutError):
-            await run(operation, timeout_s=.02)
+        # Advance only the wrapper's deadline clock after the operation starts;
+        # the real event loop continues scheduling tasks normally.
+        clock = SimpleNamespace(time=lambda: 2 if entered else 0)
+        with patch('lrrk_litewing_ai.provider_deadline.asyncio.get_running_loop', return_value=clock):
+            with self.assertRaises(TimeoutError):
+                await run(operation, timeout_s=1)
         self.assertEqual(cancelled, [True])
 
     async def test_preexisting_stop_never_starts_operation(self):
@@ -51,7 +58,9 @@ class LivePromptDeadlineTests(unittest.TestCase):
                 cancelled.append(True)
         with patch('lrrk_litewing_ai.cli.create_assistant', return_value=object()):
             with patch('agents.Runner.run', new=hung):
-                with self.assertRaises(TimeoutError):
-                    _live_prompt(None, 'status', timeout_s=.02)
+                clock = SimpleNamespace(time=lambda: 2 if turns else 0)
+                with patch('lrrk_litewing_ai.provider_deadline.asyncio.get_running_loop', return_value=clock):
+                    with self.assertRaises(TimeoutError):
+                        _live_prompt(None, 'status', timeout_s=1)
         self.assertEqual(cancelled, [True])
         self.assertEqual(turns, [4])
