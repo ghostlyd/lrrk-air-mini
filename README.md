@@ -11,11 +11,35 @@ These are separate from the advisory AI tools and do not establish flight readin
 
 LiteWing is an ESP32-S3-based quadcopter platform. The board combines the
 flight controller, brushed-motor drivers, battery charging, USB serial, and
-Wi-Fi control on one small PCB. The firmware in this repository is the
-ESP-Drone/Crazyflie-compatible flight stack supplied by the upstream LiteWing
-project; the host tools use its CRTP-over-UDP interface.
+Wi-Fi control on one small PCB. The repository preserves the upstream
+ESP-Drone/Crazyflie-compatible firmware at its root. The selected development
+target is the separate NinjaPilot/OpenPilot wrapper in
+[`ports/ninjapilot-litewing/`](ports/ninjapilot-litewing/), using UAVTalk over USB
+and the authenticated LWPL Wi-Fi protocol. Stock CRTP clients do not control LWPL.
 
 ## Repository status
+
+### Current checkpoint
+
+The Mac keyboard launcher is merged in [PR #74](https://github.com/ghostlyd/lrrk-air-mini/pull/74),
+with explicit connection, Escape STOP and session termination on focus loss.
+See the [pilot guide](ai_assistant/README.md#mac-keyboard-pilot).
+Application installation and one-shot credential storage were verified. After a
+complete USB power cycle, reset-neutral status polling recovered live USB
+telemetry, changing attitude samples, and disarmed/zero motor outputs. Earlier
+MPU6050 probe failures are not yet explained or proven fixed across resets.
+A temporary console diagnostic image is installed; it is not a
+flight-qualified image. See the [current diagnostic record](docs/verification/wifi-activation-diagnostic-2026-09-10.md).
+
+Live wireless telemetry, wireless-to-OpenAI validation, battery qualification
+and flight remain incomplete. Parts and purchase uncertainties are listed in
+the [parts inventory](docs/PARTS_SELECTION.md). The bench records below are
+historical checkpoints, not proof that the currently installed image is ready.
+
+The [USB-to-Mac OpenAI advisory path](docs/verification/usb-openai-resume-2026-09-11.md)
+was reverified using a captured board observation and the existing project key.
+This tethered path needs no Ethernet or internet interface on the drone;
+continuous acquisition and flight qualification remain separate work.
 
 This repository is the maintained `lrrk-air-mini` source tree. The original
 LiteWing repository is retained as the `upstream` Git remote for provenance and
@@ -91,8 +115,20 @@ any energized motor test.
 
 ## Firmware build
 
-The firmware is an ESP-IDF project. Install a compatible ESP-IDF toolchain,
-select the ESP32-S3 target, then build from the repository root:
+The selected wrapper requires ESP-IDF **5.3.2** and its pinned external source
+checkouts. From the repository root:
+
+```sh
+ports/ninjapilot-litewing/build.sh --host-only
+ports/ninjapilot-litewing/build.sh --flight-checkout PINNED_NINJAPILOT_PATH --reference-checkout PINNED_ESP32_REFERENCE_PATH
+```
+
+Use the [wrapper build guide](ports/ninjapilot-litewing/README.md) for setup.
+These build commands do not flash. Keep the ESP-IDF-managed Python environment
+separate from the host assistant's CPython 3.11–3.14 environment.
+
+For the preserved **stock ESP-Drone baseline only**, the root ESP-IDF project
+uses the following commands. They do not build the selected NinjaPilot wrapper:
 
 ```sh
 idf.py set-target esp32s3
@@ -105,9 +141,11 @@ CRTP/UDP control from a host on the same network.
 
 ## Host tools
 
-The existing examples are under [`Python-Scripts/`](Python-Scripts/). The
-maintained AI-assistance host service will live separately from the flight
-controller and will default to dry-run/advisory mode.
+The stock CRTP examples are under [`Python-Scripts/`](Python-Scripts/). The
+maintained host package is [`ai_assistant/`](ai_assistant/): its AI tools are
+advisory, while the human keyboard pilot owns the separate command session.
+The keyboard launcher's advisory worker is local-only; it does not make an
+OpenAI request by default. No onboard AI computer is required.
 
 ## Upstream
 

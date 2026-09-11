@@ -52,12 +52,27 @@ def _print_report(report: dict, json_output: bool) -> None:
         print("- %s: %s (%s)" % (finding["finding_id"], finding["status"], finding["evidence"]))
 
 
-def _live_prompt(runtime: AssistantRuntime, prompt: str) -> str:
+def _live_prompt(runtime: AssistantRuntime, prompt: str, *, timeout_s=30.0,
+                 stop=lambda: False) -> str:
     agent = create_assistant(runtime, live_agent=True)
 
     async def run() -> str:
-        from agents import Runner
-        result = await Runner.run(agent, prompt)
+        from agents import Runner, RunConfig, ModelSettings
+        from agents.models.openai_provider import OpenAIProvider
+        from agents.model_settings import ModelRetrySettings
+        from openai import AsyncOpenAI
+        from .provider_deadline import run_bounded
+        async with AsyncOpenAI(max_retries=0, timeout=20.0) as client:
+            config = RunConfig(
+                model_provider=OpenAIProvider(openai_client=client),
+                model_settings=ModelSettings(max_tokens=1024,
+                                             retry=ModelRetrySettings(max_retries=0)),
+                tracing_disabled=True,
+            )
+            result = await run_bounded(
+                lambda: Runner.run(agent, prompt, max_turns=4, run_config=config),
+                timeout_s=timeout_s, stop=stop,
+            )
         return str(getattr(result, "final_output", result))
 
     return asyncio.run(run())

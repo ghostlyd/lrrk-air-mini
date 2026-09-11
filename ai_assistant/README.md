@@ -8,6 +8,52 @@ human review.
 Separate operator tools, not AI tools, provide USB credential maintenance and
 an authenticated application-key reachability check. See [operator provisioning](#operator-provisioning).
 
+## Bounded USB advisory session
+
+The `litewing-usb-advisory` launcher keeps USB telemetry acquisition separate
+from advisory analysis. The Mac retains its normal internet connection; the
+drone does not need USB networking, Ethernet, or an OpenAI key. Use a dedicated
+CPython 3.11–3.14 host environment, not the ESP-IDF Python environment. From the
+repository root, install this checkout into that environment:
+
+```sh
+python -m pip install -e './ai_assistant[uavtalk,openai]'
+```
+
+Start with offline deterministic analysis. Replace the two hardware placeholders
+with the exact enumerated callout device and USB location; do not guess them.
+
+```sh
+session_dir=$(mktemp -d)
+litewing-usb-advisory \
+  --device /dev/cu.YOUR_DEVICE --usb-location YOUR_USB_LOCATION \
+  --private-capture "$session_dir/capture.uavtalk" \
+  --audit-log "$session_dir/audit.jsonl" \
+  --duration 15 --max-calls 3 --interval 5
+```
+
+Each run requires new capture/audit paths. Raw captures and local logs can contain
+private telemetry; keep the directory outside Git. Output is JSON with a capture
+time, session ID, snapshot hash, deterministic preflight report, and an explicit
+historical label. Ctrl-C ends acquisition and requests advisory cancellation.
+The launcher does not arm, drive motors, or replace pilot controls. USB-C can
+power motors; keep propellers removed for bench work.
+
+With the approved key already supplied securely in the process environment,
+add `--live-agent` to enable OpenAI. This sends observed telemetry to OpenAI;
+offline mode makes no provider request. Never put the key in command arguments
+or a tracked file. A session defaults to three analysis attempts, five seconds
+apart. Each attempt has a four-turn maximum, 1,024 output tokens per turn, zero
+client/model retries, a 20-second request timeout and a 30-second cooperative
+deadline. These are not dollar-spend limits. Session expiry can cancel an
+unfinished response; cancelled remote work may still incur usage.
+
+Live platform support is the macOS `/dev/cu.*` CH340 path. The package's wider
+Python/platform support does not imply Windows or Linux live serial support.
+One 15-second normal-firmware USB-to-OpenAI session is
+[verified](../docs/verification/usb-advisory-stream-2026-09-11.md#normal-image-comparison-and-live-usb-to-openai-result);
+repeated-start reliability and flight qualification remain separate.
+
 Approval is a short-lived advisory record bound to the exact telemetry hash
 and configured safety policy. Proposals and approval results carry the
 human-readable analyzer/policy version and a canonical JSON SHA-256 policy
@@ -132,12 +178,17 @@ PYTHONPATH=ai_assistant/src python3 -m lrrk_litewing_ai.cli \
 ```
 
 The destination must not already exist or alias `--audit-log`. It is created
-mode `0600`, capped at 1 MiB, and never committed automatically. Live transport deasserts DTR/RTS
-before opening the port, uses exclusive 57600-baud access, and matches USB
+mode `0600`, capped at 1 MiB, and never committed automatically. The default live
+transport uses a reset-neutral POSIX descriptor without DTR/RTS modem-control
+ioctls or inbound flushing, uses exclusive 57600-baud access, and matches USB
 `1A86:7522` plus the exact topology location before opening. Its outbound
 allowlist contains only telemetry handshake states, five selected object-read
 requests, and required acknowledgements. There is no receiver, arming,
 settings, persistence, actuator, navigation, or flight-command write API.
+
+This callout-device live transport requires POSIX terminal support; it does not
+make Windows serial acquisition available. Enumeration still uses pyserial.
+Driver/hardware behavior is not a guarantee of uninterrupted board power.
 
 The host package supports CPython 3.11 through 3.14 on macOS, Linux, and
 Windows. Audit files are made private before any record bytes are written:
