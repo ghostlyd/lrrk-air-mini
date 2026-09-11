@@ -422,8 +422,8 @@ class LiveUAVTalkTests(unittest.TestCase):
         reads = [item[1] for item in transport.operations if item[0] == "read"]
         requests = [item for item in transport.operations if item[0] == "request"]
         self.assertEqual(reads, [4096, len(tail)])
-        self.assertEqual({item[1] for item in requests}, SELECTED_OBJECT_IDS | {0xDA60A0C6})
-        self.assertEqual(len(requests), 6)
+        self.assertEqual({item[1] for item in requests}, SELECTED_OBJECT_IDS | {0xDA60A0C6, 0x4D896486, 0xD9D093B8})
+        self.assertEqual(len(requests), 8)
         self.assertTrue(snapshot.armed)
 
     def test_timed_out_completion_still_captures_every_consumed_byte(self):

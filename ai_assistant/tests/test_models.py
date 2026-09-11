@@ -53,7 +53,7 @@ class ModelTests(unittest.TestCase):
         self.assertIsNone(TelemetrySnapshot.from_json(unknown.to_json()).alarms)
         self.assertEqual(clear.alarms, ())
         self.assertNotEqual(unknown.snapshot_hash(), clear.snapshot_hash())
-        self.assertEqual(clear.to_dict()["schema_version"], 2)
+        self.assertEqual(clear.to_dict()["schema_version"], 3)
         for version in (1, 2):
             self.assertIsNone(TelemetrySnapshot.from_dict(dict(record, schema_version=version, alarms=None)).alarms)
             self.assertEqual(TelemetrySnapshot.from_dict(dict(record, schema_version=version, alarms=[])).alarms, ())

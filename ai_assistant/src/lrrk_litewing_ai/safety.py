@@ -8,11 +8,12 @@ from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from typing import Any, Dict, Iterable, Optional, Tuple
 
+from .configuration import CONFIGURATION_MAX_AGE_MS, SUPPORTED_ROTATIONAL_MODES
 from .jsonl import canonical_json
 from .models import TelemetrySnapshot
 
 
-ANALYZER_VERSION = "litewing-safety-3"
+ANALYZER_VERSION = "litewing-safety-4"
 _NUMERIC_POLICY_FIELDS = (
     "max_link_age_ms",
     "max_future_skew_ms",
@@ -223,8 +224,30 @@ def _actuator_finding(snapshot: TelemetrySnapshot) -> Finding:
     return _finding("actuators.range", "PASS", "INFO", "%d actuator values are within 0..1000" % len(snapshot.actuators), "No action required.")
 
 
-def _mode_finding(snapshot: TelemetrySnapshot) -> Finding:
+def _mode_finding(snapshot: TelemetrySnapshot, elapsed_ms: float) -> Finding:
     mode = (snapshot.flight_mode or "").strip().lower()
+    if mode in {'stabilized%d' % slot for slot in range(1, 7)}:
+        config = snapshot.configuration
+        selected = (config.stabilization_slots[int(mode[-1]) - 1]
+                    if config is not None and config.stabilization_slots else None)
+        prefix = '%s sampled tuple %s: ' % (mode, selected if selected is not None else 'unobserved')
+        reason = None
+        if (config is None or selected is None or config.airframe_type is None
+                or config.thrust_control is None):
+            reason = 'configuration components are missing'
+        elif any(age is None or age + elapsed_ms >= CONFIGURATION_MAX_AGE_MS
+                 for age in (config.flight_mode_settings_age_ms, config.system_settings_age_ms)):
+            reason = 'settings age is unknown or at least 2000 ms'
+        elif config.airframe_type != 'QuadX' or config.thrust_control != 'Throttle':
+            reason = 'unsupported airframe/thrust control %s/%s' % (config.airframe_type, config.thrust_control)
+        elif any(axis not in SUPPORTED_ROTATIONAL_MODES for axis in selected[:3]) or selected[3] != 'Manual':
+            reason = 'axis/thrust dependencies are not supported by the target policy'
+        if reason is not None:
+            return _finding('capabilities.mode', 'UNKNOWN', 'HIGH', prefix + reason,
+                            'Read fresh settings and verify the selected stabilization dependencies.')
+        return _finding('capabilities.mode', 'PASS', 'INFO',
+                        prefix + 'QuadX/Throttle Rate or Attitude axes with Manual thrust require no positioning hardware',
+                        'Other preflight findings still apply; settings are sampled, not atomic.')
     if not mode:
         return _finding("capabilities.mode", "UNKNOWN", "HIGH", "flight mode is unknown", "Read the current mode and its configured stabilization behavior before flight.")
     if mode in {"rate", "attitude", "stabilized", "manual"}:
@@ -267,7 +290,7 @@ def run_preflight(
     findings.extend(_imu_findings(snapshot, policy, elapsed_ms))
     findings.extend(_battery_findings(snapshot, policy))
     findings.append(_actuator_finding(snapshot))
-    findings.append(_mode_finding(snapshot))
+    findings.append(_mode_finding(snapshot, elapsed_ms))
     if snapshot.alarms is None:
         findings.append(_finding("flight.alarms", "UNKNOWN", "HIGH", "alarm state is unknown", "Obtain a complete current alarm report; missing telemetry does not mean clear alarms."))
     elif snapshot.alarms and all(alarm.endswith(":Uninitialised") for alarm in snapshot.alarms):
