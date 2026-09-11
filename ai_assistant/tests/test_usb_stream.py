@@ -6,6 +6,30 @@ from lrrk_litewing_ai.live_uavtalk import LiveUAVTalkCollector, UAVTalkLiveError
 
 
 class USBStreamTests(unittest.TestCase):
+    def test_reconnect_responder_requires_second_request(self):
+        class Responder(FakeTransport):
+            def __init__(self):
+                super().__init__([])
+                self.requests = 0
+            def handshake(self, status):
+                super().handshake(status)
+                if status == 1:
+                    self.requests += 1
+                    if self.requests == 1:
+                        self.chunks.append(packet(0x20, FLIGHT_TELEMETRY_STATS, bytes(37)))
+                    elif self.requests == 2:
+                        self.chunks.append(complete_stream())
+        clock = FakeClock()
+        transport = Responder()
+        observations = []
+        with tempfile.TemporaryDirectory() as directory:
+            collector = LiveUAVTalkCollector(transport, Path(directory)/'capture',
+                monotonic=clock.monotonic, wall_clock=clock.wall, sleep=clock.sleep)
+            self.assertEqual(collector.stream(observations.append, lambda:False,
+                                              duration_s=.1), 1)
+        self.assertEqual([op[1] for op in transport.operations if op[0]=='handshake'], [1,1,3])
+        self.assertTrue(transport.closed)
+
     def test_initial_disconnected_status_reissues_handshake_before_timeout(self):
         disconnected = packet(0x20, FLIGHT_TELEMETRY_STATS, bytes(37))
         observations = []
