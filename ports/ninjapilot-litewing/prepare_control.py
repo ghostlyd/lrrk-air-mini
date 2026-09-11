@@ -46,7 +46,19 @@ def prepare(source, output):
             continue;
         }""")
     actuator = replace_exact(inputs["Actuator/actuator.c"], "#include <systemsettings.h>",
-        '#include <systemsettings.h>\n#include "litewing_thrust_control.h"\n#include "pios_litewing_brushed_pwm.h"')
+        '#include <systemsettings.h>\n#include "litewing_thrust_control.h"\n#include "pios_litewing_brushed_pwm.h"\n#include "litewing_contract.h"')
+    actuator = replace_exact(actuator,
+        """            if (mixer_type == MIXERSETTINGS_MIXER1TYPE_DISABLED) {
+                // Set to minimum if disabled.""",
+        """            if (mixer_type == MIXERSETTINGS_MIXER1TYPE_DISABLED) {
+                /* Only ordinary PWM slots with no LiteWing output are inactive.
+                 * Preserve physical remaps and other channel-type semantics. */
+                if ((unsigned)ct >= LITEWING_OUTPUT_CHANNELS &&
+                    actuatorSettings.ChannelType[ct] == ACTUATORSETTINGS_CHANNELTYPE_PWM &&
+                    actuatorSettings.ChannelAddr[ct] >= LITEWING_OUTPUT_CHANNELS) {
+                    command.Channel[ct] = 0;
+                }
+                // Set to minimum if disabled.""")
     actuator = replace_exact(actuator, "static xTaskHandle taskHandle;", """static bool actuatorInitAttempted;
 static bool actuatorResourcesReady;
 static bool actuatorStartAttempted;""")

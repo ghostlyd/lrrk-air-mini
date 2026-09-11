@@ -24,11 +24,12 @@ and the authenticated LWPL Wi-Fi protocol. Stock CRTP clients do not control LWP
 The Mac keyboard launcher is merged in [PR #74](https://github.com/ghostlyd/lrrk-air-mini/pull/74),
 with explicit connection, Escape STOP and session termination on focus loss.
 See the [pilot guide](ai_assistant/README.md#mac-keyboard-pilot).
-The current installed application is the normal, console-disabled `33fdf44`
-candidate, whose source is included in merged PR #78. Exact application readback
-and preservation of settings were verified. The corrected telemetry path passed
-a five-second check with all required objects, zero NACKs, and fresh healthy IMU
-reports. See the [image and telemetry record](docs/verification/imu-health-telemetry-2026-09-11.md).
+The current installed application is the normal, console-disabled `4fb4938`
+candidate from PR #80. Exact application readback and preservation of settings
+were verified. Its five-second telemetry check received all required objects,
+zero NACKs, healthy IMU reports, and zero inactive actuator slots while retaining
+zero commands on the four mapped motors. See the
+[current image acceptance record](docs/verification/inactive-actuator-reporting-2026-09-11.md).
 Earlier startup failures are not proven resolved across repeated cold starts.
 
 Live wireless telemetry, wireless-to-OpenAI validation, battery qualification
@@ -37,7 +38,7 @@ the [parts inventory](docs/PARTS_SELECTION.md). The bench records below are
 historical checkpoints, not proof that the currently installed image is ready.
 
 The [USB-to-Mac OpenAI advisory path](docs/verification/current-usb-ai-checkpoint-2026-09-11.md)
-was verified on that corrected image: 74 snapshots offered during a 15-second
+was verified on the preceding `33fdf44` image: 74 snapshots offered during a 15-second
 session and one completed advisory invocation. This tethered path needs no
 Ethernet or internet interface on the drone. Indefinite operation and flight
 qualification remain separate; the advisory report still identifies unresolved

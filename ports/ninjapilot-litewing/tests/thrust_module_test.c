@@ -31,6 +31,8 @@ static const char *scenario;
 static bool deny_publication, shutdown_latched;
 static uint16_t first_recovery_output;
 static bool powered_recovery;
+static bool actuator_readonly;
+static unsigned output_writes[ACTUATORCOMMAND_CHANNEL_NUMELEM];
 #ifdef TEST_STARTUP
 static bool startup_observing;
 static unsigned startup_output_write_mask;
@@ -66,6 +68,7 @@ int32_t UAVObjGetData(UAVObjHandle h, void *out) {
 }
 int32_t UAVObjSetData(UAVObjHandle h, const void *in) {
     assert(h); struct object *obj = h;
+    if (actuator_readonly && obj->id == ACTUATORCOMMAND_OBJID) return -1;
     if (deny_publication && obj->id == MANUALCONTROLCOMMAND_OBJID) return -1;
     memcpy(obj->data, in, obj->size); observe_publication(obj); return 0;
 }
@@ -83,6 +86,7 @@ int32_t UAVObjGetDataField(UAVObjHandle h, void *out, uint32_t offset, uint32_t 
 }
 int32_t UAVObjSetDataField(UAVObjHandle h, const void *in, uint32_t offset, uint32_t size) {
     assert(h); struct object *obj = h; assert(offset + size <= obj->size);
+    if (actuator_readonly && obj->id == ACTUATORCOMMAND_OBJID) return -1;
     memcpy(obj->data + offset, in, size); observe_publication(obj); return 0;
 }
 int32_t UAVObjGetInstanceData(UAVObjHandle h, uint16_t instance, void *out) { return UAVObjGetData(h, out); }
@@ -94,7 +98,11 @@ uint16_t UAVObjGetNumInstances(UAVObjHandle h) { assert(!"unexpected initializer
 int32_t UAVObjSetMetadata(UAVObjHandle h, const UAVObjMetadata *m) { ((struct object *)h)->metadata = *m; return 0; }
 int32_t UAVObjGetMetadata(UAVObjHandle h, UAVObjMetadata *m) { *m = ((struct object *)h)->metadata; return 0; }
 void UAVObjSetAccess(UAVObjMetadata *m, UAVObjAccessType a) { m->flags = (m->flags & ~1) | a; }
-int8_t UAVObjReadOnly(UAVObjHandle h) { return deny_publication && ((struct object *)h)->id == MANUALCONTROLCOMMAND_OBJID; }
+int8_t UAVObjReadOnly(UAVObjHandle h) {
+    uint32_t id = ((struct object *)h)->id;
+    return (deny_publication && id == MANUALCONTROLCOMMAND_OBJID) ||
+        (actuator_readonly && id == ACTUATORCOMMAND_OBJID);
+}
 int32_t UAVObjConnectCallback(UAVObjHandle h, UAVObjEventCallback cb, uint8_t mask) { return 0; }
 int32_t UAVObjConnectQueue(UAVObjHandle h, xQueueHandle q, uint8_t mask) { return 0; }
 FrameType_t GetCurrentFrameType(void) { return FRAME_TYPE_MULTIROTOR; }
@@ -173,6 +181,7 @@ int32_t PIOS_RCVR_Read(uint32_t id, uint8_t channel) {
 void PIOS_Servo_Update(void) {}
 void PIOS_Servo_Set(uint8_t channel, uint16_t value) {
     assert(channel < ACTUATORCOMMAND_CHANNEL_NUMELEM);
+    ++output_writes[channel];
 #ifdef TEST_STARTUP
     if (startup_observing && channel < 4) {
         assert(value == 0);
@@ -260,6 +269,41 @@ int main(int argc, char **argv) {
     ms.Mixer1Type = ms.Mixer2Type = MIXERSETTINGS_MIXER1TYPE_MOTOR;
     ms.Mixer1Vector.ThrottleCurve1 = ms.Mixer2Vector.ThrottleCurve1 = 64;
     MixerSettingsSet(&ms);
+    bool reporting = strncmp(scenario, "report-", 7) == 0;
+    if (reporting) {
+        /* Real generated defaults provide 1000-minimum disabled tail slots. */
+        ActuatorSettingsSetDefaults(ActuatorSettingsHandle(), 0);
+        ActuatorSettingsGet(&as);
+        for (int i = 0; i < 4; ++i) {
+            as.ChannelMin[i] = as.ChannelNeutral[i] = 0;
+            as.ChannelMax[i] = 1000;
+        }
+        ms.Mixer3Type = ms.Mixer4Type = MIXERSETTINGS_MIXER1TYPE_MOTOR;
+        ms.Mixer3Vector.ThrottleCurve1 = ms.Mixer4Vector.ThrottleCurve1 = 64;
+        if (strcmp(scenario, "report-logical") == 0) {
+            ms.Mixer4Type = MIXERSETTINGS_MIXER1TYPE_DISABLED;
+            as.ChannelAddr[3] = 4; as.ChannelAddr[4] = 3;
+            as.ChannelMin[3] = 321;
+        }
+        if (strcmp(scenario, "report-remap") == 0) {
+            as.ChannelAddr[3] = 4; as.ChannelAddr[4] = 3;
+        }
+        if (strcmp(scenario, "report-active") == 0) {
+            as.ChannelMax[4] = 2000;
+            ms.Mixer5Type = MIXERSETTINGS_MIXER1TYPE_MOTOR;
+            ms.Mixer5Vector.ThrottleCurve1 = 64;
+        }
+        if (strcmp(scenario, "report-led") == 0)
+            as.ChannelType[4] = ACTUATORSETTINGS_CHANNELTYPE_ARMINGLED;
+        if (strcmp(scenario, "report-unsupported") == 0)
+            as.ChannelType[4] = ACTUATORSETTINGS_CHANNELTYPE_MK;
+        ActuatorSettingsSet(&as); MixerSettingsSet(&ms);
+        ActuatorCommandData override; ActuatorCommandGet(&override);
+        override.NumFailedUpdates = 7;
+        for (int i = 0; i < ACTUATORCOMMAND_CHANNEL_NUMELEM; ++i) override.Channel[i] = 600 + i;
+        ActuatorCommandSet(&override);
+        actuator_readonly = strcmp(scenario, "report-readonly") == 0;
+    }
 #ifdef TEST_STARTUP
     assert(AlarmsInitialize() == 0);
     assert(AlarmsGet(SYSTEMALARMS_ALARM_BOOTFAULT) == SYSTEMALARMS_ALARM_UNINITIALISED);
@@ -311,6 +355,35 @@ int main(int argc, char **argv) {
             strcmp(scenario, "feedforward-recovery") == 0 ? 60 : 30;
         fprintf(stderr, "first recovery output=%u expected<=%d\n", first_recovery_output, limit);
         assert(first_recovery_output > 0 && first_recovery_output <= limit);
+        return 0;
+    }
+    if (reporting) {
+        ActuatorCommandData actual; ActuatorCommandGet(&actual);
+        bool logical = strcmp(scenario, "report-logical") == 0;
+        bool remap = logical || strcmp(scenario, "report-remap") == 0;
+        bool unsupported = strcmp(scenario, "report-unsupported") == 0;
+        for (int i = 0; i < ACTUATORCOMMAND_CHANNEL_NUMELEM; ++i) {
+            int want = i < 4 ? 200 : 0;
+            if (logical && i == 3) want = 321;
+            if (i == 4 && (remap || unsupported || strcmp(scenario, "report-led") == 0)) want = 1000;
+            if (i == 4 && strcmp(scenario, "report-active") == 0) want = 1200;
+            if (actuator_readonly) want = 600 + i;
+            fprintf(stderr, "report scenario=%s channel=%d actual=%d expected=%d\n", scenario, i + 1, actual.Channel[i], want);
+            assert(actual.Channel[i] == want);
+            if (as.ChannelType[i] == ACTUATORSETTINGS_CHANNELTYPE_PWM) {
+                assert(hardware_output[as.ChannelAddr[i]] == want);
+                assert(output_writes[as.ChannelAddr[i]] == 21);
+            } else if (as.ChannelType[i] == ACTUATORSETTINGS_CHANNELTYPE_ARMINGLED) {
+                assert(hardware_output[as.ChannelAddr[i]] == 1000);
+                assert(output_writes[as.ChannelAddr[i]] == 21);
+            } else {
+                assert(output_writes[as.ChannelAddr[i]] == 0);
+            }
+        }
+        assert(actual.NumFailedUpdates == (unsupported ? 27 : 7));
+        assert(alarms[SYSTEMALARMS_ALARM_ACTUATOR] ==
+            (unsupported ? SYSTEMALARMS_ALARM_CRITICAL : SYSTEMALARMS_ALARM_OK));
+        assert(!shutdown_latched);
         return 0;
     }
     /* Half-scale mixer: thrust .4 -> 200; separate throttle .8 -> 400. */
