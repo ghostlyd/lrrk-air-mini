@@ -38,3 +38,54 @@ installed. No board reset, flash or motor command occurred in these checks.
 Battery compatibility, physical flight configuration and controlled flight
 qualification are not established by this telemetry feature. See
 [parts selection](../PARTS_SELECTION.md) for outstanding physical dependencies.
+
+## Merged-image bench result and transport defect
+
+PR #77 merged as `e77a676419d3fb9a5c3294f323916d5f721b2787` after 25 successful
+checks. The later host compatibility fix passed 378 tests without skips. The
+installed host package also handled 25 optional-object NACKs from the previous
+firmware while delivering 25 snapshots in five seconds; observed status was
+Disarmed and all four observed motor-command channels were zero.
+
+The merged application built with SHA-256
+`1b7dc0f25094087a84c76563f891cf27503041e445db03fe78ff9ff29aba078d` and was flashed
+at `0x10000`. Readback matched the application exactly. The boot/partition area,
+NVS/PHY and settings were byte-identical before and after. This proves transfer
+and preservation, not successful telemetry operation.
+
+The first normal-image collection received no bytes. A temporary UART-console
+build of the same source subsequently reached module startup. An object probe
+received 22 healthy IMU observations with verified identity and 1–2 ms sample
+age, but larger mandatory telemetry requests were NACKed.
+
+Root cause: the custom generator also emits `uavobjectsinit.h`. Putting that
+directory first in the component include search path shadows the upstream
+aggregate header. Preprocessing the actual target `uavtalk.c` compile command
+confirmed `UAVOBJECTS_LARGEST` was **9**, instead of the upstream **217**. Thus
+successful nine-byte IMU and eight-byte status packets did not establish that
+larger existing objects could be transmitted. Standalone schema tests missed
+this cross-component include-resolution defect.
+
+Header isolation is implemented in `33fdf44`. Native regression tests confirm
+that the actual adapted parser resolves the upstream aggregate bound, all 115
+upstream packed layouts and the custom nine-byte layout fit, and 16- and 30-byte
+objects transmit successfully. The controller reports that the normal ESP-IDF
+build of `33fdf44` completed with exit 0. Preprocessing the actual target
+compile command confirms the upstream bound of 217.
+
+The normal, console-disabled `33fdf44` application is now installed, replacing
+the temporary diagnostic image. Its SHA-256 is
+`75ca0ada9ec93ce94dca882348a1d26de3ed4067b1bbcd3be51838a43326e1bb`.
+Application readback matched exactly; boot/partition/NVS/PHY bytes and the
+settings region were preserved. The initial post-flash session received no
+bytes; an explicit RTS reset was required before successful acceptance.
+
+The installed USB advisory launcher then completed a five-second offline
+session: 23,683 captured bytes, 632 valid frames, zero NACKs, and all five
+mandatory telemetry objects present (149 attitude, 25 flight status, 68 battery,
+30 alarms, and 30 actuator frames). All 75 IMU reports were healthy with verified
+identity, samples present, and ages no greater than two milliseconds. Observed
+flight status remained disarmed and all four reported motor commands were zero.
+No motor commands or OpenAI requests were issued by this acceptance session.
+This establishes telemetry recovery, not flight qualification. All raw
+boot/serial captures and flash backups remain private.
