@@ -1,11 +1,25 @@
 import tempfile
 import unittest
 from pathlib import Path
-from test_live_uavtalk import FakeClock, FakeTransport, complete_stream
+from test_live_uavtalk import FakeClock, FakeTransport, complete_stream, packet, FLIGHT_TELEMETRY_STATS
 from lrrk_litewing_ai.live_uavtalk import LiveUAVTalkCollector, UAVTalkLiveError
 
 
 class USBStreamTests(unittest.TestCase):
+    def test_disconnect_in_deadline_completion_is_failure(self):
+        clock = FakeClock()
+        disconnected = packet(0x20, FLIGHT_TELEMETRY_STATS, bytes(37))
+        transport = FakeTransport([complete_stream() + disconnected[:5], disconnected[5:]])
+        observations = []
+        with tempfile.TemporaryDirectory() as directory:
+            collector = LiveUAVTalkCollector(transport, Path(directory)/'capture',
+                monotonic=clock.monotonic, wall_clock=clock.wall,
+                sleep=lambda seconds: clock.sleep(.1))
+            with self.assertRaisesRegex(UAVTalkLiveError, 'disconnected'):
+                collector.stream(observations.append, lambda: False, duration_s=.1)
+        self.assertEqual(len(observations), 1)
+        self.assertTrue(transport.closed)
+
     def run_stream(self, chunks, offer, stop=lambda: False, duration_s=.1):
         clock = FakeClock()
         transport = FakeTransport(chunks)

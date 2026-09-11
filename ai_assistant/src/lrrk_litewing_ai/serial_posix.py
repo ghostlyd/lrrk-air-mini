@@ -42,6 +42,7 @@ class ResetNeutralPosixPort:
             attrs[1] = 0
             control_mask = (
                 termios_api.CSIZE | termios_api.PARENB | termios_api.CSTOPB |
+                termios_api.HUPCL |
                 getattr(termios_api, 'CRTSCTS', 0)
             )
             attrs[2] = (attrs[2] & ~control_mask) | (
@@ -68,6 +69,8 @@ class ResetNeutralPosixPort:
         total = 0
         deadline = self._clock() + self.WRITE_TIMEOUT_SECONDS
         while view:
+            if self._clock() >= deadline:
+                raise OSError('serial write deadline exceeded')
             try:
                 written = self._os.write(self._fd, view)
             except BlockingIOError:
@@ -97,7 +100,6 @@ class ResetNeutralPosixPort:
         if self._fd is not None:
             fd, self._fd = self._fd, None
             self._os.close(fd)
-
 
 
 

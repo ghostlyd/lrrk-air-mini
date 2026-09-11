@@ -54,9 +54,9 @@ class ResetNeutralPosixPortTests(unittest.TestCase):
             def read(cls,fd,size):return read_data[:size]
         class FakeTermios:
             CSIZE=0x30; PARENB=0x100; CSTOPB=0x200; CS8=0x30
-            CREAD=0x400; CLOCAL=0x800; CRTSCTS=0x1000
+            CREAD=0x400; CLOCAL=0x800; CRTSCTS=0x1000; HUPCL=0x2000
             B57600=57600; VMIN=5; VTIME=6; TCSANOW=0; TIOCEXCL=0x2000740d
-            initial=[1,2,0x1330,4,9600,9600,[1,2,3,4,5,6,7]]
+            initial=[1,2,0x3330,4,9600,9600,[1,2,3,4,5,6,7]]
             applied=[]
             @classmethod
             def tcgetattr(cls,fd):return copy.deepcopy(cls.initial)
@@ -87,6 +87,7 @@ class ResetNeutralPosixPortTests(unittest.TestCase):
         self.assertEqual(attrs[6][termios_api.VMIN],0)
         self.assertEqual(attrs[6][termios_api.VTIME],0)
         self.assertEqual(attrs[2]&termios_api.CRTSCTS,0)
+        self.assertEqual(attrs[2]&termios_api.HUPCL,0)
         self.assertEqual(attrs[2]&(termios_api.CREAD|termios_api.CLOCAL|termios_api.CS8),
                          termios_api.CREAD|termios_api.CLOCAL|termios_api.CS8)
         self.assertEqual(port.read_available(3),b'inp')
@@ -112,4 +113,19 @@ class ResetNeutralPosixPortTests(unittest.TestCase):
                 select_api=select_api,clock=lambda:0.)
         self.assertEqual(os_api.closed,[17])
 
+    def test_progress_does_not_bypass_write_deadline(self):
+        os_api,termios_api,fcntl_api,select_api=self.fixtures()
+        now = [0.]
+        def slow_write(fd, data):
+            os_api.writes.append((fd, bytes(data)))
+            now[0] += .015
+            return 1
+        os_api.write = slow_write
+        port=probe.ResetNeutralPosixPort('/dev/cu.example',57600,
+            os_api=os_api,termios_api=termios_api,fcntl_api=fcntl_api,
+            select_api=select_api,clock=lambda:now[0])
+        with self.assertRaisesRegex(OSError, 'deadline'):
+            port.write(b'abc')
+        self.assertEqual(len(os_api.writes), 2)
+        port.close()
 

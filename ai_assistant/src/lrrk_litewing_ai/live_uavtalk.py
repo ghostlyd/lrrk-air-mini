@@ -456,12 +456,15 @@ class LiveUAVTalkCollector:
             for frame in frames:
                 # The aggregate is already complete: validate and incorporate
                 # only this started frame, with no new ACK or handshake write.
+                was_connected = self._connected
                 self._observe(
                     frame,
                     received_mono,
                     received_wall,
                     respond=False,
                 )
+                if was_connected and not self._connected:
+                    raise UAVTalkLiveError("live telemetry disconnected")
         synchronizer.finish()
 
     def stream(
