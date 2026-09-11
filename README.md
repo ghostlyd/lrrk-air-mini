@@ -24,9 +24,11 @@ and the authenticated LWPL Wi-Fi protocol. Stock CRTP clients do not control LWP
 The Mac keyboard launcher is merged in [PR #74](https://github.com/ghostlyd/lrrk-air-mini/pull/74),
 with explicit connection, Escape STOP and session termination on focus loss.
 See the [pilot guide](ai_assistant/README.md#mac-keyboard-pilot).
-Application installation and one-shot credential storage were verified, but the
-latest boot diagnosis stops at the MPU6050 address probe, before flight modules
-or Wi-Fi start. A temporary console diagnostic image is installed; it is not a
+Application installation and one-shot credential storage were verified. After a
+complete USB power cycle, reset-neutral status polling recovered live USB
+telemetry, changing attitude samples, and disarmed/zero motor outputs. Earlier
+MPU6050 probe failures are not yet explained or proven fixed across resets.
+A temporary console diagnostic image is installed; it is not a
 flight-qualified image. See the [current diagnostic record](docs/verification/wifi-activation-diagnostic-2026-09-10.md).
 
 Live wireless telemetry, wireless-to-OpenAI validation, battery qualification

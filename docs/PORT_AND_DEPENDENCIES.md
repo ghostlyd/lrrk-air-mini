@@ -1,8 +1,10 @@
 # LiteWing port and dependency inventory
 
 Current checkpoint: the keyboard launcher and local advisory worker are merged
-through PR #74. Credential storage was verified, but current startup fails at
-the MPU6050 address probe before modules or Wi-Fi start. A temporary console
+through PR #74. Credential storage was verified. A complete USB power cycle
+recovered live USB telemetry and changing attitude samples with disarmed/zero
+motor outputs; the earlier MPU6050 probe failure is not yet explained or proven
+fixed across resets. A temporary console
 diagnostic image remains installed, not flight-qualified. Historical bench
 successes below do not supersede this [live diagnostic](verification/wifi-activation-diagnostic-2026-09-10.md).
 

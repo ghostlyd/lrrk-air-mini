@@ -116,6 +116,34 @@ remain a possible confounder.
 No credentials were resubmitted. No flash, saved-settings, arming or motor-output
 commands were issued. Raw UART captures remain private and outside Git.
 
-Next: distinguish MPU6050 address-probe and register-configuration failures, fix the evidenced
-cause, and validate a normal-console build before wireless qualification. Do not claim an Armed state, a
-working STOP path, or flight readiness from these observations.
+### Cold power-cycle follow-up
+
+After the operator confirmed USB power removal/reconnection, a reset-neutral
+POSIX descriptor was used without modem-control ioctls, input flushing, reset,
+flash, credential submission, settings changes or motor commands. Passive
+115200-baud capture was followed by bounded 57600-baud status-only UAVTalk
+handshake/read requests on the same descriptor.
+
+Live telemetry succeeded: FlightStatus was disarmed and all four mapped motor
+outputs were zero. Three attitude samples changed during collection. System
+alarms still reported Receiver:Warning and several Uninitialised services,
+including Sensors and I2C; this is not an all-clear startup result. The decoder
+also flagged unused ActuatorCommand channels 5 through 12 at 1000, separately
+from the four mapped motor outputs. No fresh sensor-identity response was
+collected. The status capture contained 822 bytes, with 111 initial bytes
+discarded by the existing bounded synchronizer before valid frames. Captures
+remain private and outside Git.
+
+This supersedes the earlier assertion that the board currently cannot reach
+telemetry. Recovery after full power removal is evidence of a state-dependent
+failure, not proof of its root cause or reliable warm-reset recovery. The same
+temporary diagnostic application remains installed. AP activation, wireless
+telemetry, normal-console image qualification and flight remain unverified.
+
+A fresh macOS Wi-Fi inventory after this recovery still did not contain the
+configured SSID. This remains an inventory observation, not definitive proof
+that the AP is inactive. No association or credential submission was attempted.
+
+Next: qualify the normal-console image and investigate reset-dependent MPU6050
+startup behavior before claiming a permanent fix. Do not claim an Armed state,
+a working STOP path, or flight readiness from these observations.
