@@ -30,6 +30,7 @@ openai = ["openai-agents==0.22.1"]
 
 [project.scripts]
 litewing-ai = "lrrk_litewing_ai.cli:main"
+litewing-usb-advisory = "lrrk_litewing_ai.usb_advisory_cli:main"
 litewing-provision = "lrrk_litewing_ai.provisioning_cli:main"
 litewing-check-link = "lrrk_litewing_ai.pilot_probe:main"
 litewing-pilot = "lrrk_litewing_ai.keyboard_pilot:main"

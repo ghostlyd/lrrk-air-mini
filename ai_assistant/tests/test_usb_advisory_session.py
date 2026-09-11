@@ -14,6 +14,27 @@ class USBAdvisorySessionTests(unittest.TestCase):
         self.assertIsNotNone(importlib.util.find_spec(name), 'USB supervisor missing')
         return importlib.import_module(name).run_usb_advisory
 
+    def test_invalid_budget_closes_before_any_serial_operation(self):
+        run = self.runner()
+        transport = FakeTransport([])
+        with tempfile.TemporaryDirectory() as directory:
+            collector = LiveUAVTalkCollector(transport, Path(directory)/'capture')
+            with self.assertRaises(ValueError):
+                run(collector, lambda *args: None, lambda: False,
+                    duration_s=.1, max_calls=0)
+        self.assertTrue(transport.closed)
+        self.assertEqual(transport.operations, [])
+
+    def test_session_exit_sets_analysis_cancellation_signal(self):
+        run = self.runner()
+        cancelled = threading.Event()
+        transport = FakeTransport([])
+        with tempfile.TemporaryDirectory() as directory:
+            collector = LiveUAVTalkCollector(transport, Path(directory)/'capture')
+            run(collector, lambda *args: None, lambda: True,
+                duration_s=.1, cancellation=cancelled)
+        self.assertTrue(cancelled.is_set())
+
     def test_analysis_runs_off_acquisition_and_cleanup_retires_thread(self):
         run = self.runner()
         entered, release = threading.Event(), threading.Event()

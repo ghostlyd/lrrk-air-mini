@@ -52,12 +52,17 @@ def _print_report(report: dict, json_output: bool) -> None:
         print("- %s: %s (%s)" % (finding["finding_id"], finding["status"], finding["evidence"]))
 
 
-def _live_prompt(runtime: AssistantRuntime, prompt: str) -> str:
+def _live_prompt(runtime: AssistantRuntime, prompt: str, *, timeout_s=30.0,
+                 stop=lambda: False) -> str:
     agent = create_assistant(runtime, live_agent=True)
 
     async def run() -> str:
         from agents import Runner
-        result = await Runner.run(agent, prompt)
+        from .provider_deadline import run_bounded
+        result = await run_bounded(
+            lambda: Runner.run(agent, prompt, max_turns=4),
+            timeout_s=timeout_s, stop=stop,
+        )
         return str(getattr(result, "final_output", result))
 
     return asyncio.run(run())

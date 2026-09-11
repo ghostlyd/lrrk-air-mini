@@ -25,8 +25,33 @@ Tests exercise repeated acquisition, corruption, cancellation before writes,
 silent-link expiry, observation preservation, invalid handoff input, concurrent
 acquisition during blocked analysis, and transport cleanup on corruption.
 
-Remaining integration work: launcher options, explicit provider call budget and
-deadlines, private audit wiring, result freshness/session labeling, live USB
-qualification, and a bounded end-to-end OpenAI session. These host tests do not
+The `litewing-usb-advisory` launcher now connects these components. Supply exact
+`--device`, `--usb-location`, and new, separate `--private-capture` and
+`--audit-log` paths. It defaults to a 15-second session, three analysis attempts
+and a five-second minimum interval. Offline deterministic analysis is default;
+`--live-agent` explicitly enables the existing OpenAI provider using the process
+environment. Never put an API key on the command line. Results are labeled
+historical and include capture time and a session identifier. Audit records keep
+provider response hashes, not response text. The provider helper has a 30-second
+cooperative deadline and a four-turn limit; session termination signals
+cancellation. These are not hard process deadlines or dollar-spend limits.
+
+Remaining work: review SDK retry/token limits, live USB qualification, and a
+bounded end-to-end OpenAI streaming session. These host tests do not
 resolve the previously observed intermittent framing failure or qualify the
 temporary diagnostic firmware for flight.
+
+## First live launcher check
+
+One connected matching USB bridge was enumerated. A five-second offline-only
+session was attempted with the normal reset-neutral transport. The launcher
+returned failure after capturing 48 bytes, before a complete aggregate. Private
+capture analysis found nine initially discarded bytes, then one CRC-valid frame
+of 22 bytes plus checksum, followed by invalid synchronization. This reproduces
+the intermittent post-synchronization framing failure; its cause is not proven.
+No reset, flash, motor command, or OpenAI request was performed.
+
+The check also exposed a missing terminal failure audit event. The launcher now
+records `usb_session_failed` with the exception class only, and reports an audit
+write failure separately. A regression test verifies corruption produces that
+terminal event. This does not repair or bypass the serial framing failure.
