@@ -210,11 +210,13 @@ jobs:
         shell: bash
         env:
           PYTHONPATH: ai_assistant/src:ai_assistant/tests:ports/ninjapilot-litewing/tests
+          LRRK_TEST_FLIGHT_ROOT: ${{ runner.temp }}/litewing-external/NinjaPilot
         run: |
           python3 - <<'PY'
           import unittest
           suite = unittest.defaultTestLoader.loadTestsFromNames([
-              'test_imu_health', 'test_imu_publication', 'test_uavobjects'])
+              'test_imu_health', 'test_imu_publication', 'test_uavobjects',
+              'test_imu_header_isolation'])
           result = unittest.TextTestRunner(verbosity=2).run(suite)
           if result.skipped:
               print('IMU CI gate rejects skipped tests:', result.skipped)

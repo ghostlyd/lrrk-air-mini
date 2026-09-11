@@ -66,6 +66,11 @@ successful nine-byte IMU and eight-byte status packets did not establish that
 larger existing objects could be transmitted. Standalone schema tests missed
 this cross-component include-resolution defect.
 
-Header isolation and an effective-build regression are in progress. The
-temporary console-enabled diagnostic image is currently installed; it is not a
-flight release. All raw boot/serial captures and flash backups remain private.
+Header isolation is implemented in `33fdf44`. Native regression tests confirm
+that the actual adapted parser resolves the upstream aggregate bound, all 115
+upstream packed layouts and the custom nine-byte layout fit, and 16- and 30-byte
+objects transmit successfully. The controller reports that the normal ESP-IDF
+build of `33fdf44` completed with exit 0. Verification of the actual target
+compile limit and live verification remain pending. The temporary console-enabled diagnostic image is
+currently installed; it is not a flight release. All raw boot/serial captures
+and flash backups remain private.
