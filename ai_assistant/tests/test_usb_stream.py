@@ -1,0 +1,45 @@
+import tempfile
+import unittest
+from pathlib import Path
+from test_live_uavtalk import FakeClock, FakeTransport, complete_stream
+from lrrk_litewing_ai.live_uavtalk import LiveUAVTalkCollector, UAVTalkLiveError
+
+
+class USBStreamTests(unittest.TestCase):
+    def run_stream(self, chunks, offer, stop=lambda: False, duration_s=.1):
+        clock = FakeClock()
+        transport = FakeTransport(chunks)
+        self.transport = transport
+        with tempfile.TemporaryDirectory() as directory:
+            collector = LiveUAVTalkCollector(transport, Path(directory)/'capture',
+                monotonic=clock.monotonic, wall_clock=clock.wall, sleep=clock.sleep)
+            self.assertTrue(callable(getattr(collector, 'stream', None)),
+                            'continuous acquisition is missing')
+            return collector.stream(offer, stop, duration_s=duration_s)
+
+    def test_silent_link_after_snapshot_fails_instead_of_reporting_success(self):
+        observations = []
+        with self.assertRaises(UAVTalkLiveError):
+            self.run_stream([complete_stream()], observations.append, duration_s=2)
+        self.assertEqual(len(observations), 1)
+        self.assertTrue(self.transport.closed)
+
+    def test_multiple_observations_on_one_transport(self):
+        observations = []
+        count = self.run_stream([complete_stream(), complete_stream()], observations.append)
+        self.assertEqual(count, 2)
+        self.assertEqual(len(observations), 2)
+        self.assertLess(observations[0].captured_at, observations[1].captured_at)
+        self.assertTrue(self.transport.closed)
+
+    def test_corruption_after_sync_stops_and_closes(self):
+        observations = []
+        with self.assertRaises(UAVTalkLiveError):
+            self.run_stream([complete_stream(), b'bad'], observations.append)
+        self.assertEqual(len(observations), 1)
+        self.assertTrue(self.transport.closed)
+
+    def test_preexisting_stop_sends_nothing(self):
+        self.assertEqual(self.run_stream([], lambda s: self.fail(), lambda: True), 0)
+        self.assertEqual(self.transport.operations, [])
+        self.assertTrue(self.transport.closed)

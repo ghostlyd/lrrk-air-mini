@@ -6,13 +6,35 @@ Use a fresh inbox per session and close it in the pilot owner's finally block.
 The pilot owner calls offer; a separate serialized worker owns the runtime and
 calls ingest_latest, then performs any analysis/API work outside the pilot loop.
 """
+from dataclasses import dataclass, field
 from threading import Event, Lock
 from typing import TYPE_CHECKING
 
 from .telemetry_session import TelemetryObservation
+from .models import TelemetrySnapshot
 
 if TYPE_CHECKING:
     from .tools import AssistantRuntime
+
+
+@dataclass(frozen=True)
+class USBObservation:
+    """Host-received aggregate, with no board clock or authentication claim.
+
+    captured_at and link_age_ms remain those of the collector's snapshot.
+    Neither field proves the age of sensor data inside the board.
+    """
+
+    snapshot: TelemetrySnapshot
+    serialized_us: None = field(default=None, init=False)
+    sample_age_us: None = field(default=None, init=False)
+
+    def __post_init__(self):
+        if type(self.snapshot) is not TelemetrySnapshot:
+            raise TypeError("expected a decoded telemetry snapshot")
+
+
+AdvisoryObservation = TelemetryObservation | USBObservation
 
 
 class AdvisoryTelemetryInbox:
@@ -29,12 +51,12 @@ class AdvisoryTelemetryInbox:
 
     def __init__(self):
         self._lock = Lock()
-        self._pending: TelemetryObservation | None = None
+        self._pending: AdvisoryObservation | None = None
         self._closed = False
 
-    def offer(self, observation: TelemetryObservation) -> bool:
+    def offer(self, observation: AdvisoryObservation) -> bool:
         """True means queued, not analyzed, current, or accepted for flight."""
-        if type(observation) is not TelemetryObservation:
+        if type(observation) not in (TelemetryObservation, USBObservation):
             raise TypeError("expected a validated telemetry observation")
         if not self._lock.acquire(blocking=False):
             return False
@@ -46,7 +68,7 @@ class AdvisoryTelemetryInbox:
         finally:
             self._lock.release()
 
-    def ingest_latest(self, runtime: "AssistantRuntime") -> TelemetryObservation | None:
+    def ingest_latest(self, runtime: "AssistantRuntime") -> AdvisoryObservation | None:
         """Worker-only drain; ingestion failure consumes this item, without retry.
 
         Keep all operations on runtime serialized in its owner worker. This
@@ -93,7 +115,7 @@ class AdvisoryWorker:
         """Analysis failed; exception text and telemetry are not retained."""
         return self._failed.is_set()
 
-    def offer(self, observation: TelemetryObservation) -> bool:
+    def offer(self, observation: AdvisoryObservation) -> bool:
         return self._inbox.offer(observation)
 
     def close(self) -> None:

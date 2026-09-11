@@ -464,6 +464,82 @@ class LiveUAVTalkCollector:
                 )
         synchronizer.finish()
 
+    def stream(
+        self,
+        offer: Callable[[TelemetrySnapshot], object],
+        stop: Callable[[], bool],
+        *,
+        duration_s: float,
+    ) -> int:
+        """Offer snapshots on one connection; offer must be nonblocking.
+
+        This acquisition primitive does not invoke providers. Each delivery
+        requires a new observation of every selected object. Cancellation
+        closes immediately, without sending a final protocol transaction.
+        """
+        capture = _PrivateCapture(self.capture_path)
+        synchronizer = _Synchronizer()
+        delivered = 0
+        refreshed = set()
+        try:
+            if not callable(offer) or not callable(stop):
+                raise UAVTalkLiveError("stream callbacks must be callable")
+            if (isinstance(duration_s, bool)
+                    or not isinstance(duration_s, (int, float))
+                    or not math.isfinite(duration_s)
+                    or not 0.1 <= duration_s <= 60):
+                raise UAVTalkLiveError("stream duration must be 0.1..60 seconds")
+            if stop():
+                return 0
+            capture.open()
+            started = self._now()
+            next_handshake = next_request = started
+            last_complete = started
+            while not stop() and self._now() - started < duration_s:
+                now = self._now()
+                if now - last_complete >= 1.0:
+                    raise UAVTalkLiveError("complete telemetry stream timed out")
+                if now >= next_handshake:
+                    self.transport.handshake(self._handshake_status)
+                    next_handshake = now + 1.0
+                if now >= next_request:
+                    for object_id in sorted(SELECTED_OBJECT_IDS):
+                        self.transport.request(object_id)
+                    next_request = now + 0.2
+                data = self.transport.read(4096)
+                received_mono = self._now()
+                received_wall = self._wall_now()
+                if data:
+                    capture.write(data)
+                    for frame in synchronizer.feed(data):
+                        if frame.message_type in (0x22, 0xA2) and frame.object_id in _ACK_OBJECT_IDS:
+                            self.transport.ack(frame.object_id, frame.instance_id)
+                        was_connected = self._connected
+                        self._observe(frame, received_mono, received_wall)
+                        if was_connected and not self._connected:
+                            raise UAVTalkLiveError("live telemetry disconnected")
+                        if self._connected and frame.object_id in SELECTED_OBJECT_IDS:
+                            refreshed.add(frame.object_id)
+                    if self._connected and refreshed == SELECTED_OBJECT_IDS:
+                        offer(self._aggregate())
+                        delivered += 1
+                        last_complete = received_mono
+                        refreshed.clear()
+                self._sleep(0.005)
+            if not stop():
+                synchronizer.finish()
+                if not delivered:
+                    raise UAVTalkLiveError("stream ended without complete telemetry")
+            return delivered
+        finally:
+            try:
+                capture.close()
+            finally:
+                self.capture_bytes = capture.total
+                self.capture_sha256 = capture.digest.hexdigest()
+                self.initial_discarded_bytes = synchronizer.discarded
+                self.transport.close()
+
     def collect(self) -> TelemetrySnapshot:
         capture = _PrivateCapture(self.capture_path)
         synchronizer = _Synchronizer()
