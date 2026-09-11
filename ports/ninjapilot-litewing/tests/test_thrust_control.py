@@ -58,7 +58,7 @@ class ThrustControlTests(unittest.TestCase):
             module_name = "Actuator" if name == "ActuatorStartup" else name
             module = source / module_name / (module_name.lower() + ".c") if source != cls.output else source / (module_name.lower() + ".c")
             binary = cls.output / name
-            includes = [ROOT / "tests/thrust_stubs", ROOT / "target/include", synth,
+            includes = [ROOT / "tests/thrust_stubs", ROOT / "target/include", ROOT / "contract", synth,
                 cls.flight / "flight/uavobjects/inc", cls.flight / "flight/libraries/inc",
                 cls.flight / "flight/libraries/math", cls.flight / "flight/modules/Actuator/inc"]
             objects = "systemsettings manualcontrolsettings manualcontrolcommand flightstatus accessorydesired flighttelemetrystats receiveractivity actuatorsettings mixersettings actuatordesired actuatorcommand"
@@ -96,6 +96,14 @@ class ThrustControlTests(unittest.TestCase):
     def test_actuator_none_stops_output(self): self.run_case("Actuator", "2")
     def test_actuator_invalid_stops_output(self): self.run_case("Actuator", "255")
     def test_actuator_failed_read_stops_output(self): self.run_case("Actuator", "failed-read")
+
+    def test_inactive_tail_reports_zero(self): self.run_case("Actuator", "report-default")
+    def test_disabled_physical_logical_slot_retains_minimum(self): self.run_case("Actuator", "report-logical")
+    def test_disabled_tail_remapped_to_physical_output_retains_minimum(self): self.run_case("Actuator", "report-remap")
+    def test_active_extra_mixer_retains_output(self): self.run_case("Actuator", "report-active")
+    def test_non_pwm_disabled_tail_retains_output(self): self.run_case("Actuator", "report-led")
+    def test_unsupported_tail_retains_failure_reporting(self): self.run_case("Actuator", "report-unsupported")
+    def test_readonly_override_survives_producer_publication(self): self.run_case("Actuator", "report-readonly")
 
     def test_failure_after_valid_control_stops_both_consumers(self):
         for module in ("Receiver", "Actuator"):

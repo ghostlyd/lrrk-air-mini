@@ -36,7 +36,7 @@ class ActuatorLifecycleTests(unittest.TestCase):
                 '-DMODULE_SOURCE="' + str(source) + '"']
         if original:
             args += ["-Wno-error=incompatible-pointer-types"]
-        for path in (ROOT / "tests/thrust_stubs", ROOT / "target/include", synth,
+        for path in (ROOT / "tests/thrust_stubs", ROOT / "target/include", ROOT / "contract", synth,
                      cls.flight / "flight/uavobjects/inc", cls.flight / "flight/libraries/inc",
                      cls.flight / "flight/libraries/math", cls.flight / "flight/modules/Actuator/inc"):
             args += ["-I", str(path)]
