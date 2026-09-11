@@ -66,3 +66,20 @@ The console-enabled diagnostic image remains a possible source of mixed serial
 traffic, not an established cause. Strict framing was not relaxed. Thus host
 regression tests pass, but hardware acceptance of the normal path remains
 incomplete. Continuous acquisition is still separate pending work.
+
+### Bounded sustained acquisition
+
+At host source `3aa82b6`, a further diagnostic held one normal reset-neutral
+SerialTelemetryTransport open for 15.01 seconds. It used the existing strict
+synchronizer throughout, one-second handshake intervals and 200 ms selected
+object requests. It did not reopen/resynchronize after an error, relax CRC
+validation, reset the board, send controls or invoke OpenAI.
+
+The run received 66,385 bytes and 903 selected telemetry frames across all five
+selected object IDs (counts in numeric ID order: 202, 89, 89, 449, 74). There
+was no exception, and the stream ended at a frame boundary. Every observed
+armed state was false and every observed mapped motor tuple was four zeros.
+The capture remains private. This demonstrates bounded sustained acquisition
+on this run, not an indefinite service or resolution of the earlier malformed
+stream. Continuous acquisition feeding the advisory worker still needs to be
+integrated and tested; this diagnostic is not that production service.
