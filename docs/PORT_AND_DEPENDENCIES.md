@@ -1,12 +1,40 @@
 # LiteWing port and dependency inventory
 
-Latest hardware checkpoint (2026-09-11): the retained normal application was
-restored with an application-only flash; NVS/PHY and settings bytes were
-unchanged. A 15-second USB advisory session delivered 74 snapshots and completed
-one OpenAI analysis, with captured status Disarmed and all motor outputs zero.
-See the [normal-image comparison](verification/usb-advisory-stream-2026-09-11.md#normal-image-comparison-and-live-usb-to-openai-result).
-This supersedes older statements below that the diagnostic image is installed,
-but does not establish repeated-start reliability or flight qualification.
+Latest hardware checkpoint (2026-09-11): normal application `4fb4938`, included
+in merged PR #80, is installed. Its exact readback matches SHA-256
+`47e805ad287a6fcd2a4be106bae7868036625100daa82a6cc3e0d38b4bdc91a2`;
+boot/configuration regions were preserved. Live checks confirm healthy IMU
+telemetry and corrected inactive actuator-slot reporting, with disarmed/zero
+commands. See the [installed-image acceptance](verification/inactive-actuator-reporting-2026-09-11.md)
+and [reset/configuration observations](verification/reset-configuration-observations-2026-09-11.md).
+The successful 74-snapshot USB-to-OpenAI run used the preceding `33fdf44` image;
+the current image has offline advisory acceptance, not a new provider run.
+This supersedes historical installed-image statements below, without claiming
+repeated-start reliability, battery qualification, or flight readiness.
+
+### Installed dependency recheck — 2026-09-11
+
+These are observed workstation versions, not newly broadened compatibility
+requirements or proof that every combination is supported:
+
+| Component | Observed version / check |
+| --- | --- |
+| Dedicated host Python | CPython 3.14.7; declared supported range remains 3.11–3.14 |
+| Installed assistant | `lrrk-litewing-ai` 0.2.0 |
+| OpenAI host libraries | `openai-agents` 0.22.1; `openai` 3.13.0 |
+| Serial enumeration | pyserial 3.5 |
+| Keyboard GUI binding | Homebrew `python-tk@3.14` 3.14.7; imported Tk 9.0 |
+| Build tools | CMake 4.4.3; Ninja 1.13.2; Qt 5.15.19 |
+| Native packaging | Homebrew binutils 2.47; `objcopy` reports 2.47.20260726 |
+| Gazebo | `gz sim --versions`: 8.15.0 |
+| Gazebo Python environment | protobuf 7.36.1, NumPy 2.5.3, Matplotlib 3.11.1 |
+
+Both the dedicated assistant and separate Gazebo Python environments passed
+`pip check`. Gazebo transport13, messages10 Pose_V/Actuators/IMU imports and a
+Pose_V serialization roundtrip passed. This did not launch a physics/control
+loop, GUI session, provider request, or hardware operation. Keep these host
+environments separate from ESP-IDF's managed Python; the successful target
+build remains ESP-IDF 5.3.2 as recorded in the image acceptance above.
 
 USB-first update (2026-09-11): PR #75 merged as
 `01c22bd3e281c597b011cf105c57995e585b6d83` and adds `litewing-usb-advisory`,
