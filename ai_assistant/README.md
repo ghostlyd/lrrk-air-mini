@@ -132,12 +132,17 @@ PYTHONPATH=ai_assistant/src python3 -m lrrk_litewing_ai.cli \
 ```
 
 The destination must not already exist or alias `--audit-log`. It is created
-mode `0600`, capped at 1 MiB, and never committed automatically. Live transport deasserts DTR/RTS
-before opening the port, uses exclusive 57600-baud access, and matches USB
+mode `0600`, capped at 1 MiB, and never committed automatically. The default live
+transport uses a reset-neutral POSIX descriptor without DTR/RTS modem-control
+ioctls or inbound flushing, uses exclusive 57600-baud access, and matches USB
 `1A86:7522` plus the exact topology location before opening. Its outbound
 allowlist contains only telemetry handshake states, five selected object-read
 requests, and required acknowledgements. There is no receiver, arming,
 settings, persistence, actuator, navigation, or flight-command write API.
+
+This callout-device live transport requires POSIX terminal support; it does not
+make Windows serial acquisition available. Enumeration still uses pyserial.
+Driver/hardware behavior is not a guarantee of uninterrupted board power.
 
 The host package supports CPython 3.11 through 3.14 on macOS, Linux, and
 Windows. Audit files are made private before any record bytes are written:

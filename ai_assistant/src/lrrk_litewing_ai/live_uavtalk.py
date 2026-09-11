@@ -121,16 +121,14 @@ class SerialTelemetryTransport:
             raise UAVTalkLiveError("a /dev/cu.* serial device is required")
         if not isinstance(location, str) or not location:
             raise UAVTalkLiveError("an exact USB location is required")
-        if serial_factory is None or comports is None:
+        if comports is None:
             try:
-                import serial
                 from serial.tools import list_ports
             except ImportError as exc:
                 raise UAVTalkLiveError(
                     "pyserial is required for live UAVTalk telemetry"
                 ) from exc
-            serial_factory = serial_factory or serial.Serial
-            comports = comports or list_ports.comports
+            comports = list_ports.comports
         try:
             matches = [
                 item for item in comports()
@@ -143,6 +141,15 @@ class SerialTelemetryTransport:
             raise UAVTalkLiveError("expected 1A86:7522 USB identity/location is not present")
 
         self.identity = "usb-serial:1a86:7522:%s" % location
+        self._reset_neutral = serial_factory is None
+        if serial_factory is None:
+            from .serial_posix import ResetNeutralPosixPort
+            try:
+                self._port = ResetNeutralPosixPort(device, 57600)
+            except Exception as exc:
+                raise UAVTalkLiveError("reset-neutral serial port open failed") from exc
+            self._outbound = OutboundProtocol(self._write)
+            return
         try:
             self._port = serial_factory(
                 port=None,
@@ -180,6 +187,11 @@ class SerialTelemetryTransport:
     def read(self, maximum: int) -> bytes:
         if type(maximum) is not int or not 1 <= maximum <= 4096:
             raise UAVTalkLiveError("invalid serial read bound")
+        if self._reset_neutral:
+            data = self._port.read_available(maximum)
+            if not isinstance(data, bytes) or len(data) > maximum:
+                raise UAVTalkLiveError("serial read exceeded its bound")
+            return data
         pending = getattr(self._port, "in_waiting", 0)
         if type(pending) is not int or pending < 0:
             pending = 0

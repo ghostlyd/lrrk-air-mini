@@ -45,3 +45,24 @@ or flight. The CLI's ordinary serial constructor still differs from the
 reset-neutral diagnostic collector used here; integrating that proven access
 method requires implementation and regression tests, not a documentation-only
 claim that the launcher already uses it.
+
+## Reset-neutral default transport implementation follow-up
+
+The host package now contains the diagnostic POSIX descriptor implementation
+and selects it by default in SerialTelemetryTransport after exact USB identity
+validation. The injected legacy factory remains a test/integration seam, not
+the normal CLI default. Enumeration still requires pyserial. Four added tests
+cover framing-only terminal configuration, exclusive access with no modem-line
+ioctl, partial writes, descriptor cleanup and the normal transport selection.
+The initial tests failed before implementation; all 332 host tests subsequently
+passed, including the real optional SDK tests. Expected negative-path output
+and SDK no-active-span diagnostics were present.
+
+A bounded hardware collection using the new normal constructor rejected an
+invalid sync byte after initial frame synchronization. It closed the port and
+did not produce an accepted aggregate. The private capture was retained; no
+provider call, reset, flash or motor command was performed for this follow-up.
+The console-enabled diagnostic image remains a possible source of mixed serial
+traffic, not an established cause. Strict framing was not relaxed. Thus host
+regression tests pass, but hardware acceptance of the normal path remains
+incomplete. Continuous acquisition is still separate pending work.
