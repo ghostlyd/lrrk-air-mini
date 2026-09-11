@@ -109,6 +109,28 @@ class FakeTransport:
 
 
 class LiveUAVTalkTests(unittest.TestCase):
+    def test_optional_nack_allows_legacy_collection_and_clears_health(self):
+        health = packet(0x20, 0xDA60A0C6, bytes.fromhex('130000000101680101'))
+        nack = packet(0x24, 0xDA60A0C6)
+        legacy = complete_stream()
+        for prior_health in (b'', health):
+            with self.subTest(cached=bool(prior_health)), tempfile.TemporaryDirectory() as directory:
+                transport = FakeTransport([legacy[:48] + prior_health + nack, legacy[48:]])
+                result = self.collector(transport, Path(directory) / 'capture').collect()
+                self.assertIsNone(result.sensors.imu_healthy)
+                self.assertIsNone(result.sensors.imu_identity)
+                self.assertIsNone(result.sensors.imu_sample_age_ms)
+                self.assertEqual(result.attitude.roll_deg, 10)
+                self.assertEqual(result.alarms, ())
+                self.assertNotIn(('ack', 0xDA60A0C6, 0), transport.operations)
+
+    def test_optional_nack_must_be_canonical(self):
+        for payload, instance in ((b'x', 0), (b'', 1)):
+            with self.subTest(payload=payload, instance=instance), tempfile.TemporaryDirectory() as directory:
+                transport = FakeTransport([complete_stream() + packet(0x24, 0xDA60A0C6, payload, instance)])
+                with self.assertRaises(UAVTalkLiveError):
+                    self.collector(transport, Path(directory) / 'capture').collect()
+
     def test_optional_imu_protocol_admits_only_data_object(self):
         writes = []
         protocol = OutboundProtocol(lambda value: writes.append(value) or len(value))

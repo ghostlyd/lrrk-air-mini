@@ -6,6 +6,24 @@ from lrrk_litewing_ai.live_uavtalk import LiveUAVTalkCollector, UAVTalkLiveError
 
 
 class USBStreamTests(unittest.TestCase):
+    def test_optional_nack_allows_legacy_stream_and_clears_health(self):
+        health = packet(0x20, 0xDA60A0C6, bytes.fromhex('130000000101680101'))
+        nack = packet(0x24, 0xDA60A0C6)
+        legacy = complete_stream()
+        for prior_health in (b'', health):
+            with self.subTest(cached=bool(prior_health)):
+                observations = []
+                count = self.run_stream([legacy + prior_health, nack + legacy[48:], legacy[48:]], observations.append)
+                self.assertEqual(count, 3)
+                self.assertEqual(observations[0].sensors.imu_healthy, True if prior_health else None)
+                for observation in observations[1:]:
+                    self.assertIsNone(observation.sensors.imu_healthy)
+                    self.assertIsNone(observation.sensors.imu_identity)
+                    self.assertIsNone(observation.sensors.imu_sample_age_ms)
+                    self.assertEqual(observation.attitude.roll_deg, 10)
+                    self.assertEqual(observation.alarms, ())
+                self.assertNotIn(('ack', 0xDA60A0C6, 0), self.transport.operations)
+
     def test_optional_health_ages_across_deliveries_without_blocking_legacy(self):
         observations = []
         health = packet(0x22, 0xDA60A0C6, bytes.fromhex('130000000101680101'))

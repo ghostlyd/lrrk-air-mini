@@ -141,10 +141,13 @@ class SdkToolTests(unittest.TestCase):
         agent = self.agent()
         for action in ("arm", "takeoff", "land", "write_actuators", "change_gains", "change_failsafes"):
             with self.subTest(action=action):
-                result = self.invoke(agent, "proposal_tool", {
-                    "action_kind": action, "rationale": "test forbidden action",
-                    "expected_effect": "must not happen", "expiry_seconds": 60,
-                })
+                with self.assertLogs("openai.agents", level="WARNING") as logs:
+                    result = self.invoke(agent, "proposal_tool", {
+                        "action_kind": action, "rationale": "test forbidden action",
+                        "expected_effect": "must not happen", "expiry_seconds": 60,
+                    })
+                self.assertEqual([record.getMessage() for record in logs.records],
+                                 ["No active span; trace error was not attached"])
                 self.assertIn("outside the advisory allowlist", result)
                 self.assertEqual(self.runtime.approvals.state, "IDLE")
                 self.assertIsNone(self.runtime.approvals.proposal)
@@ -154,10 +157,13 @@ class SdkToolTests(unittest.TestCase):
         agent = self.agent()
         for expiry in (0, 301):
             with self.subTest(expiry=expiry):
-                result = self.invoke(agent, "proposal_tool", {
-                    "action_kind": "review_battery", "rationale": "inspect supply",
-                    "expected_effect": "human review", "expiry_seconds": expiry,
-                })
+                with self.assertLogs("openai.agents", level="WARNING") as logs:
+                    result = self.invoke(agent, "proposal_tool", {
+                        "action_kind": "review_battery", "rationale": "inspect supply",
+                        "expected_effect": "human review", "expiry_seconds": expiry,
+                    })
+                self.assertEqual([record.getMessage() for record in logs.records],
+                                 ["No active span; trace error was not attached"])
                 self.assertIn("expiry_seconds must be between 1 and 300", result)
                 self.assertEqual(self.runtime.approvals.state, "IDLE")
 

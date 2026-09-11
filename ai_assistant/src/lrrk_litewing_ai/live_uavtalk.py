@@ -397,6 +397,13 @@ class LiveUAVTalkCollector:
             return
         if frame.object_id not in _REQUEST_OBJECT_IDS:
             return
+        if frame.object_id == LITEWING_IMU_HEALTH and frame.message_type == 0x24:
+            if frame.instance_id != 0 or frame.payload or frame.timestamp_ticks is not None:
+                raise UAVTalkLiveError("invalid optional IMU NACK")
+            # Older firmware can reject this optional request. Revoke any
+            # cached health without interrupting the mandatory telemetry set.
+            self._latest.pop(LITEWING_IMU_HEALTH, None)
+            return
         try:
             snapshot = snapshot_from_frame(frame, received_wall)
         except UAVTalkError as exc:
