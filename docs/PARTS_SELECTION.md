@@ -24,6 +24,7 @@ but likewise does not validate a battery or propeller SKU.
 | Battery retention and guards | 1 fitted set | Inspect existing kit and retain secure mounting; no exact replacement SKU verified |
 | USB data cable | 1 | Existing USB connection succeeded; no additional USB programmer is implied |
 | Development host | 1 | Existing Mac runs firmware build and native simulation; no onboard AI computer required for advisory assistance |
+| Independent host internet connection | 1 for simultaneous drone-AP operation and cloud AI | Use the Mac's existing Ethernet port plus an Ethernet cable/network connection, or another independently qualified uplink; no extra onboard radio is required. Current host Ethernet is inactive; simultaneous connectivity is not yet verified |
 | Positioning add-ons | Optional | VL53L1X and PMW3901 are advertised options; neither is enabled in the initial OpenPilot hardware wrapper |
 
 The [publisher's current wiki](https://circuitdigest.com/wiki/litewing/) lists
@@ -85,6 +86,15 @@ polarity, retention, or pack fit. No resistor replacement or wiring modification
 is prescribed here.
 
 ## Software dependencies and validation
+
+The drone-hosted AP is the local pilot/telemetry network; this implementation
+does not provide an internet uplink through the drone. A host that normally
+uses its only Wi-Fi interface for internet needs a separate internet path for
+simultaneous cloud AI assistance. Local pilot controls and offline advisory
+analysis do not require OpenAI connectivity. Offline capture followed by later
+cloud analysis is a separate workflow, not proof of simultaneous live assistance.
+Do not purchase a second adapter until the host's existing Ethernet option is
+checked. No cable, adapter, router or cellular plan purchase is implied here.
 
 See [port and dependency inventory](PORT_AND_DEPENDENCIES.md) for ESP-IDF,
 the pinned flight source and host-only AI boundary. Installed Gazebo/native

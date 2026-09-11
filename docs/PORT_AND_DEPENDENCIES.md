@@ -157,6 +157,7 @@ fresh installation or live radio test.
 | USB telemetry | Optional `uavtalk` extra: `pyserial>=3.5,<4` | Existing UAVTalk path retained; stock CRTP clients cannot operate LWPL |
 | Authenticated telemetry | Pinned NinjaPilot UAVObject manager, battery acquisition boundary and IDF `mbedtls`; CPython standard library on the host | Five rotating schemas, independent telemetry key/sequence, coherent battery bytes/age; real C-to-Python localhost integration verified, not board radio qualification |
 | Host advisory AI | Optional `openai` extra: `openai-agents==0.22.1`; standard-library handoff requires no extra package | Read-only worker integrated with launcher; no pilot key shared with AI tools; launcher runs local preflight analysis without API calls; live wireless-to-OpenAI validation remains outstanding |
+| Concurrent host networking | Wi-Fi to the drone AP plus an independent internet route for cloud AI | The drone AP does not supply internet. On the observed Mac, the default route is Wi-Fi (`en1`) and Ethernet (`en0`) is inactive; alternate-uplink qualification remains outstanding. Local/offline assistance does not require internet |
 | Windows private audit files | `oschmod==0.3.12`, `pywin32==312` | Declared Windows-only dependencies; not yet a credential-bundle storage implementation |
 
 Provisioning update: the [operator commands](../ai_assistant/README.md#operator-provisioning)
