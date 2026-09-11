@@ -8,7 +8,7 @@ review. It has no tool for raw motor values or direct flight commands.
 
 ## Offline first
 
-Preflight analyzer `litewing-safety-3` counts elapsed wall-clock time since
+Preflight analyzer `litewing-safety-4` counts elapsed wall-clock time since
 capture against the 500 ms default freshness budget. Effective link age is
 the recorded link age plus that elapsed time. Old replay fixtures therefore
 produce blocked readiness reports when evaluated today, while remaining useful
@@ -58,16 +58,34 @@ invalidation; restoring an earlier policy or snapshot cannot revive approval.
 The raw human token is neither retained nor returned. Approval still grants
 no flight execution authority.
 
-Normalized snapshot schema **2** distinguishes unknown alarm state (`null`)
-from a complete report with no alarms (`[]`). JSONL schema 1 remains readable,
-but omitted/null alarms now stay unknown rather than silently becoming clear.
+Normalized snapshots emit schema **3**, including `configuration` as an object
+or `null`. JSONL schemas 1 and 2 remain accepted as legacy input, but do not
+import configuration: even a supplied `configuration` field stays unobserved
+after normalization. Schema 3 imports non-null configuration through
+`ConfigurationObservation`; direct `TelemetrySnapshot` construction likewise
+requires that model or `None`.
+Unknown alarm state (`null`) remains distinct from a complete report with no
+alarms (`[]`); omitted/null alarms stay unknown rather than becoming clear.
 Alarms, actuators and capabilities accept arrays or null, never strings,
 booleans or objects (for example, `{"gps": false}` is not a declared GPS).
 Attitude, battery and sensors accept objects or null, not falsy scalar/array
-substitutes. Consumers must accept schema 2 output; normalization changes the
+substitutes. Consumers must accept schema 3 output; normalization changes the
 snapshot hash, so old proposal bindings are not reusable.
 
-Missing flight mode is unknown. Motor evidence must contain exactly four
+Missing flight mode is unknown. `Stabilized1` through `Stabilized6` are classified
+using the selected configuration slot. Their mode finding passes only with
+observed `QuadX` airframe and `Throttle` thrust control, supported `Rate` or
+`Attitude` rotational axes, and `Manual` thrust. Both settings ages, including
+elapsed time since capture, must be known and below 2000 ms. Missing, stale,
+or unsupported configuration yields `UNKNOWN`, not a passing mode finding.
+These settings are sampled, not atomic, and a passing mode finding does not
+override other preflight findings. The generic `rate`, `attitude`, `stabilized`,
+and `manual` modes retain their existing passing mode classification;
+unrecognized modes remain unknown. Recognized positioning modes
+(`position_hold`, `altitude_hold`, `auto`, `gps`, `navigation`) block without
+a declared positioning capability and pass the mode check when one is declared.
+
+Motor evidence must contain exactly four
 finite numeric observations under the LiteWing mapping; a partial vector does
 not pass merely because its available values are in range. Reported unsafe
 values still block even when the vector is incomplete. Unknown state cannot
