@@ -1,7 +1,8 @@
 # USB advisory streaming implementation
 
-Status: host-library implementation; not a flight qualification or continuous
-OpenAI service claim.
+Current status: one bounded live USB-to-OpenAI session verified on the retained
+normal image. Not a flight qualification or indefinite-service claim. Earlier
+failures below describe the diagnostic-image investigation.
 
 The collector now offers repeated, complete five-object snapshots on one
 reset-neutral transport. Every subsequent delivery requires fresh receipt of
@@ -150,3 +151,32 @@ accidentally synchronizing on an embedded payload pattern. The target defines
 `PIOS_INCLUDE_FREERTOS`, so the previously inspected conditional COM send mutex
 is enabled by source configuration. Neither finding proves runtime lock
 correctness or the absence of startup/driver byte loss.
+
+## Normal-image comparison and live USB-to-OpenAI result
+
+After fresh confirmation of propellers removed, a secured clear bench, and
+immediately disconnectable power, the retained normal application was flashed
+at `0x10000` only. Its SHA-256 is
+`bc5af53b2f534a3c17774aae35f3af30d26f574517a85d5f92f14f67bfc7da3f`
+and size is 873,440 bytes. Esptool validated its image checksum and reported
+successful write hash verification. Before/after private reads of `0x9000`
+length `0x7000` (NVS/PHY) and `0x110000` length `0x8000` (settings) were
+byte-for-byte identical. No arming settings or credentials were rewritten.
+The normal image has UART console disabled; the prior diagnostic image enabled
+UART console at 115200. Other image differences mean this is not proof that
+console configuration alone caused the framing failures.
+
+The production collector then delivered 25 complete snapshots over five seconds,
+capturing 22,233 bytes, all reporting Disarmed. The complete launcher subsequently
+ran for 15 seconds, captured 66,421 bytes, and offered 74 snapshots while one
+OpenAI advisory invocation completed. Audit replay validated the event chain
+through `usb_session_ended`. The response hash matched the output and that output
+was explicitly labeled historical. Full capture replay finished at a valid frame
+boundary: 74 FlightStatus samples were Disarmed, and 89 actuator samples all
+contained four zeros. No motor commands were issued by these tools.
+
+This verifies a bounded working USB-to-Mac-to-OpenAI path on the normal image,
+not repeated cold-start reliability, wireless operation, or flight readiness.
+The installed application is now the retained normal image, not the temporary
+diagnostic image described earlier. Private backups, captures and responses
+remain outside Git.

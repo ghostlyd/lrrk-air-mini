@@ -1,5 +1,13 @@
 # LiteWing port and dependency inventory
 
+Latest hardware checkpoint (2026-09-11): the retained normal application was
+restored with an application-only flash; NVS/PHY and settings bytes were
+unchanged. A 15-second USB advisory session delivered 74 snapshots and completed
+one OpenAI analysis, with captured status Disarmed and all motor outputs zero.
+See the [normal-image comparison](verification/usb-advisory-stream-2026-09-11.md#normal-image-comparison-and-live-usb-to-openai-result).
+This supersedes older statements below that the diagnostic image is installed,
+but does not establish repeated-start reliability or flight qualification.
+
 USB-first update (2026-09-11): the draft branch adds `litewing-usb-advisory`,
 combining reset-neutral USB acquisition, a separate latest-only advisory worker,
 bounded provider attempts and cooperative deadlines. Mac internet stays on its
