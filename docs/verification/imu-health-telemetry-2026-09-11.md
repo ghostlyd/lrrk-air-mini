@@ -38,3 +38,34 @@ installed. No board reset, flash or motor command occurred in these checks.
 Battery compatibility, physical flight configuration and controlled flight
 qualification are not established by this telemetry feature. See
 [parts selection](../PARTS_SELECTION.md) for outstanding physical dependencies.
+
+## Merged-image bench result and transport defect
+
+PR #77 merged as `e77a676419d3fb9a5c3294f323916d5f721b2787` after 25 successful
+checks. The later host compatibility fix passed 378 tests without skips. The
+installed host package also handled 25 optional-object NACKs from the previous
+firmware while delivering 25 snapshots in five seconds; observed status was
+Disarmed and all four observed motor-command channels were zero.
+
+The merged application built with SHA-256
+`1b7dc0f25094087a84c76563f891cf27503041e445db03fe78ff9ff29aba078d` and was flashed
+at `0x10000`. Readback matched the application exactly. The boot/partition area,
+NVS/PHY and settings were byte-identical before and after. This proves transfer
+and preservation, not successful telemetry operation.
+
+The first normal-image collection received no bytes. A temporary UART-console
+build of the same source subsequently reached module startup. An object probe
+received 22 healthy IMU observations with verified identity and 1–2 ms sample
+age, but larger mandatory telemetry requests were NACKed.
+
+Root cause: the custom generator also emits `uavobjectsinit.h`. Putting that
+directory first in the component include search path shadows the upstream
+aggregate header. Preprocessing the actual target `uavtalk.c` compile command
+confirmed `UAVOBJECTS_LARGEST` was **9**, instead of the upstream **217**. Thus
+successful nine-byte IMU and eight-byte status packets did not establish that
+larger existing objects could be transmitted. Standalone schema tests missed
+this cross-component include-resolution defect.
+
+Header isolation and an effective-build regression are in progress. The
+temporary console-enabled diagnostic image is currently installed; it is not a
+flight release. All raw boot/serial captures and flash backups remain private.
