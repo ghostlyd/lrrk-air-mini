@@ -2,8 +2,9 @@
 
 Reviewed 2026-09-09. This is a source-backed inventory, not a claim that a
 specific battery or replacement assembly was fitted or tested. The owner
-previously reported having no battery; current physical battery status has not
-been reconfirmed. Owner photos confirm a printed **V1.2** marking; the source
+reported on 2026-09-11 that a battery is arriving today and will provide a test
+update. Receipt, label, connector, polarity and compatibility remain unverified.
+Owner photos confirm a printed **V1.2** marking; the source
 directory `LieWingV2.6.C` also contains this same silkscreen text. See the
 [photo identification record](verification/board-photo-identification-2026-09-09.md)
 for observations and the remaining electrical/connector checks. USB-C has

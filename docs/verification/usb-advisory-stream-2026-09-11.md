@@ -1,8 +1,10 @@
 # USB advisory streaming implementation
 
 Current status: one bounded live USB-to-OpenAI session verified on the retained
-normal image. Not a flight qualification or indefinite-service claim. Earlier
-failures below describe the diagnostic-image investigation.
+normal image. A subsequent two-session reopen check succeeded once and then
+failed, so reconnect reliability remains unresolved. Not a flight qualification
+or indefinite-service claim. Earlier failures below describe the diagnostic-image
+investigation.
 
 The collector now offers repeated, complete five-object snapshots on one
 reset-neutral transport. Every subsequent delivery requires fresh receipt of
@@ -45,10 +47,23 @@ cost or input-token usage. Local SDK configuration/cleanup tests cover these
 settings. The bounded fixture provider check below verifies a real invocation,
 not live aircraft acquisition.
 
-Remaining work: live USB qualification and a
-bounded end-to-end OpenAI streaming session. These host tests do not
-resolve the previously observed intermittent framing failure or qualify the
-temporary diagnostic firmware for flight.
+Remaining work: repeatable live USB/reconnect qualification. The bounded
+end-to-end OpenAI session succeeded as recorded below; that success does not
+resolve the intermittent failure or qualify firmware for flight.
+
+## Follow-up review fixes
+
+Commit `65b9bd0` addresses three independently reproduced host defects:
+inherited HUPCL was retained (allowing hang-up-on-close), successful partial
+writes bypassed the write deadline, and disconnect during final-frame completion
+could return stream success. Regression tests failed for all three before the
+fix and the complete host suite passed afterward: 359 tests. The implementation
+clears HUPCL, checks the deadline before each write, and rejects a connected-to-
+disconnected transition during completion. Nonblocking syscall duration itself
+is not preempted by the deadline.
+
+These offline results do not prove which defect caused the physical reconnect
+failure. Follow-up review and a new bounded hardware check remain required.
 
 ## First live launcher check
 
