@@ -33,7 +33,9 @@ class ImuPublicationTests(unittest.TestCase):
             print('COMPILE:', ' '.join(command), flush=True)
             result = subprocess.run(command, capture_output=True, text=True, timeout=30)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-            for case in ('normal', 'initial-publish', 'runtime-publish', 'create', 'register'):
-                result = subprocess.run([str(binary), case], capture_output=True, text=True, timeout=15)
-                print('RUN:', binary, case, result.stdout, result.stderr, flush=True)
-                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            for case in ('normal', 'initial-publish', 'runtime-publish', 'create', 'register',
+                         'queue-delay', 'reset-completion'):
+                with self.subTest(case=case):
+                    result = subprocess.run([str(binary), case], capture_output=True, text=True, timeout=15)
+                    print('RUN:', binary, case, result.stdout, result.stderr, flush=True)
+                    self.assertEqual(result.returncode, 0, result.stdout + result.stderr)

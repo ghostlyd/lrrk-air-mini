@@ -274,9 +274,14 @@ static void sensor_task(__attribute__((unused)) void *argument)
         const uint32_t now_ms = (uint32_t)(xTaskGetTickCount() *
                                            portTICK_PERIOD_MS);
         uint64_t generation;
+        bool identity_verified_at_start;
         portENTER_CRITICAL(&observation_lock);
         generation = observation_generation;
+        identity_verified_at_start = observation.identity_verified;
         portEXIT_CRITICAL(&observation_lock);
+        /* Keep a conservative acquisition timestamp across I2C and queue
+         * publication, either of which may yield before telemetry commits. */
+        const int64_t captured_us = esp_timer_get_time();
 
         if (notified == 0u || !transfer_read(LITEWING_MPU6050_REG_ACCEL_XOUT_H,
                                               frame, sizeof(frame))) {
@@ -295,9 +300,9 @@ static void sensor_task(__attribute__((unused)) void *argument)
         publish_sample(frame);
         device.sample_seen = true;
         device.last_sample_ms = now_ms;
-        const int64_t captured_us = esp_timer_get_time();
         portENTER_CRITICAL(&observation_lock);
-        if (generation == observation_generation && observation.identity_verified) {
+        if (identity_verified_at_start && generation == observation_generation &&
+            observation.identity_verified) {
             observation.sample_seen = true;
             observation.healthy = true;
             observation.sample_ms = (uint32_t)(captured_us / 1000);

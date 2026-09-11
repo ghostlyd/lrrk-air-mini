@@ -9,6 +9,9 @@
 static int64_t now=1000000;
 static unsigned motor_writes, publications, creates;
 static bool fail_read, reset_in_read;
+static int64_t queue_delay_us;
+static bool complete_reset_in_read;
+static uint64_t pending_reset_generation;
 static unsigned identity_reads, shutdown_on_identity_read;
 static LiteWingIMUHealthData cached;
 static uint8_t identity=0x68;
@@ -29,13 +32,21 @@ int PIOS_I2C_Transfer(uint32_t id,const struct pios_i2c_txn *t,unsigned n) {
      t[1].buf[0]=identity; return 0;
    }
    if(reset_in_read) { reset_in_read=false; PIOS_LiteWing_MPU6050_Shutdown(); }
+   if(complete_reset_in_read) {
+     complete_reset_in_read=false;
+     /* Resume the final validation of a reset that invalidated observation
+      * before this acquisition started, without changing its generation. */
+     assert(record_identity(identity,pending_reset_generation));
+   }
    memset(t[1].buf,0,t[1].len); return fail_read?-1:0;
  } return 0;
 }
 bool PIOS_ESP32_I2C_Probe(uint32_t i,uint8_t a) { (void)i;(void)a;return true; }
 int PIOS_SENSORS_Register(const PIOS_SENSORS_Driver *d,int t,uintptr_t c) {(void)d;(void)t;(void)c;return 1;}
 void *pios_malloc(size_t n) { return calloc(1,n); }
-int xQueueSend(void *q,const void *v,unsigned t) {(void)q;(void)v;(void)t;return 1;}
+int xQueueSend(void *q,const void *v,unsigned t) {
+ (void)q;(void)v;(void)t;now+=queue_delay_us;return 1;
+}
 int xQueueReceive(void *q,void *v,unsigned t) {(void)q;(void)v;(void)t;return 1;}
 void *xQueueCreate(unsigned n,unsigned s) {(void)n;(void)s;return (void *)1;}
 void vQueueDelete(void *q) {(void)q;}
@@ -100,6 +111,23 @@ int main(int argc,char **argv) {
  assert((LiteWingImuHealthStart()==0)==!is("create"));assert(creates==1);
  assert(LiteWingImuHealthStart()!=0);
  if(is("create")) { sample();pack(0,UINT32_MAX);free(queue_data);puts("PASS");return 0; }
+ if(is("queue-delay")) {
+   queue_delay_us=21000;
+   sample();
+   pack(0,21); /* Queue publication must not renew a 21 ms old acquisition. */
+   queue_delay_us=0;sample();pack(1,0);
+   free(queue_data);puts("PASS");return 0;
+ }
+ if(is("reset-completion")) {
+   pending_reset_generation=invalidate_observation();
+   complete_reset_in_read=true;
+   sample();
+   PIOS_LiteWing_MPU6050_GetObservation(&o);
+   assert(o.identity_verified && !o.sample_seen);
+   pack(0,UINT32_MAX); /* A reset-period read cannot inherit later identity. */
+   sample();pack(1,0); /* A subsequent validated acquisition is admissible. */
+   free(queue_data);puts("PASS");return 0;
+ }
  sample(); pack(1,0);
  now+=19000;pack(1,19);now+=1000;pack(0,20); /* explicit request and queued pack */
  now+=((int64_t)UINT32_MAX+1)*1000;pack(0,UINT32_MAX); /* full wrap cannot revive */
