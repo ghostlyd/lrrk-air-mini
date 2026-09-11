@@ -244,9 +244,8 @@ static int board_apply_safe_defaults(void)
     return litewing_settings_recover(&ops, NULL);
 }
 
-static void board_set_boot_fault_at(unsigned line)
+static void board_set_boot_fault(void)
 {
-    printf("[LiteWing] board fault at source line %u\n", line);
     board_boot_fault = true;
     /* Before PWM initialization this is a no-op: early returns and the entry
      * gate must prevent later hardware/module initialization. After PWM init,
@@ -259,7 +258,6 @@ static void board_set_boot_fault_at(unsigned line)
         PIOS_LED_On(PIOS_LED_ALARM);
     }
 }
-#define board_set_boot_fault() board_set_boot_fault_at(__LINE__)
 
 static int32_t board_set_firmware_identity(void)
 {
@@ -388,9 +386,7 @@ void PIOS_Board_Init(void)
             gcs_rcvr_id;
     }
 
-    const int32_t adapter_result = PIOS_LiteWing_Board_Init();
-    if (adapter_result != 0) {
-        printf("[LiteWing] hardware adapter result %ld\n", (long)adapter_result);
+    if (PIOS_LiteWing_Board_Init() != 0) {
         /* The target adapter has already forced zero duty before returning. */
         board_set_boot_fault();
         return;
