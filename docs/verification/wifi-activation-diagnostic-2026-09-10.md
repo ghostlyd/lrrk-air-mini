@@ -140,9 +140,20 @@ failure, not proof of its root cause or reliable warm-reset recovery. The same
 temporary diagnostic application remains installed. AP activation, wireless
 telemetry, normal-console image qualification and flight remain unverified.
 
-A fresh macOS Wi-Fi inventory after this recovery still did not contain the
-configured SSID. This remains an inventory observation, not definitive proof
-that the AP is inactive. No association or credential submission was attempted.
+A fresh macOS Wi-Fi inventory after this recovery did not produce an exact
+configured-SSID match. Subsequent inspection established that 11 of its 13
+name fields were redacted, including network inventory entries. Consequently,
+this comparison cannot establish AP presence or absence; the earlier negative
+SSID comparisons above must not be used as evidence that the radio failed.
+No association or credential submission was attempted.
+
+The native System Settings Wi-Fi panel then displayed a secured network whose
+SSID matched the saved private credential bundle exactly, with three signal
+bars. This establishes that the configured network is visible to the host;
+SSID visibility alone does not authenticate the board or establish a working
+command link. The host remained on its existing network. Secure association
+and authenticated wireless telemetry are the next checks. The SSID and nearby
+network inventory are intentionally omitted from this public record.
 
 Next: qualify the normal-console image and investigate reset-dependent MPU6050
 startup behavior before claiming a permanent fix. Do not claim an Armed state,
