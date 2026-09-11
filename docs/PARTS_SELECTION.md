@@ -1,8 +1,9 @@
 # Parts selection and purchase gates
 
 Reviewed 2026-09-09. This is a source-backed inventory, not a claim that a
-specific battery or replacement assembly was fitted or tested. The owner has
-no battery. Owner photos confirm a printed **V1.2** marking; the source
+specific battery or replacement assembly was fitted or tested. The owner
+previously reported having no battery; current physical battery status has not
+been reconfirmed. Owner photos confirm a printed **V1.2** marking; the source
 directory `LieWingV2.6.C` also contains this same silkscreen text. See the
 [photo identification record](verification/board-photo-identification-2026-09-09.md)
 for observations and the remaining electrical/connector checks. USB-C has
@@ -24,6 +25,7 @@ but likewise does not validate a battery or propeller SKU.
 | Battery retention and guards | 1 fitted set | Inspect existing kit and retain secure mounting; no exact replacement SKU verified |
 | USB data cable | 1 | Existing USB connection succeeded; no additional USB programmer is implied |
 | Development host | 1 | Existing Mac runs firmware build and native simulation; no onboard AI computer required for advisory assistance |
+| Internet for tethered USB advisory AI | Existing Mac connection | Mac retains its ordinary internet connection while receiving drone telemetry over USB serial; no Ethernet adapter, USB networking firmware, or onboard API key is required |
 | Independent host internet connection | 1 for simultaneous drone-AP operation and cloud AI | Use the Mac's existing Ethernet port plus an Ethernet cable/network connection, or another independently qualified uplink; no extra onboard radio is required. Current host Ethernet is inactive; simultaneous connectivity is not yet verified |
 | Positioning add-ons | Optional | VL53L1X and PMW3901 are advertised options; neither is enabled in the initial OpenPilot hardware wrapper |
 
@@ -86,6 +88,19 @@ polarity, retention, or pack fit. No resistor replacement or wiring modification
 is prescribed here.
 
 ## Software dependencies and validation
+
+### Current USB-first integration
+
+The approved tethered path is drone USB serial → Mac advisory worker → OpenAI
+over the Mac's existing internet connection. It does not require IP networking
+on the drone's USB-C port. The host launcher `litewing-usb-advisory` is implemented
+on the draft development branch, with offline analysis as its default and
+explicit `--live-agent` opt-in. See the [streaming verification record](verification/usb-advisory-stream-2026-09-11.md)
+for local tests and the unresolved intermittent live framing failure. No new
+hardware purchase is needed to continue this software integration. This is not
+proof of reliable live streaming or flight readiness.
+
+### Separate wireless operating mode
 
 The drone-hosted AP is the local pilot/telemetry network; this implementation
 does not provide an internet uplink through the drone. A host that normally

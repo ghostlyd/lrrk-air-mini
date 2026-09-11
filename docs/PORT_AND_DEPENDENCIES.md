@@ -1,5 +1,13 @@
 # LiteWing port and dependency inventory
 
+USB-first update (2026-09-11): the draft branch adds `litewing-usb-advisory`,
+combining reset-neutral USB acquisition, a separate latest-only advisory worker,
+bounded provider attempts and cooperative deadlines. Mac internet stays on its
+normal connection; no drone USB network stack or additional network hardware is
+required for this path. The latest local suite passed 355 tests, but live startup
+framing is intermittent and unresolved. See the [streaming record](verification/usb-advisory-stream-2026-09-11.md).
+This draft source is not a merged release or installed firmware claim.
+
 Current checkpoint: the keyboard launcher and local advisory worker are merged
 through PR #74. Credential storage was verified. A complete USB power cycle
 recovered live USB telemetry and changing attitude samples with disarmed/zero
