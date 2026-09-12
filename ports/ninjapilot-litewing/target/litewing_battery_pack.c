@@ -3,6 +3,7 @@
 #include "litewing_battery_pack.h"
 #include "litewing_imu_health_pack.h"
 #include "litewing_pwm_observation.h"
+#include "litewing_attitude_trace_module.h"
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include <string.h>
@@ -19,6 +20,10 @@ void LiteWingBatteryStoreSample(const struct litewing_battery_sample *sample)
 
 int32_t LiteWingBatteryPack(UAVObjHandle obj, uint16_t instance, uint8_t *data)
 {
+#if CONFIG_LRRK_ATTITUDE_TRACE
+    if (obj && UAVObjGetID(obj) == UINT32_C(0x5E93B7FE))
+        return LiteWingAttitudeTracePack(obj, instance, data);
+#endif
     if (UAVObjGetID(obj) == UINT32_C(0xA6453F6E))
         return LiteWingPwmObservationPack(obj, instance, data);
     if (UAVObjGetID(obj) == UINT32_C(0xDA60A0C6))

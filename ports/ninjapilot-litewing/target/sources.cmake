@@ -11,6 +11,8 @@ set(LITEWING_TARGET_SRCS
     ${CMAKE_CURRENT_LIST_DIR}/litewing_imu_health.c
     ${CMAKE_CURRENT_LIST_DIR}/litewing_imu_health_module.c
     ${CMAKE_CURRENT_LIST_DIR}/litewing_pwm_observation.c
+    ${CMAKE_CURRENT_LIST_DIR}/litewing_attitude_trace.c
+    ${CMAKE_CURRENT_LIST_DIR}/litewing_attitude_trace_module.c
     ${CMAKE_CURRENT_LIST_DIR}/litewing_boot_readiness.c
     ${CMAKE_CURRENT_LIST_DIR}/pios_litewing_mpu6050.c
     ${CMAKE_CURRENT_LIST_DIR}/pios_litewing_brushed_pwm.c

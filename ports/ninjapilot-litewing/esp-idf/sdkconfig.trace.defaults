@@ -1,0 +1,4 @@
+# Trace the current short diagnostic first; does not select ten-second output.
+CONFIG_LRRK_BENCH_OUTPUT_LIMIT=y
+CONFIG_LRRK_BENCH_OUTPUT_DURATION_MS=1000
+CONFIG_LRRK_ATTITUDE_TRACE=y

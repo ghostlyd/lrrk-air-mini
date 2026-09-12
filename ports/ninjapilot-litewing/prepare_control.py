@@ -110,6 +110,15 @@ static float lastThrottleDesired;""")
         // read in throttle and collective -demultiplex thrust""")
     receiver = prepare_input(receiver, "Receiver")
     attitude = prepare_input(inputs["Attitude/attitude.c"], "Attitude")
+    attitude = replace_exact(attitude, '#include <openpilot.h>',
+        '#include <openpilot.h>\n#include "litewing_attitude_trace_module.h"')
+    attitude = replace_exact(attitude, '    AttitudeStateSet(&attitudeState);',
+        '''    AttitudeStateSet(&attitudeState);
+#if CONFIG_LRRK_ATTITUDE_TRACE
+    /* Same estimator update; PWM in the callee is a separate qualified snapshot. */
+    const float trace_gyro[3] = {gyrosData->x, gyrosData->y, gyrosData->z};
+    LiteWingAttitudeTraceRecord(dT, accels, trace_gyro, gyros, rpy_temp);
+#endif''')
     # All inputs/anchors validated before writes. Preserve original GPL notices.
     output.mkdir(parents=True, exist_ok=True)
     for name, code in (("receiver.c", receiver), ("actuator.c", actuator), ("attitude.c", attitude)):
