@@ -43,9 +43,10 @@ public struct CodexMicroMapping: Equatable, Sendable {
 public enum CodexMicroMappingPolicy {
     /// Converts only a complete, accepted capture into a staged profile.
     ///
-    /// Four buttons provide digital roll/pitch directions, the dial provides
-    /// normalized yaw deltas, and Button 5 is a latched stop. Thrust remains
-    /// unbound until a later, separately validated control stage.
+    /// Four learned button reports provide digital roll/pitch directions, the
+    /// relative knob report provides normalized yaw deltas, and the fifth
+    /// learned button report is a latched stop. Thrust remains unbound until
+    /// a later, separately validated control stage.
     public static func stagedMapping(from capture: GuidedCaptureState) -> CodexMicroMapping? {
         guard capture.isComplete else { return nil }
         let buttonIDs = (1...5).map { "button-\($0)" }
@@ -76,7 +77,7 @@ public enum CodexMicroMappingPolicy {
 
         return CodexMicroMapping(
             profile: HIDControlProfile(name: "Codex Micro · learned staged mapping", actions: actions),
-            summary: "B1 roll − · B2 roll + · B3 pitch + · B4 pitch − · dial yaw · B5 emergency stop · thrust unbound"
+            summary: "Learned buttons 1–4 roll/pitch · learned button 5 emergency stop · knob yaw · thrust unbound"
         )
     }
 }

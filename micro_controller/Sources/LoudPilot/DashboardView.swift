@@ -14,6 +14,8 @@ struct DashboardView: View {
     @State private var motorOrderVerified = false
     @State private var securedBenchTestsPassed = false
     @State private var operatorOutdoorApproval = false
+    @State private var outputMode: FlightOutputMode = .readOnly
+    @State private var emulatorValues = IntendedControlValues()
 
     var body: some View {
         TimelineView(.periodic(from: .now, by: 1)) { context in
@@ -21,7 +23,9 @@ struct DashboardView: View {
                 VStack(alignment: .leading, spacing: 16) {
                     header
                     safetyBoundary
+                    commandPathSection
                     bluetoothSection
+                    workLouderSection
                     captureSection(now: context.date.timeIntervalSince1970)
                     microSection
                     telemetrySection(now: context.date.timeIntervalSince1970)
@@ -97,6 +101,104 @@ struct DashboardView: View {
         .background(.orange.opacity(0.10), in: RoundedRectangle(cornerRadius: 12))
     }
 
+    private var commandPathSection: some View {
+        GroupBox {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack {
+                    Label("Command path", systemImage: "paperplane")
+                        .font(.title3.bold())
+                    Spacer()
+                    statusPill(
+                        label: "Mode",
+                        value: outputMode == .emulatorPreview ? "EMULATOR · LOCAL" : outputMode.label.uppercased(),
+                        color: outputMode == .emulatorPreview ? .green : .orange
+                    )
+                }
+
+                Picker("Controller path", selection: $outputMode) {
+                    ForEach(FlightOutputMode.allCases, id: \.self) { mode in
+                        Text(mode.label).tag(mode)
+                    }
+                }
+                .pickerStyle(.segmented)
+
+                Text(outputMode.detail)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                if outputMode == .emulatorPreview {
+                    if !hidMonitor.selectedDeviceConnected {
+                        emulatorController
+                    }
+                    let command = FlightCommandMapper().command(for: commandPreviewValues)
+                    HStack(alignment: .top, spacing: 24) {
+                        valueColumn("Roll", String(format: "%+.2f°", command.rollDegrees))
+                        valueColumn("Pitch", String(format: "%+.2f°", command.pitchDegrees))
+                        valueColumn("Yaw", String(format: "%+.2f°/s", command.yawDegreesPerSecond))
+                        valueColumn("Thrust", "\(command.thrust)")
+                        Spacer()
+                        statusPill(label: "Physical TX", value: "DISCONNECTED", color: .green)
+                    }
+                    Text(hidMonitor.selectedDeviceConnected
+                         ? "Source: Codex Micro intended values"
+                         : "Source: local emulator controller (Micro unavailable)")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                    Text("Emulator frame preview: \(encodedCommandPreview(command))")
+                        .font(.system(.caption2, design: .monospaced))
+                        .textSelection(.enabled)
+                } else {
+                    HStack(spacing: 10) {
+                        Image(systemName: "lock.shield.fill")
+                            .foregroundStyle(.orange)
+                        Text("No live LiteWing flight packet is sent. Physical output remains fail-closed behind telemetry, mapping, focus, stop, and transport gates.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
+        }
+    }
+
+    private var emulatorController: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Label("Emulator controller", systemImage: "gamecontroller")
+                    .font(.callout.bold())
+                Spacer()
+                Button("Release / neutral") {
+                    emulatorValues = IntendedControlValues()
+                }
+                .buttonStyle(.bordered)
+            }
+            Text("Local mapping exercise only. These buttons change the preview frame and never transmit to LiteWing.")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+            HStack(spacing: 8) {
+                emulatorButton("Roll −", systemImage: "arrow.left") { emulatorValues = IntendedControlValues(roll: -1) }
+                emulatorButton("Roll +", systemImage: "arrow.right") { emulatorValues = IntendedControlValues(roll: 1) }
+                emulatorButton("Pitch +", systemImage: "arrow.up") { emulatorValues = IntendedControlValues(pitch: 1) }
+                emulatorButton("Pitch −", systemImage: "arrow.down") { emulatorValues = IntendedControlValues(pitch: -1) }
+            }
+            HStack(spacing: 8) {
+                emulatorButton("Yaw −", systemImage: "rotate.left") { emulatorValues = IntendedControlValues(yaw: -1) }
+                emulatorButton("Yaw +", systemImage: "rotate.right") { emulatorValues = IntendedControlValues(yaw: 1) }
+                emulatorButton("Vertical up", systemImage: "arrow.up.to.line") { emulatorValues = IntendedControlValues(thrust: 1) }
+                emulatorButton("Vertical down", systemImage: "arrow.down.to.line") { emulatorValues = IntendedControlValues(thrust: 0) }
+            }
+        }
+        .padding(10)
+        .background(Color.green.opacity(0.08), in: RoundedRectangle(cornerRadius: 10))
+    }
+
+    private func emulatorButton(_ title: String, systemImage: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Label(title, systemImage: systemImage)
+                .font(.caption)
+        }
+        .buttonStyle(.bordered)
+    }
+
     private var bluetoothSection: some View {
         GroupBox {
             VStack(alignment: .leading, spacing: 12) {
@@ -145,6 +247,49 @@ struct DashboardView: View {
                 Text("Eligible Micro devices: \(bluetooth.controllerCandidates.count)")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    private var workLouderSection: some View {
+        GroupBox {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack {
+                    Label("Work Louder Input compatibility", systemImage: "puzzlepiece.extension")
+                        .font(.title3.bold())
+                    Spacer()
+                    statusPill(
+                        label: "Companion",
+                        value: workLouderInputURL == nil ? "NOT FOUND" : "AVAILABLE",
+                        color: workLouderInputURL == nil ? .secondary : .green
+                    )
+                }
+
+                Text("LoudPilot uses native HID capture and keeps Work Louder Input optional. The companion can configure Codex Micro layers and gestures; LoudPilot owns the separate telemetry and safety boundary.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                HStack {
+                    if let workLouderInputURL {
+                        Button("Open Work Louder Input") {
+                            NSWorkspace.shared.open(workLouderInputURL)
+                        }
+                        .disabled(hidMonitor.inputOwnershipMode == .exclusive)
+                        if hidMonitor.inputOwnershipMode == .exclusive {
+                            Text("Release LoudPilot ownership before opening the companion to avoid HID contention.")
+                                .font(.caption2)
+                                .foregroundStyle(.orange)
+                        }
+                    } else {
+                        Text("Install the official companion separately if you want its device configuration surface.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    Text("No proprietary binary is bundled")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
             }
         }
     }
@@ -565,6 +710,17 @@ struct DashboardView: View {
         return device.transport
     }
 
+    private var commandPreviewValues: IntendedControlValues {
+        if outputMode == .emulatorPreview && !hidMonitor.selectedDeviceConnected {
+            return emulatorValues
+        }
+        return hidMonitor.safetyState.intended
+    }
+
+    private var workLouderInputURL: URL? {
+        NSWorkspace.shared.urlForApplication(withBundleIdentifier: "it.focusense.input-app")
+    }
+
     private var wifiDetail: String {
         wifiPath.status == .connected
             ? "Mac Wi-Fi path available; fresh LiteWing telemetry still required"
@@ -599,6 +755,16 @@ struct DashboardView: View {
             }
         }
         .frame(minWidth: 150, alignment: .leading)
+    }
+
+    private func encodedCommandPreview(_ command: FlightCommand) -> String {
+        do {
+            return try FlightCommandWire.encodeRPYT(command)
+                .map { String(format: "%02x", $0) }
+                .joined(separator: " ")
+        } catch {
+            return "unavailable (\(error))"
+        }
     }
 
     private func statusPill(label: String, value: String, color: Color) -> some View {

@@ -61,6 +61,17 @@ enum ControlMappingTests {
         try expect(BuiltInControlProfiles.codexMicro.action(for: axis) == nil, "Codex Micro axes require report inspection before mapping")
     }
 
+    static func testCodexMicroPhysicalLayoutMatchesReferenceAndKeepsRotationKnobOnly() throws {
+        try expect(CodexMicroPhysicalControl.allCases.count == 15, "physical reference should expose all 15 control positions")
+        try expect(CodexMicroPhysicalControl.knob.shape == .knob, "top-left control should be represented as the knob")
+        try expect(CodexMicroPhysicalControl.topRightPlanarJoystick.label.contains("planar joystick"), "top-right control should be labeled as the physical joystick")
+        try expect(CodexMicroAssignment.rotate360.isAllowed(on: .knob), "360 degree rotation should be allowed on the knob")
+        try expect(!CodexMicroAssignment.rotate360.isAllowed(on: .topCenterLeft), "360 degree rotation must not be allowed on a button")
+        try expect(CodexMicroAssignment.verticalUp.isAllowed(on: .knob), "the knob should support vertical-up assignment")
+        try expect(CodexMicroAssignment.verticalDown.isAllowed(on: .knob), "the knob should support vertical-down assignment")
+        try expect(!CodexMicroAssignment.rollLeft.isAllowed(on: .knob), "the knob should not silently become a generic button")
+    }
+
     static func testCodexMicroLearnedMappingRequiresAllSignaturesAndStagesSafeAssignments() throws {
         var capture = GuidedCaptureState(plan: GuidedCapturePlan.codexMicro)
 

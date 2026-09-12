@@ -33,27 +33,33 @@ public struct GuidedCapturePlan: Equatable, Sendable {
 
     /// The current Codex Micro descriptor exposes five HID button usages and
     /// a relative dial-like input. The physical correlation is still learned
-    /// from repeated live reports instead of being inferred from axes.
+    /// from repeated live reports instead of being inferred from positions or
+    /// axes. The diagram is a physical reference for the calibration surface;
+    /// its neutral labels are not HID mappings.
     public static let codexMicro = GuidedCapturePlan(
         name: "Codex Micro guided capture",
         diagram: """
-        Codex Micro (USB-C)
+        Codex Micro physical reference (USB-C)
+                         ↑
+        ┌─────────────────────────────────────┐
+        │  K   │ T1 │ T2 │ JS                  │
+        │ M1   │ M2 │ M3 │ M4                  │
+        │ L1   │ L2 │ L3 │ L4                  │
+        │ TS   │       BW       │ BR           │
+        └─────────────────────────────────────┘
 
-        ┌────┬────┬────┬────┬────┐
-        │ B1 │ B2 │ B3 │ B4 │ B5 │  logical HID buttons
-        └────┴────┴────┴────┴────┘
-                    ◀ dial ▶
-
-        Press order: B1 → B2 → B3 → B4 → B5 → dial clockwise → dial counter-clockwise
+        Select a physical position, then follow the raw-report prompt.
+        K is the only position eligible for 360° rotation; it may instead
+        be assigned vertical up/down. Position labels do not infer HID axes.
         """,
         steps: [
-            GuidedCaptureStep(id: "button-1", label: "Button 1", instruction: "Press and hold Button 1 three times. Release fully between cycles.", kind: .buttonOrKey),
-            GuidedCaptureStep(id: "button-2", label: "Button 2", instruction: "Press and hold Button 2 three times. Release fully between cycles.", kind: .buttonOrKey),
-            GuidedCaptureStep(id: "button-3", label: "Button 3", instruction: "Press and hold Button 3 three times. Release fully between cycles.", kind: .buttonOrKey),
-            GuidedCaptureStep(id: "button-4", label: "Button 4", instruction: "Press and hold Button 4 three times. Release fully between cycles.", kind: .buttonOrKey),
-            GuidedCaptureStep(id: "button-5", label: "Button 5", instruction: "Press and hold Button 5 three times. Release fully between cycles.", kind: .buttonOrKey),
-            GuidedCaptureStep(id: "dial-clockwise", label: "Dial clockwise", instruction: "Turn the dial clockwise through at least three distinct detents, then stop.", kind: .dialClockwise),
-            GuidedCaptureStep(id: "dial-counterclockwise", label: "Dial counter-clockwise", instruction: "Turn the same dial counter-clockwise through at least three distinct detents, then stop.", kind: .dialCounterclockwise),
+            GuidedCaptureStep(id: "button-1", label: "Raw button signature 1", instruction: "Select the physical position being calibrated, then press and hold it three times. Release fully between cycles.", kind: .buttonOrKey),
+            GuidedCaptureStep(id: "button-2", label: "Raw button signature 2", instruction: "Select the next physical position, then press and hold it three times. Release fully between cycles.", kind: .buttonOrKey),
+            GuidedCaptureStep(id: "button-3", label: "Raw button signature 3", instruction: "Select the next physical position, then press and hold it three times. Release fully between cycles.", kind: .buttonOrKey),
+            GuidedCaptureStep(id: "button-4", label: "Raw button signature 4", instruction: "Select the next physical position, then press and hold it three times. Release fully between cycles.", kind: .buttonOrKey),
+            GuidedCaptureStep(id: "button-5", label: "Raw button signature 5", instruction: "Select the next physical position, then press and hold it three times. Release fully between cycles.", kind: .buttonOrKey),
+            GuidedCaptureStep(id: "dial-clockwise", label: "Knob clockwise", instruction: "Select K (top-left knob), then turn it clockwise through at least three distinct detents and stop.", kind: .dialClockwise),
+            GuidedCaptureStep(id: "dial-counterclockwise", label: "Knob counter-clockwise", instruction: "Turn K (top-left knob) counter-clockwise through at least three distinct detents and stop.", kind: .dialCounterclockwise),
         ]
     )
 
