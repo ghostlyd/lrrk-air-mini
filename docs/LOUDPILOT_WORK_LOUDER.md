@@ -46,6 +46,18 @@ the control plane auditable:
    path. Physical flight output remains behind the independent fail-closed
    gate.
 
+## Bluetooth discovery versus HID readiness
+
+macOS can display a nearby Codex Micro name while exposing no selectable row
+or HID device. That state is only a Bluetooth advertisement; it is not proof
+that the controller is paired, connected, or available for input. LoudPilot
+therefore keeps the nearby item read-only and labels it `waiting for HID`.
+
+Use the in-app `Recheck HID` action after the Micro becomes available through
+macOS or Work Louder Input. Only a device returned by macOS's HID registry can
+be selected, captured, or claimed by LoudPilot. The rescan does not seize a
+device, read control reports, or change the current ownership mode.
+
 ## Future adapter work
 
 The next evidence-bound adapter can add Work Louder-style layers and multi-tap

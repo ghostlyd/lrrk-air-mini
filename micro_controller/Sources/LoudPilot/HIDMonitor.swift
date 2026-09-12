@@ -207,6 +207,28 @@ final class HIDMonitor: NSObject, ObservableObject {
         }
     }
 
+    /// Re-enumerates the current HID registry without changing ownership.
+    ///
+    /// A Bluetooth advertisement can become an HID service after the user
+    /// connects it elsewhere. The metadata-only manager is intentionally kept
+    /// open only for callbacks, so this explicit pass gives the UI a reliable
+    /// retry action without seizing any device or reading control reports.
+    func rescan() {
+        guard let manager else {
+            start()
+            return
+        }
+
+        guard let devices = IOHIDManagerCopyDevices(manager) else {
+            selectedDeviceError = "macOS returned no HID devices during rescan"
+            return
+        }
+
+        for case let device as IOHIDDevice in devices as NSSet {
+            handleMatched(device)
+        }
+    }
+
     func setFocused(_ focused: Bool) {
         safetyState.setFocused(focused)
     }
