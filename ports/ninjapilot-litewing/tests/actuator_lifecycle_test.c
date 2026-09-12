@@ -162,6 +162,7 @@ LATER(Receiver) LATER(ManualControl) LATER(Telemetry)
 int32_t LiteWingBatteryInitialize(void) { return 0; }
 int32_t LiteWingBatteryStart(void) { return 0; }
 int32_t LiteWingImuHealthInitialize(void) { return 0; }
+int32_t LiteWingPwmObservationInitialize(void) { return 0; }
 int32_t LiteWingImuHealthStart(void) { return 0; }
 
 int main(int argc, char **argv) {

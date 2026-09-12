@@ -206,7 +206,7 @@ jobs:
           test -s "$output/existing/flight/attitudestate.h"
           echo "LW_IMU_GENERATOR=$generator" >> "$GITHUB_ENV"
           echo "LW_IMU_EXISTING_HEADERS=$output/existing/flight" >> "$GITHUB_ENV"
-      - name: Test generated IMU schema publication and host C-byte interoperability without skips
+      - name: Test generated IMU and PWM schemas and host C-byte interoperability without skips
         shell: bash
         env:
           PYTHONPATH: ai_assistant/src:ai_assistant/tests:ports/ninjapilot-litewing/tests
@@ -216,10 +216,10 @@ jobs:
           import unittest
           suite = unittest.defaultTestLoader.loadTestsFromNames([
               'test_imu_health', 'test_imu_publication', 'test_uavobjects',
-              'test_imu_header_isolation'])
+              'test_imu_header_isolation', 'test_pwm_observation', 'test_battery_table'])
           result = unittest.TextTestRunner(verbosity=2).run(suite)
           if result.skipped:
-              print('IMU CI gate rejects skipped tests:', result.skipped)
+              print('IMU/PWM CI gate rejects skipped tests:', result.skipped)
           raise SystemExit(0 if result.wasSuccessful() and result.testsRun and not result.skipped else 1)
           PY
       - name: Test receiver freshness through the real pinned UAVTalk parser

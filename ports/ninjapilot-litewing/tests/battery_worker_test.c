@@ -1,6 +1,9 @@
 #include "battery_worker_sdk.h"
 #include "pios_litewing_battery.h"
 #include "litewing_battery_pack.h"
+int32_t LiteWingPwmObservationPack(UAVObjHandle obj, uint16_t instance, uint8_t *data) {
+    (void)obj; (void)instance; (void)data; return -1;
+}
 #include <assert.h>
 #include <math.h>
 #include <setjmp.h>

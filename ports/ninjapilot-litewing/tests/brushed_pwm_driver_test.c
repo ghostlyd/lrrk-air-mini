@@ -32,7 +32,7 @@ static int delays;
 SemaphoreHandle_t xSemaphoreCreateMutex(void) { return &mutex_token; }
 BaseType_t xSemaphoreTake(SemaphoreHandle_t lock, TickType_t ticks)
 {
-    (void)ticks;
+    if (lock == &mutex_token && locked && ticks == 0) return 0;
     CHECK(lock == &mutex_token && !locked);
     locked = true;
     return pdTRUE;
@@ -168,6 +168,45 @@ int main(int argc, char **argv)
         stage_all(1000);
         PIOS_Servo_Update();
         expect_all(0);
+        return 0;
+    }
+    if (strcmp(scenario, "observation") == 0) {
+        struct litewing_pwm_observation observation;
+        CHECK(!PIOS_LiteWing_BrushedPWM_GetObservation(NULL));
+        CHECK(!PIOS_LiteWing_BrushedPWM_GetObservation(&observation));
+        start_running();
+        unsigned before = updates;
+        CHECK(PIOS_LiteWing_BrushedPWM_GetObservation(&observation));
+        CHECK(updates == before);
+        CHECK(observation.suppression == 0 && observation.known_mask == 15);
+        CHECK(observation.commits == 2 && observation.write_errors == 0);
+        CHECK(observation.requested[0] == 500 && observation.submitted[0] == 1024);
+        locked = true;
+        observation.commits = 12345;
+        CHECK(!PIOS_LiteWing_BrushedPWM_GetObservation(&observation));
+        CHECK(locked && observation.commits == 12345 && updates == before);
+        locked = false;
+        stage_all(250);
+        CHECK(PIOS_LiteWing_BrushedPWM_GetObservation(&observation));
+        CHECK(observation.requested[0] == 500 && observation.submitted[0] == 1024);
+        PIOS_LiteWing_BrushedPWM_SetImuHealthy(false);
+        CHECK(PIOS_LiteWing_BrushedPWM_GetObservation(&observation));
+        CHECK(observation.suppression & LITEWING_PWM_SUPPRESS_IMU);
+        CHECK(observation.requested[0] == 500 && observation.submitted[0] == 0);
+        CHECK(observation.known_mask == 15);
+        return 0;
+    }
+    if (strcmp(scenario, "observation-failure") == 0) {
+        struct litewing_pwm_observation observation;
+        start_running();
+        fail_update = 1; fail_stop = 2;
+        stage_all(250); PIOS_Servo_Update();
+        CHECK(PIOS_LiteWing_BrushedPWM_GetObservation(&observation));
+        CHECK(observation.write_errors == 1 && observation.stop_errors == 1);
+        CHECK(observation.known_mask == 11);
+        CHECK(observation.suppression & LITEWING_PWM_SUPPRESS_HARDWARE);
+        CHECK(observation.requested[0] == 250);
+        CHECK(observation.submitted[0] == 0);
         return 0;
     }
     start_running();

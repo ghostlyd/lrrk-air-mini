@@ -6,6 +6,9 @@
 #include <stdio.h>
 #include <math.h>
 #include "litewing_battery_pack.h"
+int32_t LiteWingPwmObservationPack(UAVObjHandle obj, uint16_t instance, uint8_t *data) {
+    (void)obj; (void)instance; (void)data; return -1;
+}
 #include "litewing_wifi_config.h"
 #include "pios_litewing_usb_maintenance.h"
 

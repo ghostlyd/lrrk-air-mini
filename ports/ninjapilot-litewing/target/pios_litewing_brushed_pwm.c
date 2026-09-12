@@ -49,6 +49,29 @@ static struct litewing_output_frame pending_frame;
 static struct litewing_output_state output_state;
 static volatile bool output_ready;
 static int64_t last_update_us;
+static struct litewing_pwm_observation observation;
+
+static void increment_counter(uint32_t *value)
+{
+    if (*value != UINT32_MAX) ++*value;
+}
+
+bool PIOS_LiteWing_BrushedPWM_GetObservation(struct litewing_pwm_observation *out)
+{
+    if (!out || !output_ready || !output_lock ||
+        xSemaphoreTake(output_lock, 0) != pdTRUE) return false;
+    *out = observation;
+    out->suppression =
+        (!output_state.hardware_ready ? LITEWING_PWM_SUPPRESS_HARDWARE : 0) |
+        (!output_state.imu_healthy ? LITEWING_PWM_SUPPRESS_IMU : 0) |
+        (!output_state.link_fresh ? LITEWING_PWM_SUPPRESS_LINK : 0) |
+        (!output_state.armed ? LITEWING_PWM_SUPPRESS_DISARMED : 0) |
+        (output_state.failsafe ? LITEWING_PWM_SUPPRESS_FAILSAFE : 0) |
+        (output_state.shutdown ? LITEWING_PWM_SUPPRESS_SHUTDOWN : 0);
+    out->observed_us = esp_timer_get_time();
+    xSemaphoreGive(output_lock);
+    return true;
+}
 
 static uint32_t duty_to_ledc(uint16_t duty)
 {
@@ -67,7 +90,13 @@ static void stop_outputs_locked(void)
     for (uint8_t index = 0; index < LITEWING_OUTPUT_CHANNELS; ++index) {
         /* Best effort on every channel even when an earlier stop fails.
          * Software cannot guarantee electrical low if the peripheral fails. */
-        (void)ledc_stop(LEDC_LOW_SPEED_MODE, motor_channels[index], 0);
+        if (ledc_stop(LEDC_LOW_SPEED_MODE, motor_channels[index], 0) == ESP_OK) {
+            observation.submitted[index] = 0;
+            observation.known_mask |= (1u << index);
+        } else {
+            observation.known_mask &= ~(1u << index);
+            increment_counter(&observation.stop_errors);
+        }
     }
 }
 
@@ -80,6 +109,8 @@ static bool write_frame_locked(const struct litewing_output_frame *frame)
     for (uint8_t index = 0; index < LITEWING_OUTPUT_CHANNELS; ++index) {
         if (ledc_set_duty(LEDC_LOW_SPEED_MODE, motor_channels[index],
                           duty_to_ledc(frame->duty[index])) != ESP_OK) {
+            observation.known_mask &= ~(1u << index);
+            increment_counter(&observation.write_errors);
             stop_outputs_locked();
             return false;
         }
@@ -89,10 +120,15 @@ static bool write_frame_locked(const struct litewing_output_frame *frame)
      * or a measured timing guarantee; each change takes effect on a PWM cycle. */
     for (uint8_t index = 0; index < LITEWING_OUTPUT_CHANNELS; ++index) {
         if (ledc_update_duty(LEDC_LOW_SPEED_MODE, motor_channels[index]) != ESP_OK) {
+            observation.known_mask &= ~(1u << index);
+            increment_counter(&observation.write_errors);
             stop_outputs_locked();
             return false;
         }
+        observation.submitted[index] = duty_to_ledc(frame->duty[index]);
+        observation.known_mask |= (1u << index);
     }
+    increment_counter(&observation.commits);
     return true;
 }
 
@@ -277,6 +313,8 @@ void PIOS_Servo_Update(void)
     output_state.link_fresh = true;
 
     struct litewing_output_frame sanitized;
+    for (uint8_t index = 0; index < LITEWING_OUTPUT_CHANNELS; ++index)
+        observation.requested[index] = pending_frame.duty[index];
     litewing_sanitize_frame(&pending_frame, &output_state, &sanitized);
     write_frame_locked(&sanitized);
     last_update_us = esp_timer_get_time();

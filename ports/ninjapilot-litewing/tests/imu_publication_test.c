@@ -1,4 +1,7 @@
 #include "imu_publication_sdk.h"
+int32_t LiteWingPwmObservationPack(UAVObjHandle obj, uint16_t instance, uint8_t *data) {
+    (void)obj; (void)instance; (void)data; return -1;
+}
 #include <stdio.h>
 #include <string.h>
 #include <setjmp.h>

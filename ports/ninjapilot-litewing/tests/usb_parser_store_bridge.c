@@ -4,6 +4,9 @@
 #include "uavtalk_priv.h"
 #include <pthread.h>
 #include <stdio.h>
+int32_t LiteWingPwmObservationPack(UAVObjHandle obj,uint16_t instance,uint8_t *out) {
+    (void)obj; (void)instance; (void)out; assert(false); return -1;
+}
 int32_t LiteWingImuHealthPack(UAVObjHandle obj,uint16_t instance,uint8_t *out) {
     (void)obj; (void)instance; (void)out; assert(false); return -1;
 }

@@ -15,7 +15,7 @@ class BatteryTableTests(unittest.TestCase):
                             str(ROOT / "tests/battery_table_test.c"),
                             str(ROOT / "target/firmware/InitMods.c"),
                             "-o", str(binary)], check=True, capture_output=True, text=True)
-            for case in ("success", "init-fail", "start-fail"):
+            for case in ("success", "init-fail", "start-fail", "pwm-init-fail"):
                 with self.subTest(case=case):
                     result = subprocess.run([str(binary), case], capture_output=True,
                                             text=True, timeout=5)

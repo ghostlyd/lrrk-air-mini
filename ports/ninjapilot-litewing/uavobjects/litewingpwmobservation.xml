@@ -1,0 +1,19 @@
+<xml>
+    <object name="LiteWingPWMObservation" singleinstance="true" settings="false" category="Actuators">
+        <description>Version 1 read-only requested duty and last successful peripheral API output, not electrical feedback or RPM. KnownMask qualifies each Submitted channel. Suppression bit 2 is driver update freshness, not receiver lease. Unavailable snapshots have no valid channels. SnapshotAgeMs is observation age, not time since an output command.</description>
+        <field name="SnapshotAgeMs" units="ms" type="uint32" elements="1" defaultvalue="-1"/>
+        <field name="Commits" units="" type="uint32" elements="1" defaultvalue="0"/>
+        <field name="WriteErrors" units="" type="uint32" elements="1" defaultvalue="0"/>
+        <field name="StopErrors" units="" type="uint32" elements="1" defaultvalue="0"/>
+        <field name="Requested" units="0..1000" type="uint16" elements="4" defaultvalue="0"/>
+        <field name="Submitted" units="0..2047" type="uint16" elements="4" defaultvalue="0"/>
+        <field name="Version" units="" type="uint8" elements="1" defaultvalue="1"/>
+        <field name="Available" units="" type="uint8" elements="1" defaultvalue="0"/>
+        <field name="KnownMask" units="" type="uint8" elements="1" defaultvalue="0"/>
+        <field name="Suppression" units="bitmask" type="uint8" elements="1" defaultvalue="0"/>
+        <access gcs="readonly" flight="readwrite"/>
+        <telemetrygcs acked="false" updatemode="manual" period="0"/>
+        <telemetryflight acked="false" updatemode="manual" period="0"/>
+        <logging updatemode="manual" period="0"/>
+    </object>
+</xml>
