@@ -150,6 +150,13 @@ advisory, while the human keyboard pilot owns the separate command session.
 The keyboard launcher's advisory worker is local-only; it does not make an
 OpenAI request by default. No onboard AI computer is required.
 
+The local macOS LoudPilot controller is under [`micro_controller/`](micro_controller/).
+It scopes physical input to the identified Codex Micro, reads battery/IMU data
+from the manufacturer firmware's telemetry log path, and keeps the flight
+output transport disconnected in its current read-only stage. Its link-loss
+failsafe requires fresh decoded sensor data; outdoor prompting remains locked
+until the documented staged-validation evidence is recorded.
+
 ## Upstream
 
 The original LiteWing source and hardware are from

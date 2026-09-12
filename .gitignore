@@ -31,3 +31,7 @@ ports/ninjapilot-litewing/esp-idf/sdkconfig
 # Local ESP-IDF source and toolchain cache.
 .toolchains/
 .pilot-idf-input/
+
+# LoudPilot Swift build and staged app artifacts.
+micro_controller/.build/
+micro_controller/dist/
