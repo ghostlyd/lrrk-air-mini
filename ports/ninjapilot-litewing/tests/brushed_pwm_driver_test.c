@@ -180,7 +180,8 @@ int main(int argc, char **argv)
             now_us = start + step * 40000;
             stage_all(0); PIOS_Servo_Set(step % 4, (step % 999) + 1);
             PIOS_Servo_Update();
-            CHECK(active[0] == 409 && active[1] == 0 && active[2] == 0 && active[3] == 0);
+            for (int motor = 0; motor < 4; ++motor)
+                CHECK(active[motor] == (motor == channel ? 409u : 0u));
         }
         stage_all(0); PIOS_Servo_Update(); expect_all(0);
         now_us = start + 10000000;

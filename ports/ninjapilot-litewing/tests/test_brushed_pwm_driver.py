@@ -154,3 +154,26 @@ class SingleMotorBenchTests(unittest.TestCase):
         for channel in range(4):
             with self.subTest(channel=channel):
                 self.run_scenario('single-write-fault', channel)
+
+
+class SelectedMotorTwoTests(unittest.TestCase):
+    compile_flags = SingleMotorBenchTests.compile_flags + ["-DCONFIG_LRRK_BENCH_MOTOR_CHANNEL=2"]
+    setUpClass = classmethod(BrushedPwmDriverTests.setUpClass.__func__)
+    run_scenario = BrushedPwmDriverTests.run_scenario
+
+    def test_selected_channel_only(self):
+        self.run_scenario('single-fixed', 1)
+
+
+class SelectedMotorThreeTests(SelectedMotorTwoTests):
+    compile_flags = SingleMotorBenchTests.compile_flags + ["-DCONFIG_LRRK_BENCH_MOTOR_CHANNEL=3"]
+
+    def test_selected_channel_only(self):
+        self.run_scenario('single-fixed', 2)
+
+
+class SelectedMotorFourTests(SelectedMotorTwoTests):
+    compile_flags = SingleMotorBenchTests.compile_flags + ["-DCONFIG_LRRK_BENCH_MOTOR_CHANNEL=4"]
+
+    def test_selected_channel_only(self):
+        self.run_scenario('single-fixed', 3)

@@ -56,6 +56,14 @@ static struct litewing_pwm_observation observation;
 #if CONFIG_LRRK_BENCH_SINGLE_MOTOR && !CONFIG_LRRK_BENCH_OUTPUT_LIMIT
 #error "Single-motor diagnostic requires the bench output limit"
 #endif
+#if CONFIG_LRRK_BENCH_SINGLE_MOTOR
+#ifndef CONFIG_LRRK_BENCH_MOTOR_CHANNEL
+#define CONFIG_LRRK_BENCH_MOTOR_CHANNEL 1
+#endif
+#if CONFIG_LRRK_BENCH_MOTOR_CHANNEL < 1 || CONFIG_LRRK_BENCH_MOTOR_CHANNEL > 4
+#error "Bench motor channel must be 1 through 4"
+#endif
+#endif
 #if CONFIG_LRRK_BENCH_OUTPUT_LIMIT
 #ifndef CONFIG_LRRK_BENCH_OUTPUT_DURATION_MS
 #define CONFIG_LRRK_BENCH_OUTPUT_DURATION_MS 1000
@@ -359,7 +367,7 @@ void PIOS_Servo_Update(void)
     for (uint8_t index = 0; index < LITEWING_OUTPUT_CHANNELS; ++index)
         demand_present |= sanitized.duty[index] != 0;
     litewing_safe_frame(&sanitized);
-    if (demand_present) sanitized.duty[0] = 200u;
+    if (demand_present) sanitized.duty[CONFIG_LRRK_BENCH_MOTOR_CHANNEL - 1] = 200u;
 #endif
     for (uint8_t index = 0; index < LITEWING_OUTPUT_CHANNELS; ++index) {
         if (sanitized.duty[index] > 200u) sanitized.duty[index] = 200u;
