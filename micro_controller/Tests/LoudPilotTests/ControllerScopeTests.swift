@@ -32,6 +32,21 @@ enum ControllerScopeTests {
         try expect(!keyboard.isControllerCandidate, "Apple Magic Keyboard must be outside the Codex Micro controller scope")
     }
 
+    static func testExclusiveHIDMatchingIncludesNamedMicroFallbacks() throws {
+        try expect(
+            ControllerDeviceScope.exclusiveProductNames.contains("Codex Micro"),
+            "exclusive HID matching must include the named Codex Micro product"
+        )
+        try expect(
+            ControllerDeviceScope.exclusiveProductNames.contains("Codex Micro #2"),
+            "exclusive HID matching must include the observed Codex Micro advertisement name"
+        )
+        try expect(
+            ControllerDeviceScope.exclusiveProductNames.contains("Work Louder Micro"),
+            "exclusive HID matching must include the Work Louder Micro product"
+        )
+    }
+
     static func testBluetoothDiscoveryRetainsMicroCandidatesAndMarksKeyboardOutOfScope() throws {
         let peripherals = [
             BluetoothPeripheralSummary(id: "keyboard", name: "Mark’s Magic Keyboard", rssi: -42),

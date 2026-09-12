@@ -65,6 +65,16 @@ public enum ControllerDeviceScope {
     public static let codexMicroVendorID: UInt64 = 0x303A
     public static let codexMicroProductID: UInt64 = 0x8360
 
+    /// Product strings used when macOS exposes the Micro with a different
+    /// VID/PID from the known USB descriptor. These names are used only to
+    /// narrow exclusive HID matching; every matched device is still checked
+    /// through `accepts` before it can become a controller.
+    public static let exclusiveProductNames: [String] = [
+        "Codex Micro",
+        "Codex Micro #2",
+        "Work Louder Micro",
+    ]
+
     public static func accepts(_ device: HIDDeviceSummary) -> Bool {
         accepts(
             product: device.product,
