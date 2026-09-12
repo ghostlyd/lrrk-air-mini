@@ -1,5 +1,10 @@
 # Final LiteWing flight configuration evidence — 2026-09-10
 
+> Historical checkpoint, not current flight clearance. The later gyro
+> transient and currently installed BEN1 diagnostic image supersede this
+> stationary-IMU acceptance for live flight. See the
+> [2026-09-11 qualification checkpoint](flight-qualification-2026-09-11.md).
+
 ## Outcome
 
 The four requested firmware/configuration blockers are cleared at their stated
