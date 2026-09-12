@@ -55,8 +55,12 @@ Four local cutoff-validator tests and nine existing pose/pacing/zero-evidence
 tests passed before execution. Physical rotation confirmation is still pending
 from the owner; PWM API success is not shaft-speed measurement.
 
-Remaining: physical motor corner/direction confirmation, actual stopping
-behavior, saturation-cause investigation, power/battery qualification, and
-restoration/qualification of a flight-profile image before active flight.
+Prior fitted corner/direction evidence is already recorded in
+[the final configuration record](final-flight-configuration-2026-09-10.md).
+This trial neither repeats that direction measurement nor invalidates it;
+assembly changes would require revalidation. Remaining: physical feedback on
+this trial, actual stopping behavior, saturation-cause investigation,
+power/battery qualification, and restoration/qualification of a flight-profile
+image before active flight.
 The BEN1 bench image deliberately latches outputs off after its first interval
 until reset, and must not be used for flight.
