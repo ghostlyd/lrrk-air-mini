@@ -122,7 +122,28 @@ enum ControlMappingTests {
         try expect(capture.acceptCurrentStep(), "counter-clockwise dial should be accepted")
         try expect(capture.isComplete, "all seven controls should be accepted")
 
-        guard let mapping = CodexMicroMappingPolicy.stagedMapping(from: capture) else {
+        let noSimultaneousEvidence = HIDInteractionEvidence()
+        try expect(
+            CodexMicroMappingPolicy.stagedMapping(from: capture, interactionEvidence: noSimultaneousEvidence) == nil,
+            "complete signatures without a simultaneous-input session must not stage a mapping"
+        )
+
+        var simultaneousEvidence = HIDInteractionEvidence()
+        simultaneousEvidence.observe(MicroInputEvent(
+            identifier: "button:1",
+            kind: .button,
+            value: 1,
+            phase: .pressed,
+            timestamp: 10
+        ))
+        simultaneousEvidence.observe(MicroInputEvent(
+            identifier: "button:2",
+            kind: .button,
+            value: 1,
+            phase: .pressed,
+            timestamp: 10.1
+        ))
+        guard let mapping = CodexMicroMappingPolicy.stagedMapping(from: capture, interactionEvidence: simultaneousEvidence) else {
             throw TestFailure.assertion("complete capture should produce a staged mapping")
         }
         let profile = mapping.profile

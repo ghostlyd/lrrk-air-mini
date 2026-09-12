@@ -325,7 +325,9 @@ struct CodexMicroProgrammingPanel: View {
                 HStack {
                     Image(systemName: "checkmark.seal.fill")
                         .foregroundStyle(.green)
-                    Text(mappingSummary == nil ? "All signatures captured; mapping review is still required." : "All signatures captured. Mapping is staged for review; no flight packet is enabled.")
+                    Text(mappingSummary == nil
+                         ? "All signatures captured; mapping stays locked until a simultaneous-input session is verified."
+                         : "All signatures captured. Mapping is staged for review; no flight packet is enabled.")
                         .font(.callout)
                     Spacer()
                     Button("Restart capture") { onRestart() }
