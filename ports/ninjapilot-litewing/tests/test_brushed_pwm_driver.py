@@ -9,13 +9,14 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class BrushedPwmDriverTests(unittest.TestCase):
+    compile_flags = []
     @classmethod
     def setUpClass(cls):
         cls.directory = tempfile.TemporaryDirectory()
         cls.addClassCleanup(cls.directory.cleanup)
         cls.binary = Path(cls.directory.name) / "brushed-driver-test"
         compile_result = subprocess.run([
-            "cc", "-std=c11", "-Wall", "-Wextra", "-Werror", "-DPIOS_INCLUDE_SERVO",
+            "cc", "-std=c11", "-Wall", "-Wextra", "-Werror", "-DPIOS_INCLUDE_SERVO", *cls.compile_flags,
             "-I", str(ROOT / "tests" / "hal_stubs"),
             "-I", str(ROOT / "target" / "include"),
             "-I", str(ROOT / "contract"),
@@ -83,3 +84,24 @@ class BrushedPwmDriverTests(unittest.TestCase):
         for channel in range(4):
             with self.subTest(channel=channel):
                 self.run_scenario("init-update-failure", channel)
+
+
+class BenchPwmDriverTests(unittest.TestCase):
+    compile_flags = ["-DCONFIG_LRRK_BENCH_OUTPUT_LIMIT=1"]
+    setUpClass = classmethod(BrushedPwmDriverTests.setUpClass.__func__)
+    run_scenario = BrushedPwmDriverTests.run_scenario
+
+    def test_controller_saturation_is_clamped_per_motor(self):
+        self.run_scenario("bench-cap")
+
+    def test_fresh_updates_cannot_extend_first_output_deadline(self):
+        self.run_scenario("bench-deadline")
+
+    def test_watchdog_enforces_deadline_even_with_fresh_updates(self):
+        self.run_scenario("bench-watchdog")
+
+    def test_zero_or_suppressed_requests_do_not_start_timer(self):
+        self.run_scenario("bench-start")
+
+    def test_expiry_cannot_be_cleared_by_arm_or_init(self):
+        self.run_scenario("bench-latch")

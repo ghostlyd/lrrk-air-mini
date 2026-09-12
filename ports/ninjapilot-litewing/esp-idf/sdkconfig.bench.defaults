@@ -1,0 +1,2 @@
+# Explicit diagnostic profile; layer after sdkconfig.defaults in a NEW build.
+CONFIG_LRRK_BENCH_OUTPUT_LIMIT=y

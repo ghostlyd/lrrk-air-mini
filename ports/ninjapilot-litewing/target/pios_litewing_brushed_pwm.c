@@ -6,6 +6,9 @@
  * PIOS_Servo_Update() is the commit point used by the Actuator module.
  */
 #include "pios.h"
+#ifdef ESP_PLATFORM
+#include "sdkconfig.h"
+#endif
 
 #ifdef PIOS_INCLUDE_SERVO
 
@@ -50,6 +53,21 @@ static struct litewing_output_state output_state;
 static volatile bool output_ready;
 static int64_t last_update_us;
 static struct litewing_pwm_observation observation;
+#if CONFIG_LRRK_BENCH_OUTPUT_LIMIT
+/* One interval per boot, starting only at the first eligible nonzero frame.
+ * Zero commands, rearming and fresh packets never renew this interval. */
+static bool bench_started;
+static int64_t bench_start_us;
+
+static bool bench_expired_locked(int64_t now_us)
+{
+    if (bench_started && now_us - bench_start_us >= 1000000) {
+        output_state.shutdown = true;
+        return true;
+    }
+    return false;
+}
+#endif
 
 static void increment_counter(uint32_t *value)
 {
@@ -152,6 +170,9 @@ static void output_watchdog_task(__attribute__((unused)) void *argument)
 
         if (xSemaphoreTake(output_lock, portMAX_DELAY) == pdTRUE) {
             const int64_t now_us = esp_timer_get_time();
+#if CONFIG_LRRK_BENCH_OUTPUT_LIMIT
+            if (bench_expired_locked(now_us)) force_zero_locked();
+#endif
             const bool stale = last_update_us == 0 ||
                                now_us - last_update_us >
                                    ((int64_t)LITEWING_OUTPUT_WATCHDOG_MS * 1000);
@@ -313,9 +334,22 @@ void PIOS_Servo_Update(void)
     output_state.link_fresh = true;
 
     struct litewing_output_frame sanitized;
+#if CONFIG_LRRK_BENCH_OUTPUT_LIMIT
+    const int64_t now_us = esp_timer_get_time();
+    bench_expired_locked(now_us);
+#endif
     for (uint8_t index = 0; index < LITEWING_OUTPUT_CHANNELS; ++index)
         observation.requested[index] = pending_frame.duty[index];
     litewing_sanitize_frame(&pending_frame, &output_state, &sanitized);
+#if CONFIG_LRRK_BENCH_OUTPUT_LIMIT
+    for (uint8_t index = 0; index < LITEWING_OUTPUT_CHANNELS; ++index) {
+        if (sanitized.duty[index] > 200u) sanitized.duty[index] = 200u;
+        if (sanitized.duty[index] && !bench_started) {
+            bench_started = true;
+            bench_start_us = now_us;
+        }
+    }
+#endif
     write_frame_locked(&sanitized);
     last_update_us = esp_timer_get_time();
     xSemaphoreGive(output_lock);
