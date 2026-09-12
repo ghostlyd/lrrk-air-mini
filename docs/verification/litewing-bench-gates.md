@@ -6,6 +6,9 @@ operator explicitly opens the relevant electrical test. The existing
 ESP-Drone firmware remains the recovery image.
 
 This is the acceptance checklist, not a record that every item has passed.
+The [latest qualification checkpoint](flight-qualification-2026-09-11.md)
+records the installed diagnostic image and unresolved gyro transient; earlier
+passed items below retain their original, narrower evidence scope.
 See [the USB-only session report](usb-bringup-2026-09-09.md) for the verified
 backup/flash, telemetry observations and remaining limitations. See the later
 [software-arm and bounded nonzero-command report](armed-nonzero-motor-proof-2026-09-09.md)
