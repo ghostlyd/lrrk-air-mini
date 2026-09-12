@@ -58,6 +58,14 @@ macOS or Work Louder Input. Only a device returned by macOS's HID registry can
 be selected, captured, or claimed by LoudPilot. The rescan does not seize a
 device, read control reports, or change the current ownership mode.
 
+For a Bluetooth-capable Micro, Work Louder's documented communication sequence
+is: hold the touch sensor for three seconds until the underglow turns blue,
+tap to choose BLE channel 1/2/3, and wait for the pairing indicator to become
+solid. Run `Recheck HID` immediately afterward because communication mode
+exits after a short idle period. The fourth tap selects wired mode; use a
+data-capable USB-C cable before rechecking HID. See the manufacturer's
+<https://worklouder.cc/micro-setup> guide for the device-specific procedure.
+
 ## Future adapter work
 
 The next evidence-bound adapter can add Work Louder-style layers and multi-tap
