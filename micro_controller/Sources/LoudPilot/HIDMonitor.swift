@@ -238,7 +238,10 @@ final class HIDMonitor: NSObject, ObservableObject {
 
     func acceptCaptureStep() {
         guard captureState.acceptCurrentStep() else { return }
-        learnedMapping = CodexMicroMappingPolicy.stagedMapping(from: captureState)
+        learnedMapping = CodexMicroMappingPolicy.stagedMapping(
+            from: captureState,
+            interactionEvidence: interactionEvidence
+        )
         refreshSelectedProfile()
     }
 
@@ -248,6 +251,7 @@ final class HIDMonitor: NSObject, ObservableObject {
 
     func resetCaptureSession() {
         captureState.reset()
+        interactionEvidence.reset()
         learnedMapping = nil
         refreshSelectedProfile()
     }

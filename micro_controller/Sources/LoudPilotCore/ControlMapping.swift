@@ -47,7 +47,14 @@ public enum CodexMicroMappingPolicy {
     /// relative knob report provides normalized yaw deltas, and the fifth
     /// learned button report is a latched stop. Thrust remains unbound until
     /// a later, separately validated control stage.
-    public static func stagedMapping(from capture: GuidedCaptureState) -> CodexMicroMapping? {
+    public static func stagedMapping(
+        from capture: GuidedCaptureState,
+        interactionEvidence: HIDInteractionEvidence
+    ) -> CodexMicroMapping? {
+        guard interactionEvidence.maximumConcurrentInputs >= 2,
+              interactionEvidence.simultaneousInputSessions >= 1 else {
+            return nil
+        }
         guard capture.isComplete else { return nil }
         let buttonIDs = (1...5).map { "button-\($0)" }
         let buttonSignatures = buttonIDs.compactMap { capture.acceptedSignatureByStep[$0] }
@@ -77,7 +84,7 @@ public enum CodexMicroMappingPolicy {
 
         return CodexMicroMapping(
             profile: HIDControlProfile(name: "Codex Micro · learned staged mapping", actions: actions),
-            summary: "Learned buttons 1–4 roll/pitch · learned button 5 emergency stop · knob yaw · thrust unbound"
+            summary: "Learned buttons 1–4 roll/pitch · learned button 5 emergency stop · knob yaw · simultaneous input verified · thrust unbound"
         )
     }
 }
