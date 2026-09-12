@@ -21,8 +21,9 @@ unchanged application.
 - The transaction completed normally with zero write/stop errors. Its final
   state was Armed with shutdown latched and zero output. Later request-only
   retrieval confirmed Disarmed and zero output before downloading the trace.
-- Operator confirmation of simultaneous continuous physical rotation is pending.
-  Command telemetry is not RPM evidence.
+- The operator confirmed that all four motors ran smoothly and continuously
+  together during this trial. This is physical observation, not measured RPM.
+  Command telemetry alone is not rotation evidence.
 
 The frozen trace contains 512 records over 1.029717 seconds, including 64
 pretrigger records. Peak absolute gyro was 1.2964 degrees/s, with no sample above
@@ -42,8 +43,8 @@ weakens, but does not eliminate, combined-load interference as an explanation.
 Different fixture conditions and limited capture duration prevent a causal
 conclusion. Do not change PID gains or suppress readings on this evidence.
 
-Next obtain the operator's combined-rotation observation and compare the normal
-mixer path under the same fixture conditions. This remains a diagnostic image,
+Next compare the normal mixer path under the same fixture conditions, retaining
+the bounded bench ceiling and cutoff. This remains a diagnostic image,
 not a flight-qualified controller. Battery qualification, physical corner and
 direction mapping, IMU qualification, and normal-image flight validation remain.
 Raw captures and backups remain private outside Git.
