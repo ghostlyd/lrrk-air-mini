@@ -20,6 +20,7 @@ struct LoudPilotTests {
             try ControlMappingTests.testMagicKeyboardProfileMapsObservedKeyUsagesAndEscapeStops()
             try ControlMappingTests.testMappedInputReleaseClearsIntendedValue()
             try ControlMappingTests.testCodexMicroProfileDoesNotAssumeGenericAxes()
+            try ControlMappingTests.testCodexMicroPhysicalLayoutMatchesReferenceAndKeepsRotationKnobOnly()
             try ControlMappingTests.testCodexMicroLearnedMappingRequiresAllSignaturesAndStagesSafeAssignments()
             try ValidationTests.testOutdoorPhaseRequiresEveryGate()
             try SafetyGateTests.testTelemetryLinkLossInhibitsControlOutput()

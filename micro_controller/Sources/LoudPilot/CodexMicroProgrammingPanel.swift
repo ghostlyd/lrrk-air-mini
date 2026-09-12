@@ -30,7 +30,10 @@ struct CodexMicroProgrammingPanel: View {
     let onAcceptStep: () -> Void
     let onRestart: () -> Void
 
-    @State private var selectedControl: CodexMicroControl = .button1
+    @State private var selectedControl: CodexMicroPhysicalControl = .knob
+    @State private var hoveredControl: CodexMicroPhysicalControl?
+    @State private var stagedAssignments: [CodexMicroPhysicalControl: CodexMicroAssignment] = [:]
+    @State private var calibratedStepByControl: [CodexMicroPhysicalControl: String] = [:]
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -48,8 +51,8 @@ struct CodexMicroProgrammingPanel: View {
         }
         .onChange(of: captureState.stepIndex) { _ in
             if let step = captureState.currentStep,
-               let control = CodexMicroControl(stepID: step.id) {
-                selectedControl = control
+               step.kind == .dialClockwise || step.kind == .dialCounterclockwise {
+                selectedControl = .knob
             }
         }
     }
@@ -124,31 +127,80 @@ struct CodexMicroProgrammingPanel: View {
                 Text("Layout")
                     .font(.headline)
                 Spacer()
-                Text("Tap a tile to focus it; follow the amber prompt on the physical Micro.")
+                Text("Physical reference · hover or click a control to configure it")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
+            Text("13 mechanical switches · 1 touch sensor · 1 rotary encoder · 1 planar joystick. K is one visible position with separate press/turn behavior.")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
 
-            HStack(alignment: .center, spacing: 10) {
-                controlTile(.dial)
-                controlTile(.button1)
-                controlTile(.button2)
-                controlTile(.button3)
-            }
-            HStack(alignment: .center, spacing: 10) {
-                controlTile(.button4)
-                controlTile(.button5)
-                Spacer(minLength: 0)
-                VStack(alignment: .trailing, spacing: 3) {
-                    Text("Physical controls")
-                        .font(.caption.bold())
-                    Text("5 buttons · 1 dial")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    Text("No joystick axes inferred")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
+            GeometryReader { proxy in
+                let side = min(proxy.size.width, proxy.size.height)
+                ZStack {
+                    RoundedRectangle(cornerRadius: side * 0.045)
+                        .fill(Color.black.opacity(0.90))
+                    RoundedRectangle(cornerRadius: side * 0.045)
+                        .strokeBorder(Color.white.opacity(0.82), lineWidth: max(1, side * 0.004))
+                        .padding(side * 0.012)
+
+                    Image(systemName: "arrow.up")
+                        .font(.system(size: side * 0.045, weight: .medium))
+                        .foregroundStyle(.white.opacity(0.9))
+                        .position(x: side * 0.50, y: side * 0.052)
+
+                    ForEach(CodexMicroPhysicalControl.allCases) { control in
+                        physicalControlTile(control)
+                            .frame(
+                                width: side * CGFloat(control.normalizedSize.width),
+                                height: side * CGFloat(control.normalizedSize.height)
+                            )
+                            .position(
+                                x: side * CGFloat(control.normalizedCenter.x),
+                                y: side * CGFloat(control.normalizedCenter.y)
+                            )
+                    }
+
+                    ForEach(0..<4, id: \.self) { index in
+                        let points: [(x: Double, y: Double)] = [
+                            (0.068, 0.068),
+                            (0.932, 0.068),
+                            (0.068, 0.932),
+                            (0.932, 0.932)
+                        ]
+                        let point = points[index]
+                        Circle()
+                            .strokeBorder(Color.white.opacity(0.9), lineWidth: max(1, side * 0.004))
+                            .frame(width: side * 0.024, height: side * 0.024)
+                            .position(x: side * CGFloat(point.x), y: side * CGFloat(point.y))
+                    }
+
+                    VStack {
+                        Spacer()
+                        Text("Work Louder · Codex Micro")
+                            .font(.system(size: side * 0.025, weight: .medium))
+                            .foregroundStyle(.white.opacity(0.80))
+                            .padding(.bottom, side * 0.028)
+                    }
+                    .frame(width: side, height: side)
                 }
+                .frame(width: side, height: side)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+            .aspectRatio(1, contentMode: .fit)
+            .frame(maxWidth: 560)
+            .frame(maxWidth: .infinity)
+
+            assignmentInspector
+
+            HStack(spacing: 12) {
+                legendItem(color: .orange, text: "Calibrate next")
+                legendItem(color: .green, text: "Recent report")
+                legendItem(color: .blue, text: "Captured")
+                Spacer()
+                Text("15 physical positions · HID signatures remain evidence-bound")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
             }
         }
         .padding(12)
@@ -219,6 +271,8 @@ struct CodexMicroProgrammingPanel: View {
                     VStack(alignment: .leading, spacing: 3) {
                         Text("Configure next: \(step.label)")
                             .font(.headline)
+                        Text("Physical target: \(promptedControl?.label ?? selectedControl.label)")
+                            .font(.callout.bold())
                         Text(step.instruction)
                             .font(.callout)
                     }
@@ -235,7 +289,13 @@ struct CodexMicroProgrammingPanel: View {
                     }
                     Spacer()
                     Button("Reset") { onResetObservation() }
-                    Button("Accept & continue") { onAcceptStep() }
+                    Button("Accept & continue") {
+                        let target = step.kind == .dialClockwise || step.kind == .dialCounterclockwise
+                            ? CodexMicroPhysicalControl.knob
+                            : selectedControl
+                        calibratedStepByControl[target] = step.id
+                        onAcceptStep()
+                    }
                         .buttonStyle(.borderedProminent)
                         .disabled(!captureState.currentStepHighConfidence)
                 }
@@ -271,50 +331,185 @@ struct CodexMicroProgrammingPanel: View {
         }
     }
 
-    private func controlTile(_ control: CodexMicroControl) -> some View {
-        let target = captureState.currentStep?.id == control.stepID
-        let accepted = captureState.acceptedSignatureByStep[control.stepID] != nil
+    private func physicalControlTile(_ control: CodexMicroPhysicalControl) -> some View {
+        let target = promptedControl == control
+        let captured = calibratedStepByControl[control] != nil
         let observed = recentEvent(for: control) != nil
         let focused = selectedControl == control
+        let hovering = hoveredControl == control
+        let assignment = stagedAssignments[control] ?? .unassigned
 
         return Button {
             selectedControl = control
+            if let step = captureState.currentStep, step.kind == .buttonOrKey {
+                // This records only which tile the operator is calibrating in
+                // the UI. The raw HID signature remains learned separately.
+                calibratedStepByControl[control] = step.id
+            }
         } label: {
-            VStack(spacing: 6) {
-                ZStack {
-                    RoundedRectangle(cornerRadius: control == .dial ? 22 : 10)
-                        .fill(tileFill(target: target, accepted: accepted, observed: observed, focused: focused))
-                    if control == .dial {
-                        Circle()
-                            .strokeBorder(Color.primary.opacity(0.30), lineWidth: 2)
-                            .padding(10)
-                        Image(systemName: "dial.medium")
-                            .font(.title2)
-                    } else {
-                        Text(control.shortLabel)
-                            .font(.headline.monospacedDigit())
-                    }
-                    if observed {
-                        Circle()
-                            .fill(.green)
-                            .frame(width: 8, height: 8)
-                            .offset(x: 22, y: -22)
+            ZStack {
+                physicalShape(
+                    control,
+                    fill: tileFill(target: target, accepted: captured, observed: observed, focused: focused)
+                )
+
+                if control == .knob {
+                    Rectangle()
+                        .fill(Color.white.opacity(0.72))
+                        .frame(height: 1.5)
+                        .padding(.horizontal, 6)
+                } else if control == .topRightPlanarJoystick {
+                    directionalGlyph
+                } else if control == .bottomWide {
+                    Capsule()
+                        .strokeBorder(Color.white.opacity(0.75), lineWidth: 1.5)
+                        .padding(8)
+                } else {
+                    Text(control.shortLabel)
+                        .font(.system(.caption, design: .monospaced).bold())
+                        .foregroundStyle(.white.opacity(0.92))
+                }
+
+                if assignment != .unassigned {
+                    VStack {
+                        Spacer()
+                        Text(assignment.shortLabel)
+                            .font(.system(size: 8, weight: .bold, design: .rounded))
+                            .foregroundStyle(.white.opacity(0.9))
+                            .padding(.bottom, 3)
                     }
                 }
-                .frame(width: 72, height: 58)
-                Text(control.label)
-                    .font(.caption2)
-                    .foregroundStyle(target ? .orange : .secondary)
+
+                if observed {
+                    Circle()
+                        .fill(.green)
+                        .frame(width: 8, height: 8)
+                        .overlay(Circle().strokeBorder(.white.opacity(0.8), lineWidth: 1))
+                        .offset(x: 18, y: -18)
+                }
             }
-            .frame(maxWidth: .infinity)
-            .padding(6)
             .overlay {
-                RoundedRectangle(cornerRadius: 10)
-                    .strokeBorder(focused ? Color.accentColor : .clear, lineWidth: 2)
+                if hovering {
+                    RoundedRectangle(cornerRadius: 10)
+                        .strokeBorder(.white.opacity(0.95), lineWidth: 2)
+                }
             }
         }
         .buttonStyle(.plain)
-        .help(target ? "Next physical control: \(control.label)" : "Focus \(control.label)")
+        .onHover { isHovering in
+            if isHovering {
+                hoveredControl = control
+            } else if hoveredControl == control {
+                hoveredControl = nil
+            }
+        }
+        .help(target ? "Calibrate \(control.label) next" : "Configure \(control.label)")
+    }
+
+    @ViewBuilder
+    private func physicalShape(_ control: CodexMicroPhysicalControl, fill: Color) -> some View {
+        switch control.shape {
+        case .knob:
+            Circle()
+                .fill(fill)
+                .overlay(Circle().strokeBorder(Color.white.opacity(0.9), lineWidth: 1.5))
+        case .directional:
+            Circle()
+                .fill(fill)
+                .overlay(Circle().strokeBorder(Color.white.opacity(0.9), lineWidth: 1.5))
+        case .small:
+            Circle()
+                .fill(fill)
+                .overlay(Circle().strokeBorder(Color.white.opacity(0.9), lineWidth: 1.5))
+        case .wide:
+            RoundedRectangle(cornerRadius: 12)
+                .fill(fill)
+                .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Color.white.opacity(0.9), lineWidth: 1.5))
+        case .key:
+            RoundedRectangle(cornerRadius: 10)
+                .fill(fill)
+                .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(Color.white.opacity(0.9), lineWidth: 1.5))
+        }
+    }
+
+    private var directionalGlyph: some View {
+        ZStack {
+            Image(systemName: "chevron.up")
+                .offset(y: -7)
+            Image(systemName: "chevron.down")
+                .offset(y: 7)
+            Image(systemName: "chevron.left")
+                .offset(x: -7)
+            Image(systemName: "chevron.right")
+                .offset(x: 7)
+        }
+        .font(.system(size: 9, weight: .semibold))
+        .foregroundStyle(.white.opacity(0.85))
+    }
+
+    @ViewBuilder
+    private var assignmentInspector: some View {
+        let control = hoveredControl ?? selectedControl
+        let assignment = stagedAssignments[control] ?? .unassigned
+
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .firstTextBaseline, spacing: 10) {
+                Image(systemName: control.isKnob ? "dial.medium" : "cursorarrow.click.2")
+                    .foregroundStyle(control.isKnob ? .orange : .blue)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(control.label)
+                        .font(.callout.bold())
+                    Text(control.isKnob
+                         ? "K turn: 360° rotation or vertical up/down; K press is captured separately"
+                         : "Choose a staged intent; 360° rotation is disabled here")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                Menu {
+                    ForEach(CodexMicroAssignment.allCases) { option in
+                        Button {
+                            setAssignment(option, for: control)
+                        } label: {
+                            HStack {
+                                Text(option.label)
+                                if option == assignment {
+                                    Image(systemName: "checkmark")
+                                }
+                            }
+                        }
+                        .disabled(!option.isAllowed(on: control))
+                    }
+                } label: {
+                    Label(assignment.label, systemImage: "slider.horizontal.3")
+                }
+                .menuStyle(.borderlessButton)
+            }
+
+            if control.isKnob {
+                Label("360° rotation is available only on K and is not transmitted in this read-only stage.", systemImage: "lock.shield")
+                    .font(.caption2)
+                    .foregroundStyle(.orange)
+            }
+        }
+        .padding(10)
+        .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 10))
+    }
+
+    private func setAssignment(_ assignment: CodexMicroAssignment, for control: CodexMicroPhysicalControl) {
+        guard assignment.isAllowed(on: control) else { return }
+        stagedAssignments[control] = assignment
+    }
+
+    private func legendItem(color: Color, text: String) -> some View {
+        HStack(spacing: 4) {
+            Circle()
+                .fill(color)
+                .frame(width: 7, height: 7)
+            Text(text)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+        }
     }
 
     private func tileFill(target: Bool, accepted: Bool, observed: Bool, focused: Bool) -> Color {
@@ -408,9 +603,13 @@ struct CodexMicroProgrammingPanel: View {
         }
     }
 
-    private func recentEvent(for control: CodexMicroControl) -> ObservedHIDEvent? {
-        let signature = captureState.acceptedSignatureByStep[control.stepID]
-            ?? (captureState.currentStep?.id == control.stepID ? captureState.currentEvidence.signature : nil)
+    private func recentEvent(for control: CodexMicroPhysicalControl) -> ObservedHIDEvent? {
+        guard let stepID = calibratedStepByControl[control]
+                ?? (promptedControl == control ? captureState.currentStep?.id : nil) else {
+            return nil
+        }
+        let signature = captureState.acceptedSignatureByStep[stepID]
+            ?? (captureState.currentStep?.id == stepID ? captureState.currentEvidence.signature : nil)
         guard let signature else { return nil }
         return events.first {
             $0.usagePage == signature.usagePage &&
@@ -431,60 +630,13 @@ struct CodexMicroProgrammingPanel: View {
     private func eventAge(_ event: ObservedHIDEvent) -> String {
         String(format: "%.2f s", max(0, now - event.event.timestamp))
     }
-}
 
-private enum CodexMicroControl: String, CaseIterable, Identifiable, Equatable {
-    case dial
-    case button1
-    case button2
-    case button3
-    case button4
-    case button5
-
-    var id: String { rawValue }
-
-    var stepID: String {
-        switch self {
-        case .dial: return "dial-clockwise"
-        case .button1: return "button-1"
-        case .button2: return "button-2"
-        case .button3: return "button-3"
-        case .button4: return "button-4"
-        case .button5: return "button-5"
+    private var promptedControl: CodexMicroPhysicalControl? {
+        guard captureState.currentStep != nil else { return nil }
+        if let step = captureState.currentStep,
+           step.kind == .dialClockwise || step.kind == .dialCounterclockwise {
+            return .knob
         }
-    }
-
-    var label: String {
-        switch self {
-        case .dial: return "Dial"
-        case .button1: return "Button 1"
-        case .button2: return "Button 2"
-        case .button3: return "Button 3"
-        case .button4: return "Button 4"
-        case .button5: return "Button 5"
-        }
-    }
-
-    var shortLabel: String {
-        switch self {
-        case .dial: return "↺  ↻"
-        case .button1: return "B1"
-        case .button2: return "B2"
-        case .button3: return "B3"
-        case .button4: return "B4"
-        case .button5: return "B5"
-        }
-    }
-
-    init?(stepID: String) {
-        switch stepID {
-        case "dial-clockwise", "dial-counterclockwise": self = .dial
-        case "button-1": self = .button1
-        case "button-2": self = .button2
-        case "button-3": self = .button3
-        case "button-4": self = .button4
-        case "button-5": self = .button5
-        default: return nil
-        }
+        return selectedControl
     }
 }
