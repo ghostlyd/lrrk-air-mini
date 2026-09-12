@@ -35,6 +35,7 @@ it cannot distinguish sensor motion/noise from bus or intermediate corruption.
 
 Next discriminating measurement: correlate raw acquisition bytes and sample
 sequence with the estimator input, without changing PID/filter settings or
-discarding the anomalous samples. Physical speed consistency for this run is
-not recorded as passed because the operator's yes response was ambiguous.
+discarding the anomalous samples. The operator clarified the physical result
+as "continuous steady rotation, I think." This is a tentative positive
+observation, not a definitive speed-consistency measurement.
 This result does not establish live-flight readiness.
