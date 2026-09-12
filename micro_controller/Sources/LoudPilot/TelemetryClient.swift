@@ -268,8 +268,13 @@ final class TelemetryClient: ObservableObject {
     }
 
     private func updateStaleStatus() {
-        guard case .streaming = status, let lastPacketAt else { return }
-        if Date().timeIntervalSince1970 - lastPacketAt > 2.0 {
+        guard case .streaming = status else { return }
+        guard let age = state.completeTelemetryAge(now: Date().timeIntervalSince1970) else {
+            status = .subscribing
+            telemetryFreshness = .unavailable
+            return
+        }
+        if age > 2.0 {
             status = .stale
             telemetryFreshness = .stale
         }

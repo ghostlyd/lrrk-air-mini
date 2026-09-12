@@ -191,6 +191,9 @@ public struct DroneTelemetryState: Equatable, Sendable {
 
     private var gyroParts: [String: Double] = [:]
     private var accelerometerParts: [String: Double] = [:]
+    private var lastBatteryReceivedAt: TimeInterval?
+    private var lastGyroReceivedAt: TimeInterval?
+    private var lastAccelerometerReceivedAt: TimeInterval?
 
     public init() {}
 
@@ -204,6 +207,19 @@ public struct DroneTelemetryState: Equatable, Sendable {
             return false
         }
         return true
+    }
+
+    /// Age of the oldest required sensor group. A continuing battery packet
+    /// must not hide a stalled gyro or accelerometer stream.
+    public func completeTelemetryAge(now: TimeInterval) -> TimeInterval? {
+        guard hasCompleteReadOnlyTelemetry,
+              let lastBatteryReceivedAt,
+              let lastGyroReceivedAt,
+              let lastAccelerometerReceivedAt else {
+            return nil
+        }
+        let oldest = min(lastBatteryReceivedAt, lastGyroReceivedAt, lastAccelerometerReceivedAt)
+        return max(0, now - oldest)
     }
 
     public mutating func applyLogData(
@@ -225,14 +241,20 @@ public struct DroneTelemetryState: Equatable, Sendable {
         }
         guard offset == data.count else { throw TelemetryWireError.malformedLogData }
 
+        var receivedBattery = false
+        var receivedGyro = false
+        var receivedAccelerometer = false
         for (variable, value) in newValues {
             switch variable.path {
             case "pm.vbat":
                 batteryVoltage = value.isFinite ? value : nil
+                receivedBattery = true
             case "gyro.x", "gyro.y", "gyro.z":
                 gyroParts[variable.name] = value
+                receivedGyro = true
             case "acc.x", "acc.y", "acc.z":
                 accelerometerParts[variable.name] = value
+                receivedAccelerometer = true
             default:
                 break
             }
@@ -244,6 +266,9 @@ public struct DroneTelemetryState: Equatable, Sendable {
             accelerometer = Vector3(x: x, y: y, z: z)
         }
         lastReceivedAt = receivedAt
+        if receivedBattery { lastBatteryReceivedAt = receivedAt }
+        if receivedGyro { lastGyroReceivedAt = receivedAt }
+        if receivedAccelerometer { lastAccelerometerReceivedAt = receivedAt }
     }
 
     public func telemetryAge(now: TimeInterval) -> TimeInterval? {
