@@ -133,3 +133,65 @@ class TenSecondBenchTests(unittest.TestCase):
 
     def test_watchdog_also_enforces_ten_second_boundary(self):
         self.run_scenario("bench-ten-second-watchdog")
+
+
+class SingleMotorBenchTests(unittest.TestCase):
+    compile_flags = ["-DCONFIG_LRRK_BENCH_OUTPUT_LIMIT=1",
+                     "-DCONFIG_LRRK_BENCH_OUTPUT_DURATION_MS=10000",
+                     "-DCONFIG_LRRK_BENCH_SINGLE_MOTOR=1"]
+    setUpClass = classmethod(BrushedPwmDriverTests.setUpClass.__func__)
+    run_scenario = BrushedPwmDriverTests.run_scenario
+
+    def test_fixed_single_output_zero_stop_and_nonrenewing_deadline(self):
+        self.run_scenario("single-fixed")
+
+    def test_single_motor_faults_zero_output(self):
+        for cause in ('imu', 'failsafe', 'disarm', 'shutdown', 'stale', 'expiry'):
+            with self.subTest(cause=cause):
+                self.run_scenario('single-'+cause)
+
+    def test_single_motor_write_faults_latch(self):
+        for channel in range(4):
+            with self.subTest(channel=channel):
+                self.run_scenario('single-write-fault', channel)
+
+
+class SelectedMotorTwoTests(unittest.TestCase):
+    compile_flags = SingleMotorBenchTests.compile_flags + ["-DCONFIG_LRRK_BENCH_MOTOR_CHANNEL=2"]
+    setUpClass = classmethod(BrushedPwmDriverTests.setUpClass.__func__)
+    run_scenario = BrushedPwmDriverTests.run_scenario
+
+    def test_selected_channel_only(self):
+        self.run_scenario('single-fixed', 1)
+
+
+class SelectedMotorThreeTests(SelectedMotorTwoTests):
+    compile_flags = SingleMotorBenchTests.compile_flags + ["-DCONFIG_LRRK_BENCH_MOTOR_CHANNEL=3"]
+
+    def test_selected_channel_only(self):
+        self.run_scenario('single-fixed', 2)
+
+
+class SelectedMotorFourTests(SelectedMotorTwoTests):
+    compile_flags = SingleMotorBenchTests.compile_flags + ["-DCONFIG_LRRK_BENCH_MOTOR_CHANNEL=4"]
+
+    def test_selected_channel_only(self):
+        self.run_scenario('single-fixed', 3)
+
+
+class FixedAllMotorTests(unittest.TestCase):
+    compile_flags = ["-DCONFIG_LRRK_BENCH_OUTPUT_LIMIT=1",
+                     "-DCONFIG_LRRK_BENCH_OUTPUT_DURATION_MS=10000",
+                     "-DCONFIG_LRRK_BENCH_FIXED_ALL=1"]
+    setUpClass = classmethod(BrushedPwmDriverTests.setUpClass.__func__)
+    run_scenario = BrushedPwmDriverTests.run_scenario
+
+    def test_fixed_all_output_zero_stop_and_deadline(self):
+        self.run_scenario('all-fixed')
+
+    def test_recovery_preserves_deadline_and_fresh_watchdog_expiry(self):
+        self.run_scenario('all-interruption')
+
+    # Exercise the same production fault transitions with all outputs active.
+    test_all_motor_faults_zero_output = SingleMotorBenchTests.test_single_motor_faults_zero_output
+    test_all_motor_write_faults_latch = SingleMotorBenchTests.test_single_motor_write_faults_latch

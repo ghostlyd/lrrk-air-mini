@@ -151,6 +151,97 @@ int main(int argc, char **argv)
     const char *scenario = argv[1];
     int channel = argc > 2 ? atoi(argv[2]) : 0;
     CHECK(channel >= 0 && channel < 4);
+    if (strcmp(scenario, "all-interruption") == 0) {
+        CHECK(PIOS_LiteWing_BrushedPWM_Init() == 0);
+        PIOS_LiteWing_BrushedPWM_SetImuHealthy(true);
+        armed = FLIGHTSTATUS_ARMED_ARMED;
+        stage_all(10); PIOS_Servo_Update(); expect_all(409);
+        const int64_t start = now_us;
+        now_us += 1000000;
+        stage_all(0); PIOS_Servo_Update(); expect_all(0);
+        armed = FLIGHTSTATUS_ARMED_DISARMED;
+        stage_all(10); PIOS_Servo_Update(); expect_all(0);
+        armed = FLIGHTSTATUS_ARMED_ARMED;
+        stage_all(10); PIOS_Servo_Update(); expect_all(409);
+        PIOS_LiteWing_BrushedPWM_SetImuHealthy(false);
+        stage_all(10); PIOS_Servo_Update(); expect_all(0);
+        PIOS_LiteWing_BrushedPWM_SetImuHealthy(true);
+        stage_all(10); PIOS_Servo_Update(); expect_all(409);
+        PIOS_LiteWing_BrushedPWM_SetFailsafe(true);
+        stage_all(10); PIOS_Servo_Update(); expect_all(0);
+        PIOS_LiteWing_BrushedPWM_SetFailsafe(false);
+        stage_all(10); PIOS_Servo_Update(); expect_all(409);
+        now_us = start + 9999999;
+        stage_all(10); PIOS_Servo_Update(); expect_all(409);
+        now_us = start + 10000000;
+        watchdog_once(); expect_all(0); /* Last update only one microsecond old. */
+        stage_all(10); PIOS_Servo_Update(); expect_all(0);
+        CHECK(PIOS_LiteWing_BrushedPWM_Init() != 0);
+        return 0;
+    }
+    if (strcmp(scenario, "all-fixed") == 0) {
+        CHECK(PIOS_LiteWing_BrushedPWM_Init() == 0);
+        stage_all(1000); PIOS_Servo_Update(); expect_all(0);
+        PIOS_LiteWing_BrushedPWM_SetImuHealthy(true);
+        armed = FLIGHTSTATUS_ARMED_ARMED;
+        stage_all(0); PIOS_Servo_Update(); expect_all(0);
+        const int64_t start = now_us;
+        for (unsigned step = 0; step < 250; ++step) {
+            now_us = start + step * 40000;
+            stage_all(0); PIOS_Servo_Set(step % 4, (step % 999) + 1);
+            PIOS_Servo_Update(); expect_all(409);
+        }
+        stage_all(0); PIOS_Servo_Update(); expect_all(0);
+        now_us = start + 10000000;
+        stage_all(1000); PIOS_Servo_Update(); expect_all(0);
+        armed = FLIGHTSTATUS_ARMED_DISARMED; PIOS_Servo_Update();
+        armed = FLIGHTSTATUS_ARMED_ARMED; PIOS_Servo_Update(); expect_all(0);
+        return 0;
+    }
+    if (strncmp(scenario, "single-", 7) == 0) {
+        CHECK(PIOS_LiteWing_BrushedPWM_Init() == 0);
+        stage_all(1000); PIOS_Servo_Update(); expect_all(0);
+        PIOS_LiteWing_BrushedPWM_SetImuHealthy(true);
+        armed = FLIGHTSTATUS_ARMED_ARMED;
+        stage_all(0); PIOS_Servo_Update(); expect_all(0);
+        const int64_t start = now_us;
+        if (strcmp(scenario, "single-fixed") != 0) {
+            stage_all(10); PIOS_Servo_Update();
+#if CONFIG_LRRK_BENCH_FIXED_ALL
+            expect_all(409);
+#else
+            CHECK(active[0] == 409 && active[1] == 0 && active[2] == 0 && active[3] == 0);
+#endif
+            if (strcmp(scenario, "single-imu") == 0) PIOS_LiteWing_BrushedPWM_SetImuHealthy(false);
+            else if (strcmp(scenario, "single-failsafe") == 0) PIOS_LiteWing_BrushedPWM_SetFailsafe(true);
+            else if (strcmp(scenario, "single-disarm") == 0) armed = FLIGHTSTATUS_ARMED_DISARMED;
+            else if (strcmp(scenario, "single-shutdown") == 0) PIOS_LiteWing_BrushedPWM_Shutdown();
+            else if (strcmp(scenario, "single-stale") == 0) { now_us += 100001; watchdog_once(); }
+            else if (strcmp(scenario, "single-expiry") == 0) { now_us += 10000000; watchdog_once(); }
+            else if (strcmp(scenario, "single-write-fault") == 0) {
+                fail_update = channel; PIOS_Servo_Update();
+                expect_all(0); verify_fault_stays_latched(); return 0;
+            } else CHECK(false);
+            /* Armed state is sampled at Update; fault setters stop immediately. */
+            if (strcmp(scenario, "single-disarm") != 0) expect_all(0);
+            if (strcmp(scenario, "single-stale") != 0) stage_all(10);
+            PIOS_Servo_Update(); expect_all(0);
+            return 0;
+        }
+        for (unsigned step = 0; step < 250; ++step) {
+            now_us = start + step * 40000;
+            stage_all(0); PIOS_Servo_Set(step % 4, (step % 999) + 1);
+            PIOS_Servo_Update();
+            for (int motor = 0; motor < 4; ++motor)
+                CHECK(active[motor] == (motor == channel ? 409u : 0u));
+        }
+        stage_all(0); PIOS_Servo_Update(); expect_all(0);
+        now_us = start + 10000000;
+        stage_all(1000); PIOS_Servo_Update(); expect_all(0);
+        armed = FLIGHTSTATUS_ARMED_DISARMED; PIOS_Servo_Update();
+        armed = FLIGHTSTATUS_ARMED_ARMED; PIOS_Servo_Update(); expect_all(0);
+        return 0;
+    }
     if (strncmp(scenario, "bench-", 6) == 0) {
         CHECK(PIOS_LiteWing_BrushedPWM_Init() == 0);
         /* Suppressed demand and long zero-output waits must not consume

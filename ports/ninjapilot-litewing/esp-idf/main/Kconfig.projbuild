@@ -18,6 +18,34 @@ config LRRK_BENCH_OUTPUT_DURATION_MS
         Elapsed interval from the first eligible nonzero frame, not accumulated
         motor-on time. Fresh commands and rearming cannot extend this deadline.
         A longer interval does not override host aborts or any firmware fault.
+config LRRK_BENCH_SINGLE_MOTOR
+    bool "Props-off diagnostic: fixed single-channel duty (NOT FOR FLIGHT)"
+    depends on LRRK_BENCH_OUTPUT_LIMIT
+    default n
+    help
+        When sanitized controller demand is nonzero, apply fixed 200/1000
+        duty to the selected channel only. All other channels stay zero. Zero demand,
+        disarm, IMU faults, failsafe and the one-shot deadline still stop
+        output. Sensor readings and controller settings are not changed.
+        This isolates applied motor output from mixer variation for a
+        props-off bench observation. Never use this profile for flight.
+config LRRK_BENCH_MOTOR_CHANNEL
+    int "Single-motor bench channel"
+    depends on LRRK_BENCH_SINGLE_MOTOR
+    range 1 4
+    default 1
+    help
+        Only this channel receives the fixed diagnostic duty; all others
+        remain zero. The one-shot deadline and fault handling are unchanged.
+config LRRK_BENCH_FIXED_ALL
+    bool "Props-off diagnostic: fixed duty on all four motors (NOT FOR FLIGHT)"
+    depends on LRRK_BENCH_OUTPUT_LIMIT && !LRRK_BENCH_SINGLE_MOTOR
+    default n
+    help
+        Apply 200/1000 to all four motors when sanitized demand is nonzero.
+        Zero demand, fault suppression and the one-shot deadline still stop
+        output. This tests combined operation without mixer variation, not
+        flight control. It increases total load versus a single-motor test.
 config LRRK_ATTITUDE_TRACE
     bool "Capture one bounded attitude/PWM trace in RAM"
     depends on LRRK_BENCH_OUTPUT_LIMIT

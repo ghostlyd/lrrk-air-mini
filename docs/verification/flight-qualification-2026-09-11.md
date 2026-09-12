@@ -1,5 +1,11 @@
 # Flight qualification checkpoint — 2026-09-11
 
+> Historical checkpoint before the ten-second and single-motor trials.
+> For subsequent deployments and physical observations, see
+> [single-motor results](single-motor-results-2026-09-11.md).
+> The one-second installed-image statements below describe that earlier boot,
+> not the current board. Battery and actual-flight qualification remain open.
+
 **Not flight-qualified.** The installed image is a BEN1 diagnostic build,
 not the normal flight image. Earlier stationary-IMU acceptance is historical;
 the subsequently captured gyro transient remains unexplained.
