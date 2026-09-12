@@ -4,6 +4,7 @@
 #include "sdkconfig.h"
 #endif
 #if CONFIG_LRRK_ATTITUDE_TRACE
+#include "openpilot.h"
 #include "uavobjectmanager.h"
 int32_t LiteWingTraceInitialize(void);
 int32_t LiteWingAttitudeTracePack(UAVObjHandle, uint16_t, uint8_t *);
