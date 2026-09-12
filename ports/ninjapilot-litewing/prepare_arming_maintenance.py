@@ -34,8 +34,8 @@ def prepare(source, output):
         "                       UAVObjGetID(obj_handle) == 0xDA60A0C7u ||\n"
         "                       UAVObjGetID(obj_handle) == 0xA6453F6Eu ||\n"
         "                       UAVObjGetID(obj_handle) == 0xA6453F6Fu ||\n"
-        "                       UAVObjGetID(obj_handle) == 0x5E93B7FEu ||\n"
-        "                       UAVObjGetID(obj_handle) == 0x5E93B7FFu)) return -1;")
+        "                       UAVObjGetID(obj_handle) == 0xC6CEDB44u ||\n"
+        "                       UAVObjGetID(obj_handle) == 0xC6CEDB45u)) return -1;")
     code = replace_exact(code, '#include "inc/uavobjectprivate.h"',
                          '#include "inc/uavobjectprivate.h"\n#include <stddef.h>\n'
                          '#include "flightstatus.h"\n#include "litewing_arming_maintenance.h"\n'

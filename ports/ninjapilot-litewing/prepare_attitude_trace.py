@@ -8,7 +8,7 @@ import subprocess
 import tempfile
 from verify_usb_ids import DEFINITION, RESERVED, verify
 
-OBJID = 0x5E93B7FE
+OBJID = 0xC6CEDB44
 
 def validate(generated, others):
     verify(generated)

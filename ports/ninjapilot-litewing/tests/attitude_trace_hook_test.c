@@ -12,6 +12,7 @@ static int dtconfig, calls, writes;
 static bool bad_norm, accel_filter_enabled;
 static float q[4]={1,0,0,0}, accels_filtered[3],grot_filtered[3],gyro_correct_int[3];
 static float accelKi,accelKp=.2f;
+static float trace_pre_bias[3]={3,3,3},trace_applied_bias[3]={1,2,3};
 static float PIOS_DELTATIME_GetAverageSeconds(int *p) { (void)p; return .002f; }
 static void apply_accel_filter(const float *a,float *b) { memcpy(b,a,12); }
 static void CrossProduct(const float *a,const float *b,float *out)
@@ -25,11 +26,14 @@ static void AttitudeStateSet(AttitudeStateData *s)
 { assert(s->Roll==10 && s->Pitch==11 && s->Yaw==12);++writes; }
 #if CONFIG_LRRK_ATTITUDE_TRACE
 static void LiteWingAttitudeTraceRecord(float dt,const float *a,const float *g,
-                                        const float *c,const float *r)
+                                        const float *c,const float *r,
+                                        const float *pre,const float *bias)
 {
     assert(writes==calls+1 && dt==.002f);
     assert(a[0]==1 && a[1]==2 && a[2]==3);
     assert(g[0]==4 && g[1]==5 && g[2]==6);
+    assert(pre[0]==3 && pre[1]==3 && pre[2]==3);
+    assert(bias[0]==1 && bias[1]==2 && bias[2]==3);
     assert(fabsf(c[0]-104)<.001 && fabsf(c[1]-205)<.001 && fabsf(c[2]-306)<.001);
     assert(r[0]==10 && r[1]==11 && r[2]==12);++calls;
 }
@@ -37,6 +41,7 @@ static void LiteWingAttitudeTraceRecord(float dt,const float *a,const float *g,
 #include "attitude_step.inc"
 int main(void)
 {
+    (void)trace_pre_bias; (void)trace_applied_bias;
     AccelStateData a={1,2,3};GyroStateData g={4,5,6};
     updateAttitude(&a,&g);
     assert(writes==1 && calls==CONFIG_LRRK_ATTITUDE_TRACE);

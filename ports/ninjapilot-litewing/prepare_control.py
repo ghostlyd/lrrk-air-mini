@@ -112,12 +112,27 @@ static float lastThrottleDesired;""")
     attitude = prepare_input(inputs["Attitude/attitude.c"], "Attitude")
     attitude = replace_exact(attitude, '#include <openpilot.h>',
         '#include <openpilot.h>\n#include "litewing_attitude_trace_module.h"')
+    attitude = replace_exact(attitude, 'static float gyro_correct_int[3] = { 0, 0, 0 };',
+        '''static float gyro_correct_int[3] = { 0, 0, 0 };
+#if CONFIG_LRRK_ATTITUDE_TRACE
+static float trace_pre_bias[3], trace_applied_bias[3];
+#endif''')
+    attitude = replace_exact(attitude, '    gyrosData->x = gyros[0];',
+        '''#if CONFIG_LRRK_ATTITUDE_TRACE
+    /* Same task and sample, before applying or updating the adaptive bias. */
+    for (unsigned axis = 0; axis < 3; ++axis) {
+        trace_pre_bias[axis] = gyros[axis];
+        trace_applied_bias[axis] = bias_correct_gyro ? gyro_correct_int[axis] : 0.0f;
+    }
+#endif
+    gyrosData->x = gyros[0];''')
     attitude = replace_exact(attitude, '    AttitudeStateSet(&attitudeState);',
         '''    AttitudeStateSet(&attitudeState);
 #if CONFIG_LRRK_ATTITUDE_TRACE
     /* Same estimator update; PWM in the callee is a separate qualified snapshot. */
     const float trace_gyro[3] = {gyrosData->x, gyrosData->y, gyrosData->z};
-    LiteWingAttitudeTraceRecord(dT, accels, trace_gyro, gyros, rpy_temp);
+    LiteWingAttitudeTraceRecord(dT, accels, trace_gyro, gyros, rpy_temp,
+                               trace_pre_bias, trace_applied_bias);
 #endif''')
     # All inputs/anchors validated before writes. Preserve original GPL notices.
     output.mkdir(parents=True, exist_ok=True)

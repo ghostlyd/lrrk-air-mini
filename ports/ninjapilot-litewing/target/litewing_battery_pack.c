@@ -21,7 +21,7 @@ void LiteWingBatteryStoreSample(const struct litewing_battery_sample *sample)
 int32_t LiteWingBatteryPack(UAVObjHandle obj, uint16_t instance, uint8_t *data)
 {
 #if CONFIG_LRRK_ATTITUDE_TRACE
-    if (obj && UAVObjGetID(obj) == UINT32_C(0x5E93B7FE))
+    if (obj && UAVObjGetID(obj) == UINT32_C(0xC6CEDB44))
         return LiteWingAttitudeTracePack(obj, instance, data);
 #endif
     if (UAVObjGetID(obj) == UINT32_C(0xA6453F6E))

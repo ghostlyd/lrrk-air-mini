@@ -10,12 +10,14 @@
         <field name="Gyro" units="deg/s" type="float" elements="3" defaultvalue="0"/>
         <field name="Corrected" units="deg/s" type="float" elements="3" defaultvalue="0"/>
         <field name="RPY" units="deg" type="float" elements="3" defaultvalue="0"/>
+        <field name="PreBias" units="deg/s" type="float" elements="3" defaultvalue="0"/>
+        <field name="AppliedBias" units="deg/s" type="float" elements="3" defaultvalue="0"/>
         <field name="Requested" units="0..1000" type="uint16" elements="4" defaultvalue="0"/>
         <field name="Submitted" units="0..2047" type="uint16" elements="4" defaultvalue="0"/>
         <field name="Count" units="" type="uint16" elements="1" defaultvalue="0"/>
         <field name="TriggerIndex" units="" type="uint16" elements="1" defaultvalue="65535"/>
         <field name="RecordIndex" units="" type="uint16" elements="1" defaultvalue="0"/>
-        <field name="Version" units="" type="uint8" elements="1" defaultvalue="1"/>
+        <field name="Version" units="" type="uint8" elements="1" defaultvalue="2"/>
         <field name="State" units="" type="uint8" elements="1" defaultvalue="0"/>
         <field name="PwmAvailable" units="" type="uint8" elements="1" defaultvalue="0"/>
         <field name="KnownMask" units="" type="uint8" elements="1" defaultvalue="0"/>

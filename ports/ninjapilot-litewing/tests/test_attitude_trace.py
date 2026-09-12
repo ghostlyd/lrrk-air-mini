@@ -43,13 +43,13 @@ class AttitudeTraceTests(unittest.TestCase):
             import prepare_attitude_trace
             prepare_attitude_trace.validate(out/'flight',[])
             collision=out/'collision';collision.mkdir()
-            for value in (0x5E93B7FE,0x5E93B7FD,0x5E93B7FF):
+            for value in (0xC6CEDB44,0xC6CEDB43,0xC6CEDB45):
                 (collision/'fake.h').write_text(f'#define FAKE_OBJID {value}\n')
                 with self.assertRaises(ValueError):
                     prepare_attitude_trace.validate(out/'flight',[collision])
             declaration=re.search(r'typedef struct \{.*?LiteWingAttitudeTraceData;',header,re.S).group()
             (out/'litewingattitudetrace.h').write_text('#include "pwm_sdk.h"\n'+declaration+
-                '\n#define LITEWINGATTITUDETRACE_OBJID 0x5E93B7FEu\n'
+                '\n#define LITEWINGATTITUDETRACE_OBJID 0xC6CEDB44u\n'
                 'int32_t LiteWingAttitudeTraceInitialize(void);\n'
                 'UAVObjHandle LiteWingAttitudeTraceHandle(void);\n'
                 'int LiteWingAttitudeTraceGetMetadata(UAVObjMetadata *);\n')

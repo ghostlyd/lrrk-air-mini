@@ -13,6 +13,8 @@ int main(void)
     assert(t.count == 64 && !t.triggered);
     for (unsigned i = 1000; i < 1448; ++i) {
         r.timestamp_us = i;
+        r.pre_bias[0] = (float)i;
+        r.applied_bias[0] = -(float)i;
         /* Only first post sample is powered: zero does not restart capture. */
         lw_trace_push(&t, &r, i == 1000);
     }
@@ -20,6 +22,10 @@ int main(void)
     for (unsigned i = 0; i < 512; ++i) {
         assert(lw_trace_read(&t, i, &out));
         assert(out.timestamp_us == 936 + i && out.sequence == 936 + i);
+        if (i >= 64) {
+            assert(out.pre_bias[0] == (float)(936 + i));
+            assert(out.applied_bias[0] == -(float)(936 + i));
+        }
     }
     r.timestamp_us = 999999;
     lw_trace_push(&t, &r, true);

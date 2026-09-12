@@ -8,6 +8,7 @@ struct lw_trace_record {
     uint64_t timestamp_us;
     uint32_t sequence;
     float dt, accel[3], gyro[3], corrected[3], rpy[3];
+    float pre_bias[3], applied_bias[3];
     uint32_t commits;
     uint16_t requested[4], submitted[4];
     uint8_t pwm_available, known_mask, suppression;

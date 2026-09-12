@@ -8,10 +8,10 @@
 #include "freertos/FreeRTOS.h"
 #include <string.h>
 #include <stddef.h>
-_Static_assert(sizeof(LiteWingAttitudeTraceData) == 96, "trace wire size");
+_Static_assert(sizeof(LiteWingAttitudeTraceData) == 120, "trace wire size");
 _Static_assert(offsetof(LiteWingAttitudeTraceData, Dt) == 16, "trace dt offset");
-_Static_assert(offsetof(LiteWingAttitudeTraceData, Count) == 84, "trace count offset");
-_Static_assert(offsetof(LiteWingAttitudeTraceData, Version) == 90, "trace version offset");
+_Static_assert(offsetof(LiteWingAttitudeTraceData, Count) == 108, "trace count offset");
+_Static_assert(offsetof(LiteWingAttitudeTraceData, Version) == 114, "trace version offset");
 static struct lw_trace trace;
 static portMUX_TYPE trace_lock = portMUX_INITIALIZER_UNLOCKED;
 static bool attempted, ready;
@@ -30,9 +30,9 @@ int32_t LiteWingTraceInitialize(void)
 int32_t LiteWingAttitudeTracePack(UAVObjHandle obj, uint16_t i, uint8_t *out)
 {
     if (!obj || !out || i >= LW_TRACE_CAPACITY ||
-        UAVObjGetID(obj) != LITEWINGATTITUDETRACE_OBJID || UAVObjGetNumBytes(obj) != 96) return -1;
+        UAVObjGetID(obj) != LITEWINGATTITUDETRACE_OBJID || UAVObjGetNumBytes(obj) != 120) return -1;
     LiteWingAttitudeTraceData data = {0};
-    data.Version = 1; data.RecordIndex = i; data.TriggerIndex = UINT16_MAX;
+    data.Version = 2; data.RecordIndex = i; data.TriggerIndex = UINT16_MAX;
     struct lw_trace_record record;
     portENTER_CRITICAL(&trace_lock);
     data.State = !ready ? 0 : trace.frozen ? 3 : trace.triggered ? 2 : 1;
@@ -49,6 +49,8 @@ int32_t LiteWingAttitudeTracePack(UAVObjHandle obj, uint16_t i, uint8_t *out)
         memcpy(data.Gyro, record.gyro, sizeof data.Gyro);
         memcpy(data.Corrected, record.corrected, sizeof data.Corrected);
         memcpy(data.RPY, record.rpy, sizeof data.RPY);
+        memcpy(data.PreBias, record.pre_bias, sizeof data.PreBias);
+        memcpy(data.AppliedBias, record.applied_bias, sizeof data.AppliedBias);
         memcpy(data.Requested, record.requested, sizeof data.Requested);
         memcpy(data.Submitted, record.submitted, sizeof data.Submitted);
         data.PwmAvailable = record.pwm_available;
@@ -58,10 +60,13 @@ int32_t LiteWingAttitudeTracePack(UAVObjHandle obj, uint16_t i, uint8_t *out)
     return 0;
 }
 void LiteWingAttitudeTraceRecord(float dt, const float a[3], const float g[3],
-                                const float c[3], const float r[3])
+                                const float c[3], const float r[3],
+                                const float pre[3], const float bias[3])
 {
     if (!ready) return;
     struct lw_trace_record record = {.dt = dt};
+    memcpy(record.pre_bias,pre,sizeof record.pre_bias);
+    memcpy(record.applied_bias,bias,sizeof record.applied_bias);
     memcpy(record.accel,a,sizeof record.accel); memcpy(record.gyro,g,sizeof record.gyro);
     memcpy(record.corrected,c,sizeof record.corrected); memcpy(record.rpy,r,sizeof record.rpy);
     struct litewing_pwm_observation pwm;
