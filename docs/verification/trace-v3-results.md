@@ -72,3 +72,14 @@ cleanup with checked neutral writes, paced repeated output-status requests,
 fresh zero-output evidence, and explicit cleanup failure reporting. Preserve
 the original failure and stop transmitting powered commands immediately.
 Do not bypass the tilt guard or retune the controller to hide this event.
+
+The host cleanup correction is implemented in `diagnostics/bench_cleanup.py`
+and integrated into the private v3 bench runner. It sends only the supplied
+neutral packet and two status requests, using checked writes, 40 ms neutral
+cadence, 100 ms status-request cadence, and an independent two-second deadline.
+Confirmation requires post-cleanup, at-most-250-ms-old zero actuator/PWM
+observations with no reported output errors. Exceptions and timeout are returned
+explicitly; the original trial failure remains separate. Six hardware-free
+regressions cover delayed request-only replies, stale replies, absent zero,
+PWM faults, short writes and parser errors. They do not establish live STOP
+latency or validate the whole runner. Live cleanup verification remains pending.
