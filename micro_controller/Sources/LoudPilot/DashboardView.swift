@@ -220,9 +220,27 @@ struct DashboardView: View {
                     }
                 }
 
+                HStack(spacing: 8) {
+                    Button("Open Bluetooth Settings") {
+                        openBluetoothSettings()
+                    }
+                    Button("Recheck HID") {
+                        hidMonitor.rescan()
+                    }
+                    .buttonStyle(.bordered)
+                    Spacer()
+                }
+
                 Text("Discovery is integrated for controller identification. Only Codex Micro or Work Louder Micro names are eligible for control; Apple Magic Keyboard and other Bluetooth devices remain out of scope.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+
+                Label(
+                    "A nearby Bluetooth name is not yet a selectable input device. LoudPilot requires macOS to expose the Micro as HID before it can be selected or read.",
+                    systemImage: "info.circle"
+                )
+                .font(.caption)
+                .foregroundStyle(.orange)
 
                 if bluetooth.peripherals.isEmpty {
                     Text("No Bluetooth peripherals discovered in the last scan.")
@@ -237,14 +255,14 @@ struct DashboardView: View {
                                     .foregroundStyle(.secondary)
                             }
                             Spacer()
-                            Text(peripheral.isControllerCandidate ? "Controller eligible" : "Out of scope")
+                            Text(peripheral.isControllerCandidate ? "Nearby only · waiting for HID" : "Out of scope")
                                 .font(.caption.bold())
-                                .foregroundStyle(peripheral.isControllerCandidate ? .green : .secondary)
+                                .foregroundStyle(peripheral.isControllerCandidate ? .orange : .secondary)
                         }
                     }
                 }
 
-                Text("Eligible Micro devices: \(bluetooth.controllerCandidates.count)")
+                Text("Nearby Micro advertisements: \(bluetooth.controllerCandidates.count) · HID devices ready: \(hidMonitor.devices.filter(\.isControllerCandidate).count)")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -284,6 +302,11 @@ struct DashboardView: View {
                         Text("Install the official companion separately if you want its device configuration surface.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
+                        if let installer = workLouderInputInstallerURL {
+                            Button("Open downloaded installer") {
+                                NSWorkspace.shared.open(installer)
+                            }
+                        }
                     }
                     Spacer()
                     Text("No proprietary binary is bundled")
@@ -719,6 +742,17 @@ struct DashboardView: View {
 
     private var workLouderInputURL: URL? {
         NSWorkspace.shared.urlForApplication(withBundleIdentifier: "it.focusense.input-app")
+    }
+
+    private var workLouderInputInstallerURL: URL? {
+        let url = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Downloads/input-0.18.3-arm64.dmg")
+        return FileManager.default.fileExists(atPath: url.path) ? url : nil
+    }
+
+    private func openBluetoothSettings() {
+        guard let url = URL(string: "x-apple.systempreferences:com.apple.BluetoothSettings") else { return }
+        NSWorkspace.shared.open(url)
     }
 
     private var wifiDetail: String {
