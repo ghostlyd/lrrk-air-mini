@@ -88,6 +88,18 @@ if(NOT LITEWING_PWM_RC EQUAL 0)
     message(FATAL_ERROR "Custom PWM observation generation or schema verification failed")
 endif()
 
+set(LITEWING_TRACE_DIR "${CMAKE_CURRENT_BINARY_DIR}/litewing_trace")
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+    "${PORT_ROOT}/prepare_attitude_trace.py"
+    "${PORT_ROOT}/uavobjects/litewingattitudetrace.xml")
+execute_process(COMMAND python3 "${PORT_ROOT}/prepare_attitude_trace.py"
+    --upstream "${NINJAPILOT_ROOT}" --output "${LITEWING_TRACE_DIR}"
+    --custom "${LITEWING_IMU_DIR}/object" --custom "${LITEWING_PWM_DIR}/object"
+    RESULT_VARIABLE LITEWING_TRACE_RC)
+if(NOT LITEWING_TRACE_RC EQUAL 0)
+    message(FATAL_ERROR "Attitude trace schema verification failed")
+endif()
+
 set(PIOS_ESP32_SRCS
     "${ESP32PORT}/pios/esp32/pios_sys.c"
     "${ESP32PORT}/pios/esp32/pios_delay.c"
@@ -317,6 +329,7 @@ foreach(UAVO_NAME IN LISTS UAVO_NAMES)
 endforeach()
 
 set(ALL_PORT_SRCS
+    "${LITEWING_TRACE_DIR}/object/litewingattitudetrace.c"
     "${LITEWING_PWM_DIR}/object/litewingpwmobservation.c"
     "${LITEWING_IMU_DIR}/object/litewingimuhealth.c"
     ${BOARD_SRCS}
@@ -371,6 +384,7 @@ endif()
 idf_component_register(
     SRCS ${ALL_PORT_SRCS}
     INCLUDE_DIRS
+        "${LITEWING_TRACE_DIR}/object"
         "${LITEWING_PWM_DIR}/object"
         # Only the custom object pair is exported here. The pinned UAVOSYNTH
         # remains authoritative for uavobjectsinit.h and transport-wide limits.

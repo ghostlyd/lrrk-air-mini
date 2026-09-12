@@ -18,4 +18,12 @@ config LRRK_BENCH_OUTPUT_DURATION_MS
         Elapsed interval from the first eligible nonzero frame, not accumulated
         motor-on time. Fresh commands and rearming cannot extend this deadline.
         A longer interval does not override host aborts or any firmware fault.
+config LRRK_ATTITUDE_TRACE
+    bool "Capture one bounded attitude/PWM trace in RAM"
+    depends on LRRK_BENCH_OUTPUT_LIMIT
+    default n
+    help
+        Bench-only 512-record capture with 64 pretrigger updates. Trigger on
+        first observed nonzero unsuppressed PWM; download after freeze.
+        Does not alter controller inputs, arming or output bounds.
 endmenu

@@ -1,0 +1,29 @@
+<xml>
+    <object name="LiteWingAttitudeTrace" singleinstance="false" settings="false" category="Diagnostics">
+        <description>Frozen chronological estimator trace indexed by instance 0..511. State 0 disabled, 1 rolling, 2 collecting, 3 frozen. Only state3 has sample data. Time is completion time, not raw IMU acquisition. PWM snapshot is independently qualified API state, not electrical feedback.</description>
+        <field name="TimeLow" units="us" type="uint32" elements="1" defaultvalue="0"/>
+        <field name="TimeHigh" units="us" type="uint32" elements="1" defaultvalue="0"/>
+        <field name="Sequence" units="" type="uint32" elements="1" defaultvalue="0"/>
+        <field name="PwmCommits" units="" type="uint32" elements="1" defaultvalue="0"/>
+        <field name="Dt" units="s" type="float" elements="1" defaultvalue="0"/>
+        <field name="Accel" units="m/s^2" type="float" elements="3" defaultvalue="0"/>
+        <field name="Gyro" units="deg/s" type="float" elements="3" defaultvalue="0"/>
+        <field name="Corrected" units="deg/s" type="float" elements="3" defaultvalue="0"/>
+        <field name="RPY" units="deg" type="float" elements="3" defaultvalue="0"/>
+        <field name="Requested" units="0..1000" type="uint16" elements="4" defaultvalue="0"/>
+        <field name="Submitted" units="0..2047" type="uint16" elements="4" defaultvalue="0"/>
+        <field name="Count" units="" type="uint16" elements="1" defaultvalue="0"/>
+        <field name="TriggerIndex" units="" type="uint16" elements="1" defaultvalue="65535"/>
+        <field name="RecordIndex" units="" type="uint16" elements="1" defaultvalue="0"/>
+        <field name="Version" units="" type="uint8" elements="1" defaultvalue="1"/>
+        <field name="State" units="" type="uint8" elements="1" defaultvalue="0"/>
+        <field name="PwmAvailable" units="" type="uint8" elements="1" defaultvalue="0"/>
+        <field name="KnownMask" units="" type="uint8" elements="1" defaultvalue="0"/>
+        <field name="Suppression" units="" type="uint8" elements="1" defaultvalue="0"/>
+        <field name="Reserved" units="" type="uint8" elements="1" defaultvalue="0"/>
+        <access gcs="readonly" flight="readwrite"/>
+        <telemetrygcs acked="false" updatemode="manual" period="0"/>
+        <telemetryflight acked="false" updatemode="manual" period="0"/>
+        <logging updatemode="manual" period="0"/>
+    </object>
+</xml>

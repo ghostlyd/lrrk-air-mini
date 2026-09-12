@@ -15,11 +15,12 @@ static struct UAVOData flight={.instance_size=8}, other={.instance_size=8};
 #ifdef IMU_ACCESS_TEST
 static struct UAVOData imu={.instance_size=8};
 static struct UAVOMeta imu_meta;
+static uint32_t diagnostic_id = 0xDA60A0C6;
 #endif
 uint32_t UAVObjGetID(UAVObjHandle h) {
 #ifdef IMU_ACCESS_TEST
-    if(h==&imu) return 0xDA60A0C6;
-    if(h==&imu_meta) return 0xDA60A0C7;
+    if(h==&imu) return diagnostic_id;
+    if(h==&imu_meta) return diagnostic_id+1;
 #endif
     (void)h; return 0;
 }
@@ -74,8 +75,12 @@ int main(void) {
     pthread_mutex_init(mutex,&attr); pthread_mutexattr_destroy(&attr);
 #ifdef IMU_ACCESS_TEST
     uint8_t forged[8]={1};
-    assert(UAVObjUnpack(&imu,0,forged)==-1);
-    assert(UAVObjUnpack(&imu_meta,0,forged)==-1);
+    const uint32_t diagnostic_ids[]={0xDA60A0C6,0xA6453F6E,0x5E93B7FE};
+    for (unsigned i=0;i<3;++i) {
+        diagnostic_id=diagnostic_ids[i];
+        assert(UAVObjUnpack(&imu,0,forged)==-1);
+        assert(UAVObjUnpack(&imu_meta,0,forged)==-1);
+    }
     assert(imu.bytes[0]==0 && imu_meta.bytes[0]==0 && events==0);
     assert(UAVObjSetInstanceData(&imu,0,forged)==0 && imu.bytes[0]==1);
     events=0;

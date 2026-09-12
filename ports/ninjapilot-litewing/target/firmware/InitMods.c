@@ -5,6 +5,7 @@
  */
 #include <pios_litewing_modules.h>
 #include <stdbool.h>
+#include "litewing_attitude_trace_module.h"
 
 static bool initAttempted, initialized, startAttempted;
 
@@ -40,6 +41,9 @@ int32_t PIOS_LiteWing_ModulesInitialize(void)
     CHECK_MODULE(ManualControlInitialize());
     CHECK_MODULE(LiteWingImuHealthInitialize());
     CHECK_MODULE(LiteWingPwmObservationInitialize());
+#if CONFIG_LRRK_ATTITUDE_TRACE
+    CHECK_MODULE(LiteWingTraceInitialize());
+#endif
     CHECK_MODULE(TelemetryInitialize());
     CHECK_MODULE(LiteWingBatteryInitialize());
     initialized = true;
