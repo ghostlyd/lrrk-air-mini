@@ -1,0 +1,12 @@
+menu "LiteWing diagnostic build"
+config LRRK_BENCH_OUTPUT_LIMIT
+    bool "Bench-only output ceiling and one-shot deadline (NOT FOR FLIGHT)"
+    default n
+    help
+        Clamp each motor to 200/1000 duty. After the first eligible nonzero
+        frame, latch outputs off at the one-second deadline, checked by
+        output updates and the 20 ms watchdog. Actual scheduling latency
+        must be measured on hardware; this is not a hardware cutoff.
+        Reset is required for another interval. Normal arming, IMU health
+        and failsafe requirements remain. Never use this build for flight.
+endmenu

@@ -151,6 +151,95 @@ int main(int argc, char **argv)
     const char *scenario = argv[1];
     int channel = argc > 2 ? atoi(argv[2]) : 0;
     CHECK(channel >= 0 && channel < 4);
+    if (strncmp(scenario, "bench-", 6) == 0) {
+        CHECK(PIOS_LiteWing_BrushedPWM_Init() == 0);
+        /* Suppressed demand and long zero-output waits must not consume
+         * the one-shot interval. Test the real Update/sanitizer path. */
+        stage_all(1000);
+        PIOS_Servo_Update();
+        now_us = 5000000;
+        PIOS_LiteWing_BrushedPWM_SetImuHealthy(true);
+        armed = FLIGHTSTATUS_ARMED_ARMED;
+        stage_all(0);
+        PIOS_Servo_Update();
+        now_us = 9000000;
+        const uint16_t demand[4] = {0, 1000, 80, 737};
+        for (int i = 0; i < 4; ++i) PIOS_Servo_Set(i, demand[i]);
+        PIOS_Servo_Update();
+        CHECK(active[0] == 0 && active[1] == 409 &&
+              active[2] == 164 && active[3] == 409);
+        struct litewing_pwm_observation observed;
+        CHECK(PIOS_LiteWing_BrushedPWM_GetObservation(&observed));
+        CHECK(observed.requested[1] == 1000 && observed.submitted[1] == 409);
+        if (strcmp(scenario, "bench-cap") == 0 ||
+            strcmp(scenario, "bench-start") == 0) return 0;
+        if (strcmp(scenario, "bench-interruption") == 0 ||
+            strcmp(scenario, "bench-imu") == 0 ||
+            strcmp(scenario, "bench-failsafe") == 0) {
+            now_us = 9500000;
+            if (strcmp(scenario, "bench-imu") == 0)
+                PIOS_LiteWing_BrushedPWM_SetImuHealthy(false);
+            else if (strcmp(scenario, "bench-failsafe") == 0)
+                PIOS_LiteWing_BrushedPWM_SetFailsafe(true);
+            else {
+                stage_all(0);
+                PIOS_Servo_Update();
+                expect_all(0);
+                armed = FLIGHTSTATUS_ARMED_DISARMED;
+            }
+            stage_all(1000);
+            PIOS_Servo_Update();
+            expect_all(0);
+            now_us = 9750000;
+            armed = FLIGHTSTATUS_ARMED_ARMED;
+            PIOS_LiteWing_BrushedPWM_SetImuHealthy(true);
+            PIOS_LiteWing_BrushedPWM_SetFailsafe(false);
+            stage_all(1000);
+            PIOS_Servo_Update();
+            expect_all(409);
+        }
+        now_us = 9999999;
+        stage_all(1000);
+        PIOS_Servo_Update();
+        expect_all(409);
+        now_us = 10000000;
+        if (strcmp(scenario, "bench-expiry-set-failure") == 0) fail_set = channel;
+        if (strcmp(scenario, "bench-expiry-update-failure") == 0) fail_update = channel;
+        if (strcmp(scenario, "bench-expiry-stop-failure") == 0) {
+            fail_set = channel;
+            fail_stop = channel;
+        }
+        if (strcmp(scenario, "bench-watchdog") == 0) watchdog_once();
+        else PIOS_Servo_Update();
+        if (strcmp(scenario, "bench-expiry-stop-failure") == 0) {
+            CHECK(stop_mask == 15);
+            CHECK(PIOS_LiteWing_BrushedPWM_GetObservation(&observed));
+            CHECK(!(observed.known_mask & (1u << channel)));
+            CHECK(observed.write_errors == 1 && observed.stop_errors == 1);
+            for (int i = 0; i < 4; ++i) if (i != channel) CHECK(active[i] == 0);
+            verify_fault_stays_latched();
+            return 0;
+        }
+        expect_all(0);
+        if (strncmp(scenario, "bench-expiry-", 13) == 0) {
+            CHECK(stop_mask == 15);
+            verify_fault_stays_latched();
+        }
+        CHECK(PIOS_LiteWing_BrushedPWM_GetObservation(&observed));
+        CHECK(observed.suppression & LITEWING_PWM_SUPPRESS_SHUTDOWN);
+        if (strcmp(scenario, "bench-latch") == 0) {
+            armed = FLIGHTSTATUS_ARMED_DISARMED;
+            PIOS_Servo_Update();
+            armed = FLIGHTSTATUS_ARMED_ARMED;
+            PIOS_LiteWing_BrushedPWM_SetFailsafe(false);
+            PIOS_LiteWing_BrushedPWM_SetImuHealthy(true);
+            CHECK(PIOS_LiteWing_BrushedPWM_Init() != 0);
+            stage_all(1000);
+            PIOS_Servo_Update();
+            expect_all(0);
+        }
+        return 0;
+    }
     if (strcmp(scenario, "init-write-failure") == 0 || strcmp(scenario, "init-update-failure") == 0) {
         if (strcmp(scenario, "init-write-failure") == 0) { fail_set = channel; }
         else { fail_update = channel; }

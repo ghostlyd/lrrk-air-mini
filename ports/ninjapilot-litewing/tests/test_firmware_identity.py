@@ -61,6 +61,18 @@ class FirmwareIdentityTests(unittest.TestCase):
         self.assertIn("worktree must be clean", result.stderr)
         self.assertEqual(self.output.read_bytes(), b"trusted-before\n")
 
+    def test_bench_build_cannot_advertise_flight_identity(self):
+        self.assertEqual(self.run_generator().returncode, 0)
+        commit = subprocess.check_output(
+            ["git", "-C", str(self.repo), "rev-parse", "HEAD"], text=True).strip()
+        for flags, prefix in (([], "LRRK"),
+                              (["-DCONFIG_LRRK_BENCH_OUTPUT_LIMIT=1"], "BEN1")):
+            result = subprocess.run(
+                ["cc", "-E", "-P", "-x", "c", *flags, "-include", str(self.output), "-"],
+                input="LRRK_WRAPPER_IDENTITY_MARKER\n", capture_output=True,
+                text=True, check=True)
+            self.assertEqual(result.stdout.strip(), f'"{prefix}{commit[:16]}"')
+
     def test_nested_repository_path_is_rejected(self):
         nested = self.repo / "nested"
         nested.mkdir()

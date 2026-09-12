@@ -44,8 +44,13 @@ def render(repository):
     return (
         "#ifndef LRRK_WRAPPER_IDENTITY_H\n"
         "#define LRRK_WRAPPER_IDENTITY_H\n\n"
+        '#ifdef ESP_PLATFORM\n#include "sdkconfig.h"\n#endif\n'
         f'#define LRRK_WRAPPER_COMMIT "{commit}"\n'
+        '#if CONFIG_LRRK_BENCH_OUTPUT_LIMIT\n'
+        f'#define LRRK_WRAPPER_IDENTITY_MARKER "BEN1{commit[:16]}"\n'
+        '#else\n'
         f'#define LRRK_WRAPPER_IDENTITY_MARKER "{marker}"\n'
+        '#endif\n'
         "#define LRRK_WRAPPER_IDENTITY_MARKER_LENGTH 20u\n\n"
         "#endif /* LRRK_WRAPPER_IDENTITY_H */\n"
     ).encode("ascii")
