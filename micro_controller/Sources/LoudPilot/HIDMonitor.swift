@@ -21,6 +21,8 @@ final class HIDMonitor: NSObject, ObservableObject {
     @Published private(set) var inputOwnershipMode: HIDInputOwnershipMode = .released
     @Published private(set) var reportCount = 0
     @Published private(set) var lastReportHex = "—"
+    @Published private(set) var lastReportAt: TimeInterval?
+    @Published private(set) var interactionEvidence = HIDInteractionEvidence()
     @Published private(set) var events: [ObservedHIDEvent] = []
     @Published private(set) var safetyState = InputSafetyState(bindings: [:])
     @Published private(set) var captureState = GuidedCaptureState(plan: .codexMicro)
@@ -95,6 +97,7 @@ final class HIDMonitor: NSObject, ObservableObject {
         safetyState.setConnected(false)
         selectedDeviceConnected = false
         captureState.reset()
+        clearActiveInputState()
     }
 
     /// Claims the selected HID device exclusively for LoudPilot, or releases
@@ -346,7 +349,7 @@ final class HIDMonitor: NSObject, ObservableObject {
             selectedDeviceConnected = false
             selectedDeviceError = nil
             activeProfileName = inputOwnershipMode.label
-            safetyState.setConnected(false)
+            clearActiveInputState()
         }
     }
 
@@ -354,6 +357,8 @@ final class HIDMonitor: NSObject, ObservableObject {
         safetyState.setConnected(false)
         reportCount = 0
         lastReportHex = "—"
+        lastReportAt = nil
+        interactionEvidence.reset()
         events.removeAll()
     }
 
@@ -376,6 +381,7 @@ final class HIDMonitor: NSObject, ObservableObject {
         reportByID[id] = hex
         lastReportHex = hex
         reportCount += 1
+        lastReportAt = Date().timeIntervalSince1970
     }
 
     func handleValue(device: IOHIDDevice, value: IOHIDValue) {
@@ -397,6 +403,18 @@ final class HIDMonitor: NSObject, ObservableObject {
             timestamp: Date().timeIntervalSince1970
         )
         interpreterByID[id] = interpreter
+
+        // Focus loss is a hard observation boundary. Still pass releases to
+        // the safety state so a suppressed held input can be re-armed only
+        // after an actual release; do not capture or map background events.
+        guard safetyState.focused else {
+            if rawEvent.phase == .released {
+                safetyState.ingest(rawEvent)
+            }
+            return
+        }
+
+        interactionEvidence.observe(rawEvent)
         let profile = profileByID[id] ?? ControllerInputPolicy.profile(for: summarize(device))
         captureState.ingest(
             descriptor: descriptor,

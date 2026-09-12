@@ -178,6 +178,54 @@ public struct HIDInputInterpreter: Sendable {
     }
 }
 
+/// Evidence about the physical HID stream that is useful during calibration.
+///
+/// This is intentionally separate from the intended flight values. It records
+/// which element identifiers are currently active and whether the operator
+/// has actually exercised more than one element at once. No control mapping
+/// or transport is involved here.
+public struct HIDInteractionEvidence: Equatable, Sendable {
+    public private(set) var activeElementIDs: Set<String> = []
+    public private(set) var maximumConcurrentInputs = 0
+    public private(set) var simultaneousInputSessions = 0
+    public private(set) var lastEventAt: TimeInterval?
+
+    private var simultaneousSessionActive = false
+
+    public init() {}
+
+    public mutating func observe(_ event: MicroInputEvent) {
+        lastEventAt = event.timestamp
+        let wasSimultaneous = activeElementIDs.count >= 2
+
+        switch event.phase {
+        case .pressed, .held, .value:
+            guard event.kind == .button || event.kind == .key else { break }
+            guard abs(event.value) > 0.000001 else { break }
+            activeElementIDs.insert(event.identifier)
+        case .released:
+            activeElementIDs.remove(event.identifier)
+        case .dial:
+            break
+        }
+
+        maximumConcurrentInputs = max(maximumConcurrentInputs, activeElementIDs.count)
+        let isSimultaneous = activeElementIDs.count >= 2
+        if isSimultaneous && !wasSimultaneous && !simultaneousSessionActive {
+            simultaneousInputSessions += 1
+        }
+        simultaneousSessionActive = isSimultaneous
+    }
+
+    public mutating func reset() {
+        activeElementIDs.removeAll(keepingCapacity: true)
+        maximumConcurrentInputs = 0
+        simultaneousInputSessions = 0
+        lastEventAt = nil
+        simultaneousSessionActive = false
+    }
+}
+
 /// Pure state boundary for a physical Micro input device.
 ///
 /// This type deliberately produces intended values only. It has no network
@@ -193,6 +241,11 @@ public struct InputSafetyState: Equatable, Sendable {
     private let bindings: [String: InputBinding]
     private var activeValues: [String: Double] = [:]
     private var activeBindings: [String: InputBinding] = [:]
+    /// Inputs that were down when control became unavailable. They must emit a
+    /// fresh release before becoming eligible again; this prevents a held
+    /// button from reviving an old command after reconnect, focus regain, or
+    /// an emergency-stop clear.
+    private var suppressedUntilRelease: Set<String> = []
 
     public init(bindings: [String: InputBinding]) {
         self.bindings = bindings
@@ -205,20 +258,20 @@ public struct InputSafetyState: Equatable, Sendable {
     public mutating func setConnected(_ value: Bool) {
         connected = value
         if !value {
-            clearInputs()
+            inhibitAndClearInputs()
         }
     }
 
     public mutating func setFocused(_ value: Bool) {
         focused = value
         if !value {
-            clearInputs()
+            inhibitAndClearInputs()
         }
     }
 
     public mutating func stop() {
         stopLatched = true
-        clearInputs()
+        inhibitAndClearInputs()
     }
 
     public mutating func clearStop() {
@@ -227,6 +280,14 @@ public struct InputSafetyState: Equatable, Sendable {
     }
 
     public mutating func ingest(_ event: MicroInputEvent) {
+        // A release is safe to observe even while disconnected, unfocused, or
+        // stopped. It is the only event that clears the re-entry inhibit for a
+        // control that was active when one of those gates tripped.
+        if event.phase == .released {
+            suppressedUntilRelease.remove(event.identifier)
+        }
+
+        guard !suppressedUntilRelease.contains(event.identifier) else { return }
         guard controlInputEnabled else { return }
 
         if event.kind == .dial || event.phase == .dial {
@@ -259,6 +320,11 @@ public struct InputSafetyState: Equatable, Sendable {
             break
         }
         recomputeIntended()
+    }
+
+    private mutating func inhibitAndClearInputs() {
+        suppressedUntilRelease.formUnion(activeInputs)
+        clearInputs()
     }
 
     private mutating func clearInputs() {
