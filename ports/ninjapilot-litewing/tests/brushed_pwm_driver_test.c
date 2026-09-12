@@ -173,6 +173,31 @@ int main(int argc, char **argv)
         CHECK(observed.requested[1] == 1000 && observed.submitted[1] == 409);
         if (strcmp(scenario, "bench-cap") == 0 ||
             strcmp(scenario, "bench-start") == 0) return 0;
+        if (strncmp(scenario, "bench-ten-second", 16) == 0) {
+            /* First output was at 9 s; fresh writes cannot renew 19 s expiry. */
+            for (now_us = 9040000; now_us < 19000000; now_us += 40000) {
+                stage_all(1000);
+                PIOS_Servo_Update();
+                expect_all(409);
+            }
+            now_us = 18999999;
+            PIOS_Servo_Update();
+            expect_all(409);
+            now_us = 19000000;
+            if (strcmp(scenario, "bench-ten-second-watchdog") == 0) watchdog_once();
+            else PIOS_Servo_Update();
+            expect_all(0);
+            CHECK(PIOS_LiteWing_BrushedPWM_GetObservation(&observed));
+            CHECK(observed.suppression & LITEWING_PWM_SUPPRESS_SHUTDOWN);
+            armed = FLIGHTSTATUS_ARMED_DISARMED;
+            PIOS_Servo_Update();
+            armed = FLIGHTSTATUS_ARMED_ARMED;
+            now_us = 20000000;
+            stage_all(1000);
+            PIOS_Servo_Update();
+            expect_all(0);
+            return 0;
+        }
         if (strcmp(scenario, "bench-interruption") == 0 ||
             strcmp(scenario, "bench-imu") == 0 ||
             strcmp(scenario, "bench-failsafe") == 0) {

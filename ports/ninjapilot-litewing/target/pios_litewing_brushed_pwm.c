@@ -54,6 +54,12 @@ static volatile bool output_ready;
 static int64_t last_update_us;
 static struct litewing_pwm_observation observation;
 #if CONFIG_LRRK_BENCH_OUTPUT_LIMIT
+#ifndef CONFIG_LRRK_BENCH_OUTPUT_DURATION_MS
+#define CONFIG_LRRK_BENCH_OUTPUT_DURATION_MS 1000
+#endif
+#if CONFIG_LRRK_BENCH_OUTPUT_DURATION_MS < 1000 || CONFIG_LRRK_BENCH_OUTPUT_DURATION_MS > 10000
+#error "Bench output duration must be between 1000 and 10000 ms"
+#endif
 /* One interval per boot, starting only at the first eligible nonzero frame.
  * Zero commands, rearming and fresh packets never renew this interval. */
 static bool bench_started;
@@ -61,7 +67,8 @@ static int64_t bench_start_us;
 
 static bool bench_expired_locked(int64_t now_us)
 {
-    if (bench_started && now_us - bench_start_us >= 1000000) {
+    if (bench_started && now_us - bench_start_us >=
+        (int64_t)CONFIG_LRRK_BENCH_OUTPUT_DURATION_MS * 1000) {
         output_state.shutdown = true;
         return true;
     }

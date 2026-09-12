@@ -9,12 +9,14 @@ It does not establish the cause of the saturation or flight readiness.
 - `CONFIG_LRRK_BENCH_OUTPUT_LIMIT=y` selects the profile; default is disabled.
 - Each sanitized motor request is capped at 200/1000, producing no more than
   409/2047 LEDC duty (slightly under 20%). This is a ceiling, not a target.
-- The first eligible nonzero frame starts one elapsed one-second interval.
+- The first eligible nonzero frame starts one elapsed interval: one second
+  by default, configurable up to ten seconds in the explicit
+  [ten-second bench profile](ten-second-bench-profile.md).
   Zero output, packet refreshes, disarming and rearming do not renew it.
 - At expiry, output updates and the existing 20 ms watchdog latch shutdown.
   Reset is required for another interval. Normal arming policy is unchanged.
 - Watchdog execution and mutex acquisition are scheduled software operations.
-  One second is the deadline, not a measured electrical stopping guarantee.
+  The configured duration is a deadline, not an electrical stopping guarantee.
   Peripheral failure or a stalled CPU cannot be made safe by this code alone.
 - IMU, disarm, receiver/failsafe, shutdown and driver-error handling remain.
 - PWM observation retains the original requested duty and reports the actual

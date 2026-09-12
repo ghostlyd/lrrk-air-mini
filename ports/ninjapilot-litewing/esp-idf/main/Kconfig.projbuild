@@ -4,9 +4,18 @@ config LRRK_BENCH_OUTPUT_LIMIT
     default n
     help
         Clamp each motor to 200/1000 duty. After the first eligible nonzero
-        frame, latch outputs off at the one-second deadline, checked by
+        frame, latch outputs off at the configured deadline, checked by
         output updates and the 20 ms watchdog. Actual scheduling latency
         must be measured on hardware; this is not a hardware cutoff.
         Reset is required for another interval. Normal arming, IMU health
         and failsafe requirements remain. Never use this build for flight.
+config LRRK_BENCH_OUTPUT_DURATION_MS
+    int "One-shot bench output duration (milliseconds)"
+    depends on LRRK_BENCH_OUTPUT_LIMIT
+    range 1000 10000
+    default 1000
+    help
+        Elapsed interval from the first eligible nonzero frame, not accumulated
+        motor-on time. Fresh commands and rearming cannot extend this deadline.
+        A longer interval does not override host aborts or any firmware fault.
 endmenu
