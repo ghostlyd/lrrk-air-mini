@@ -74,6 +74,28 @@ The evidence does not yet distinguish fixture compliance, motor vibration,
 sensor disturbance, or a controller transient. No PID tuning or safety-alarm
 bypass is justified by these observations alone.
 
+### Subsequent ramp comparison
+
+A bounded comparison held the measured attitude command constant and increased
+throttle in 1% steps at approximately 40 ms intervals, with an unchanged 8%
+ceiling and one-second maximum powered phase. It stopped after transmitting
+the 4% step because the reported roll changed by approximately 0.84 degrees.
+A following diagnostic snapshot reported requested duties `[0, 1000, 0, 737]`
+and successful submissions `[0, 2047, 0, 1509]`, without driver errors or
+suppression. The operator reported slight physical vibration.
+
+This rules out the single abrupt 8% throttle step as the sole explanation.
+It does **not** establish whether vibration, electrical interference, supply
+disturbance, or controller behavior caused the saturation. Further powered
+retries were paused. A subsequent request-only check confirmed Armed with all
+twelve actuator-command slots and all four known PWM submissions at zero.
+
+The bench limit was reactive telemetry monitoring, not a firmware-enforced
+ceiling; the saturation observation demonstrates that distinction materially.
+Do not use a low throttle input as a substitute for a per-channel output bound.
+Before another motor test, resolve the inertial-data/power investigation and
+provide a suitable enforced bound for the intended test.
+
 Next comparisons should isolate throttle slew from attitude-command changes,
 retain bounded outputs and stop behavior, and correlate inertial observations
 with physical motion. Sustained rotation, corner/direction mapping under the
