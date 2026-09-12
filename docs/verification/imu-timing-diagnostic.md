@@ -98,3 +98,26 @@ v1.2 board, nor actual rise time, capacitance or supply stability under load.
 Do not infer a proven pullup defect or change hardware from this comparison
 alone. Preserve the corrupt-frame trace as the baseline for a controlled
 bus-integrity comparison; no PID, bus-speed or output-limit change was made.
+
+## Repeat after fixture adjustment
+
+The unchanged runner completed after the owner reported the fixture ready.
+Settled reported roll/pitch were -3.816/-0.654 degrees. Positive PWM receipts
+spanned 9.885504 seconds, followed by shutdown and verified zero commands/PWM.
+The 32 baseline snapshots had nonzero channel counts [29,28,2,28] and maximum
+LEDC values [313,295,33,217]. The owner initially identified channel 1 as not
+turning, then explicitly withdrew confidence in that identification. Physical
+corner/rotation remains unconfirmed; channel 3 was commanded zero in 30 of
+32 snapshots. Do not infer measured rotation from these command snapshots.
+
+A first trace request stopped because the board was still Armed. A later
+request confirmed Disarmed and zero outputs and retrieved all 512 records
+without reset. Timing counters were NotificationTimeouts=0, ReadFailures=6,
+MaxReadUs=3221; counts span the boot, not exclusively the motor interval.
+Records 221 and 223 contain frames with twelve and thirteen 0xff bytes.
+Record 225 reports gyro [-153.682,-148.705,-373.178] deg/s and submitted PWM
+[0,409,0,409]; record 226 reports [409,409,0,409]. This reproduces suspect
+sensor bytes preceding a large gyro excursion and differential output. It
+does not establish whether subsequent excursions are physical or erroneous,
+or identify the electrical cause. A channel-isolation retry is deferred in
+favor of investigating this repeated sensor-integrity evidence.
