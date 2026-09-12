@@ -105,3 +105,18 @@ class BenchPwmDriverTests(unittest.TestCase):
 
     def test_expiry_cannot_be_cleared_by_arm_or_init(self):
         self.run_scenario("bench-latch")
+
+    def test_zero_and_disarm_interruption_does_not_renew_interval(self):
+        self.run_scenario("bench-interruption")
+
+    def test_imu_loss_blocks_output_without_renewing_interval(self):
+        self.run_scenario("bench-imu")
+
+    def test_failsafe_blocks_output_without_renewing_interval(self):
+        self.run_scenario("bench-failsafe")
+
+    def test_peripheral_failures_at_expiry_stop_all_and_latch(self):
+        for failure in ("set", "update", "stop"):
+            for channel in range(4):
+                with self.subTest(failure=failure, channel=channel):
+                    self.run_scenario(f"bench-expiry-{failure}-failure", channel)

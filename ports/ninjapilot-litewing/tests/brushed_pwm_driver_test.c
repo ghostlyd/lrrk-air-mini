@@ -173,14 +173,58 @@ int main(int argc, char **argv)
         CHECK(observed.requested[1] == 1000 && observed.submitted[1] == 409);
         if (strcmp(scenario, "bench-cap") == 0 ||
             strcmp(scenario, "bench-start") == 0) return 0;
+        if (strcmp(scenario, "bench-interruption") == 0 ||
+            strcmp(scenario, "bench-imu") == 0 ||
+            strcmp(scenario, "bench-failsafe") == 0) {
+            now_us = 9500000;
+            if (strcmp(scenario, "bench-imu") == 0)
+                PIOS_LiteWing_BrushedPWM_SetImuHealthy(false);
+            else if (strcmp(scenario, "bench-failsafe") == 0)
+                PIOS_LiteWing_BrushedPWM_SetFailsafe(true);
+            else {
+                stage_all(0);
+                PIOS_Servo_Update();
+                expect_all(0);
+                armed = FLIGHTSTATUS_ARMED_DISARMED;
+            }
+            stage_all(1000);
+            PIOS_Servo_Update();
+            expect_all(0);
+            now_us = 9750000;
+            armed = FLIGHTSTATUS_ARMED_ARMED;
+            PIOS_LiteWing_BrushedPWM_SetImuHealthy(true);
+            PIOS_LiteWing_BrushedPWM_SetFailsafe(false);
+            stage_all(1000);
+            PIOS_Servo_Update();
+            expect_all(409);
+        }
         now_us = 9999999;
         stage_all(1000);
         PIOS_Servo_Update();
         expect_all(409);
         now_us = 10000000;
+        if (strcmp(scenario, "bench-expiry-set-failure") == 0) fail_set = channel;
+        if (strcmp(scenario, "bench-expiry-update-failure") == 0) fail_update = channel;
+        if (strcmp(scenario, "bench-expiry-stop-failure") == 0) {
+            fail_set = channel;
+            fail_stop = channel;
+        }
         if (strcmp(scenario, "bench-watchdog") == 0) watchdog_once();
         else PIOS_Servo_Update();
+        if (strcmp(scenario, "bench-expiry-stop-failure") == 0) {
+            CHECK(stop_mask == 15);
+            CHECK(PIOS_LiteWing_BrushedPWM_GetObservation(&observed));
+            CHECK(!(observed.known_mask & (1u << channel)));
+            CHECK(observed.write_errors == 1 && observed.stop_errors == 1);
+            for (int i = 0; i < 4; ++i) if (i != channel) CHECK(active[i] == 0);
+            verify_fault_stays_latched();
+            return 0;
+        }
         expect_all(0);
+        if (strncmp(scenario, "bench-expiry-", 13) == 0) {
+            CHECK(stop_mask == 15);
+            verify_fault_stays_latched();
+        }
         CHECK(PIOS_LiteWing_BrushedPWM_GetObservation(&observed));
         CHECK(observed.suppression & LITEWING_PWM_SUPPRESS_SHUTDOWN);
         if (strcmp(scenario, "bench-latch") == 0) {
