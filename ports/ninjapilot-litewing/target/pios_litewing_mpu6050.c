@@ -145,6 +145,28 @@ static bool read_who_am_i(uint8_t *who_am_i)
                                            who_am_i, 1u);
 }
 
+static bool verify_configuration(void)
+{
+    /* MPU-6000/6050 Register Map rev 4.2, sections 4.2-4.5, 4.14-4.15,
+     * and 4.28. Ignore reserved bits; include self-test and reset bits.
+     * A successful I2C write alone does not prove the sampling contract. */
+    static const struct { uint8_t reg, expected, mask; } checks[] = {
+        { LITEWING_MPU6050_REG_PWR_MGMT_1, LITEWING_MPU6050_CLOCK_PLL_X, 0xEFu },
+        { LITEWING_MPU6050_REG_CONFIG, LITEWING_MPU6050_DLPF_CFG, 0x3Fu },
+        { LITEWING_MPU6050_REG_SMPLRT_DIV, LITEWING_MPU6050_SAMPLE_DIVIDER, 0xFFu },
+        { LITEWING_MPU6050_REG_GYRO_CONFIG, LITEWING_MPU6050_GYRO_CONFIG, 0xF8u },
+        { LITEWING_MPU6050_REG_ACCEL_CONFIG, LITEWING_MPU6050_ACCEL_CONFIG, 0xF8u },
+        { LITEWING_MPU6050_REG_INT_PIN_CFG, 0x00u, 0xFEu },
+        { LITEWING_MPU6050_REG_INT_ENABLE, LITEWING_MPU6050_INT_DATA_READY, 0x19u },
+    };
+    for (unsigned i = 0; i < sizeof checks / sizeof checks[0]; ++i) {
+        uint8_t actual = 0;
+        if (!transfer_read(checks[i].reg, &actual, 1u) ||
+            (actual & checks[i].mask) != checks[i].expected) return false;
+    }
+    return true;
+}
+
 static bool configure_sensor(void)
 {
     uint8_t who_am_i = 0;
@@ -180,7 +202,7 @@ static bool configure_sensor(void)
         return false;
     }
 
-    if (!read_who_am_i(&who_am_i) ||
+    if (!verify_configuration() || !read_who_am_i(&who_am_i) ||
         !litewing_mpu6050_identity_valid(who_am_i)) return false;
     return record_identity(who_am_i, generation);
 }

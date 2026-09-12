@@ -33,8 +33,17 @@ class ImuPublicationTests(unittest.TestCase):
             print('COMPILE:', ' '.join(command), flush=True)
             result = subprocess.run(command, capture_output=True, text=True, timeout=30)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-            for case in ('normal', 'initial-publish', 'runtime-publish', 'create', 'register',
-                         'queue-delay', 'reset-completion'):
+            cases = ('normal', 'reserved', 'initial-publish', 'runtime-publish', 'create', 'register',
+                     'queue-delay', 'reset-completion') + tuple(
+                         f'{failure}-{register}' for failure in ('mismatch', 'readfail')
+                         for register in ('19', '1a', '1b', '1c', '37', '38', '6b'))
+            # Each documented bit matters, including self-test, sleep and reset.
+            masks = {'19': 0xff, '1a': 0x3f, '1b': 0xf8, '1c': 0xf8,
+                     '37': 0xfe, '38': 0x19, '6b': 0xef}
+            cases += tuple(f'mismatch-{reg}-{1 << bit:02x}'
+                           for reg, mask in masks.items() for bit in range(8)
+                           if mask & (1 << bit))
+            for case in cases:
                 with self.subTest(case=case):
                     result = subprocess.run([str(binary), case], capture_output=True, text=True, timeout=15)
                     print('RUN:', binary, case, result.stdout, result.stderr, flush=True)
