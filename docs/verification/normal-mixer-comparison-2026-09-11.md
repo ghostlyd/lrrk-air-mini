@@ -9,7 +9,8 @@ ceiling, ten-second nonrenewing cutoff, and attitude recorder remained enabled.
 
 The successful transaction completed with positive PWM receipts spanning
 9.682 seconds, followed by shutdown, zero output, and no driver errors.
-Physical observation of this normal-mixer trial remains pending. The prior
+The operator observed smooth rotation, but inconsistent speed and duration.
+This is not a measured RPM record. The prior
 fixed-all trial was confirmed by the operator as smooth continuous rotation.
 
 Two earlier startup attempts did not reach arming: one sent a neutral command
@@ -44,3 +45,16 @@ averaged estimator timing, not raw acquisition timing.
 Next correlate the operator observation with this event and inspect the sensor
 acquisition path before selecting another powered experiment. Raw captures stay
 private outside Git. This diagnostic is not a flight-qualified image.
+
+## Acquisition-path inspection
+
+The compiled Attitude path consumes the combined IMU queue directly, averages
+the integer samples, applies scale, optional temperature compensation and board
+rotation, then adds the adaptive gyro bias. The recorder's input gyro therefore
+already includes that bias; it is not raw register data. Inspection of the
+separate Sensors module alone does not establish this compiled path's behavior.
+
+The current capture lacks the raw sample and simultaneous bias value needed to
+separate an acquisition spike from a bias change. No specific arithmetic defect
+has been established. Further instrumentation should record these quantities
+without changing PID gains, filtering, or the readings delivered to control.
