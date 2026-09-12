@@ -12,6 +12,10 @@ int32_t LiteWingPwmObservationPack(UAVObjHandle obj, uint16_t instance, uint8_t 
 static int64_t now=1000000;
 static unsigned motor_writes, publications, creates;
 static bool fail_read, reset_in_read;
+static uint8_t registers[128];
+static int config_fault_reg=-1;
+static bool config_read_failure;
+static unsigned config_fault_bit;
 static int64_t queue_delay_us;
 static bool complete_reset_in_read;
 static uint64_t pending_reset_generation;
@@ -34,6 +38,19 @@ int PIOS_I2C_Transfer(uint32_t id,const struct pios_i2c_txn *t,unsigned n) {
      if(++identity_reads==shutdown_on_identity_read) PIOS_LiteWing_MPU6050_Shutdown();
      t[1].buf[0]=identity; return 0;
    }
+   if(t[0].buf[0]!=0x3b) {
+     unsigned reg=t[0].buf[0];assert(t[1].len==1 && reg<128);
+     if((int)reg==config_fault_reg && config_read_failure)return -1;
+     t[1].buf[0]=registers[reg];
+     if(is("reserved")) {
+       const uint8_t masks[128]={[0x19]=0xff,[0x1a]=0x3f,[0x1b]=0xf8,
+         [0x1c]=0xf8,[0x37]=0xfe,[0x38]=0x19,[0x6b]=0xef};
+       t[1].buf[0]|=(uint8_t)~masks[reg];
+     }
+     if((int)reg==config_fault_reg)t[1].buf[0]^=config_fault_bit?config_fault_bit:
+         (reg==0x1b || reg==0x1c)?8:reg==0x37?2:1;
+     return 0;
+   }
    if(reset_in_read) { reset_in_read=false; PIOS_LiteWing_MPU6050_Shutdown(); }
    if(complete_reset_in_read) {
      complete_reset_in_read=false;
@@ -42,7 +59,9 @@ int PIOS_I2C_Transfer(uint32_t id,const struct pios_i2c_txn *t,unsigned n) {
      assert(record_identity(identity,pending_reset_generation));
    }
    memset(t[1].buf,0,t[1].len); return fail_read?-1:0;
- } return 0;
+ }
+ assert(n==1 && t[0].len==2 && t[0].buf[0]<128);
+ registers[t[0].buf[0]]=t[0].buf[1];return 0;
 }
 bool PIOS_ESP32_I2C_Probe(uint32_t i,uint8_t a) { (void)i;(void)a;return true; }
 int PIOS_SENSORS_Register(const PIOS_SENSORS_Driver *d,int t,uintptr_t c) {(void)d;(void)t;(void)c;return 1;}
@@ -104,6 +123,16 @@ static void *compete(void *unused) {
 }
 int main(int argc,char **argv) {
  assert(argc==2);scenario=argv[1];run_sensor=true;
+ if(strncmp(scenario,"mismatch-",9)==0 || strncmp(scenario,"readfail-",9)==0) {
+   config_fault_reg=(int)strtoul(scenario+9,NULL,16);
+   if(strlen(scenario)>11)config_fault_bit=(unsigned)strtoul(scenario+12,NULL,16);
+   config_read_failure=strncmp(scenario,"readfail-",9)==0;
+   assert(PIOS_LiteWing_MPU6050_Init(0,0x68)==-2);
+   struct lw_imu_observation rejected;
+   PIOS_LiteWing_MPU6050_GetObservation(&rejected);
+   assert(!rejected.identity_verified && !device.healthy && !device.queue);
+   puts("PASS");return 0;
+ }
  assert(PIOS_LiteWing_MPU6050_Init(0,0x68)==0); run_sensor=false;
  struct lw_imu_observation o;
  PIOS_LiteWing_MPU6050_GetObservation(&o);assert(o.identity_verified && o.who_am_i==0x68 && !o.sample_seen);
