@@ -63,9 +63,13 @@ has not yet been exercised live. Do not use this BEN1 candidate for flight.
 ## Single-motor isolation profile
 
 `CONFIG_LRRK_BENCH_SINGLE_MOTOR` is opt-in and requires the bench output limit.
-Any nonzero sanitized demand selects channel 1 at fixed 200/1000 duty while
-channels 2–4 remain zero. Zero demand and fault suppression still zero output.
+Any nonzero sanitized demand selects `CONFIG_LRRK_BENCH_MOTOR_CHANNEL`
+(1–4, default 1) at fixed 200/1000 duty while all other channels remain zero.
+Zero demand and fault suppression still zero output.
 This removes mixer variation from applied output, not from the recorded sensor
-data. The deadline is unchanged and does not renew on rearming. Twenty-eight
+data. The deadline is unchanged and does not renew on rearming. Thirty-one
 driver tests pass, including fixed output, deadline, IMU/failsafe/disarm,
-stale-update and peripheral-error stops. Hardware behavior is not yet verified.
+stale-update and peripheral-error stops. Subsequent hardware trials and the
+separate operator observations are recorded in
+[single-motor results](single-motor-results-2026-09-11.md); these do not establish
+flight readiness.
