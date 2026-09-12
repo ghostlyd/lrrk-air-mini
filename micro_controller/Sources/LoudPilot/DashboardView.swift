@@ -35,6 +35,7 @@ struct DashboardView: View {
             }
         }
         .onAppear {
+            bluetooth.start()
             hidMonitor.start()
             hidMonitor.setFocused(NSApp.isActive)
         }
@@ -261,7 +262,9 @@ struct DashboardView: View {
                 }
 
                 if bluetooth.peripherals.isEmpty {
-                    Text("No Bluetooth peripherals discovered in the last scan.")
+                    Text(bluetooth.status == .initializing
+                        ? "Waiting for macOS Bluetooth state or authorization. A Nearby Devices entry is not a selectable HID connection."
+                        : "No Bluetooth peripherals discovered in the last scan.")
                         .foregroundStyle(.secondary)
                 } else {
                     ForEach(bluetooth.peripherals) { peripheral in

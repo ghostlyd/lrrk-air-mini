@@ -128,6 +128,7 @@ public struct BluetoothPeripheralSummary: Identifiable, Equatable, Sendable {
 }
 
 public enum BluetoothDiscoveryStatus: String, Equatable, Sendable {
+    case initializing
     case unavailable
     case poweredOff
     case unauthorized
@@ -138,6 +139,7 @@ public enum BluetoothDiscoveryStatus: String, Equatable, Sendable {
 
     public var label: String {
         switch self {
+        case .initializing: return "Waiting for Bluetooth"
         case .unavailable: return "Unavailable"
         case .poweredOff: return "Bluetooth off"
         case .unauthorized: return "Permission required"

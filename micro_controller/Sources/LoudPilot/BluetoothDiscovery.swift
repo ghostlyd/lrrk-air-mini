@@ -1,6 +1,7 @@
 import Combine
 import Foundation
 import LoudPilotCore
+import os
 @preconcurrency import CoreBluetooth
 
 /// In-app BLE discovery for the physical controller. Discovery is deliberately
@@ -14,14 +15,24 @@ final class BluetoothDiscovery: NSObject, ObservableObject {
 
     private var central: CBCentralManager?
     private var stopTask: Task<Void, Never>?
+    private var scanRequested = false
+    private let logger = Logger(subsystem: "ai.lrrk.loudpilot", category: "BluetoothDiscovery")
 
     override init() {
         super.init()
+    }
+
+    func start() {
+        guard central == nil else { return }
         central = CBCentralManager(
             delegate: self,
             queue: nil,
             options: [CBCentralManagerOptionShowPowerAlertKey: true]
         )
+        logger.info("initialized central state=\(String(describing: self.central?.state.rawValue), privacy: .public) authorization=\(CBManager.authorization.rawValue, privacy: .public)")
+        if let central {
+            update(central.state)
+        }
     }
 
     deinit {
@@ -33,19 +44,44 @@ final class BluetoothDiscovery: NSObject, ObservableObject {
     }
 
     func discover() {
+        start()
+        logger.info("discover requested state=\(String(describing: self.central?.state.rawValue), privacy: .public) scanning=\(self.isScanning, privacy: .public)")
         stopTask?.cancel()
         stopTask = nil
         peripherals.removeAll()
+        scanRequested = true
 
         guard let central else {
-            status = .unavailable
+            status = .initializing
             return
         }
+        // The first CoreBluetooth state callback can race the initial button
+        // press. Reconcile the current state here and let
+        // `centralManagerDidUpdateState` finish the scan when the manager is
+        // still resolving from `.unknown`.
+        update(central.state)
         guard central.state == .poweredOn else {
-            status = Self.status(for: central.state)
             return
         }
 
+        beginScan(on: central)
+    }
+
+    func stop() {
+        logger.info("stop requested state=\(String(describing: self.central?.state.rawValue), privacy: .public) scanning=\(self.isScanning, privacy: .public)")
+        stopTask?.cancel()
+        stopTask = nil
+        scanRequested = false
+        central?.stopScan()
+        isScanning = false
+        if status == .scanning {
+            status = .poweredOn
+        }
+    }
+
+    private func beginScan(on central: CBCentralManager) {
+        guard central.state == .poweredOn, !isScanning else { return }
+        logger.info("begin scan state=\(central.state.rawValue, privacy: .public)")
         isScanning = true
         status = .scanning
         central.scanForPeripherals(
@@ -56,16 +92,6 @@ final class BluetoothDiscovery: NSObject, ObservableObject {
             try? await Task.sleep(for: .seconds(8))
             guard !Task.isCancelled else { return }
             self?.stop()
-        }
-    }
-
-    func stop() {
-        stopTask?.cancel()
-        stopTask = nil
-        central?.stopScan()
-        isScanning = false
-        if status == .scanning {
-            status = .poweredOn
         }
     }
 
@@ -88,20 +114,29 @@ final class BluetoothDiscovery: NSObject, ObservableObject {
         let next = Self.status(for: centralState)
         status = isScanning && next == .poweredOn ? .scanning : next
         if next != .poweredOn && isScanning {
+            stopTask?.cancel()
+            stopTask = nil
             central?.stopScan()
             isScanning = false
+        }
+        if next == .poweredOn, scanRequested, let central {
+            beginScan(on: central)
         }
     }
 
     private static func status(for state: CBManagerState) -> BluetoothDiscoveryStatus {
         switch state {
-        case .unknown: return .unavailable
+        // CoreBluetooth can report `.unknown` while macOS is resolving the
+        // app's Bluetooth authorization or bringing the manager online. It
+        // is not evidence that Bluetooth is unavailable, and it is not a
+        // usable controller connection either.
+        case .unknown: return .initializing
         case .resetting: return .resetting
         case .unsupported: return .unsupported
         case .unauthorized: return .unauthorized
         case .poweredOff: return .poweredOff
         case .poweredOn: return .poweredOn
-        @unknown default: return .unavailable
+        @unknown default: return .initializing
         }
     }
 }
@@ -109,6 +144,8 @@ final class BluetoothDiscovery: NSObject, ObservableObject {
 extension BluetoothDiscovery: CBCentralManagerDelegate {
     nonisolated func centralManagerDidUpdateState(_ central: CBCentralManager) {
         let nextState = central.state
+        Logger(subsystem: "ai.lrrk.loudpilot", category: "BluetoothDiscovery")
+            .info("central state callback=\(nextState.rawValue, privacy: .public)")
         Task { @MainActor [weak self] in
             self?.update(nextState)
         }
