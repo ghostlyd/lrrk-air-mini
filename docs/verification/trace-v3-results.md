@@ -38,3 +38,37 @@ Next discriminating test: repeat the same bounded test with the PCB rigidly
 supported on a nonconductive fixture, keeping props removed, motor shafts clear,
 USB power and software unchanged. Do not retune PID or suppress sensor values
 based on this result. Live-flight readiness remains unverified.
+
+## Nonconductive-fixture comparison: aborted
+
+The next run reused the installed image and output ceiling after a reset and
+verified Disarmed/zero-output startup. The user reported the PCB on a
+nonconductive fixture. Post-arm settled roll/pitch were -6.4927769/0.2977866
+degrees. Four powered receiver writes occurred at host elapsed times
+6.309611 through 6.433743 seconds. This was not a ten-second completion.
+
+Reported roll changed from -6.524069 at 6.370028 seconds to -10.563583 at
+6.452716 seconds, tripping the runner's absolute ten-degree guard. The sparse
+gyro telemetry did not capture the intervening event; it cannot distinguish
+actual fixture motion from a sensor/acquisition event.
+
+Failure cleanup wrote neutral once and requested actuator/PWM status once,
+then only read for 0.75 seconds. The resulting PWM reply at 6.490726 seconds
+was [172, 0, 0, 151] LEDC counts; the actuator reply at 6.498063 was
+[84, 0, 0, 74] for the four motor channels. Neither object was requested again.
+Receiver telemetry later showed throttle -1 at 6.729266 seconds and Connected
+False at 6.980216 seconds. Consequently the final nonzero summary is stale
+relative to those receiver observations, but neither receiver observation
+proves zero PWM. The runner also silently discards cleanup exceptions and
+does not report whether cleanup obtained fresh zero evidence.
+
+A subsequent download refused because the board was still Armed. A hardware
+reset followed; startup verification confirmed Disarmed, twelve zero actuator
+commands and four zero PWM values. That reset cleared the frozen raw trace,
+so no raw-frame conclusion can be drawn from this comparison.
+
+Required runner correction before a powered retry: independently bounded
+cleanup with checked neutral writes, paced repeated output-status requests,
+fresh zero-output evidence, and explicit cleanup failure reporting. Preserve
+the original failure and stop transmitting powered commands immediately.
+Do not bypass the tilt guard or retune the controller to hide this event.
