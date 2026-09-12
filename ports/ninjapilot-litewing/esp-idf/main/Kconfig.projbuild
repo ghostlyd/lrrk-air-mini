@@ -37,6 +37,15 @@ config LRRK_BENCH_MOTOR_CHANNEL
     help
         Only this channel receives the fixed diagnostic duty; all others
         remain zero. The one-shot deadline and fault handling are unchanged.
+config LRRK_BENCH_FIXED_ALL
+    bool "Props-off diagnostic: fixed duty on all four motors (NOT FOR FLIGHT)"
+    depends on LRRK_BENCH_OUTPUT_LIMIT && !LRRK_BENCH_SINGLE_MOTOR
+    default n
+    help
+        Apply 200/1000 to all four motors when sanitized demand is nonzero.
+        Zero demand, fault suppression and the one-shot deadline still stop
+        output. This tests combined operation without mixer variation, not
+        flight control. It increases total load versus a single-motor test.
 config LRRK_ATTITUDE_TRACE
     bool "Capture one bounded attitude/PWM trace in RAM"
     depends on LRRK_BENCH_OUTPUT_LIMIT
