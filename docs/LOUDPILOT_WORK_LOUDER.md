@@ -28,6 +28,9 @@ the control plane auditable:
 
 1. `IOHIDManager` observes the selected Micro locally; generic joystick axes
    are not promoted to proportional flight controls without report evidence.
+   Exclusive acquisition accepts the known USB descriptor plus the named
+   Micro product variants, so a transport-specific VID/PID change does not
+   hide an otherwise valid controller.
 2. The physical reference surface exposes the 15 visible positions. The
    top-left knob position represents the encoder/press location; the
    top-right position is labeled as the planar joystick; the bottom-left

@@ -363,11 +363,21 @@ final class HIDMonitor: NSObject, ObservableObject {
     }
 
     private func setControllerOnlyMatching(on manager: IOHIDManager) {
-        let matching: [String: Any] = [
+        let knownDescriptor: [String: Any] = [
             kIOHIDVendorIDKey: NSNumber(value: ControllerDeviceScope.codexMicroVendorID),
             kIOHIDProductIDKey: NSNumber(value: ControllerDeviceScope.codexMicroProductID)
         ]
-        IOHIDManagerSetDeviceMatching(manager, matching as CFDictionary)
+        let namedProducts = ControllerDeviceScope.exclusiveProductNames.map { product in
+            [kIOHIDProductKey: product] as [String: Any]
+        }
+
+        // The dictionaries are ORed by IOHIDManager. This preserves the
+        // narrow known VID/PID path while allowing a valid named Micro HID
+        // device to be claimed when its transport descriptor differs.
+        IOHIDManagerSetDeviceMatchingMultiple(
+            manager,
+            ([knownDescriptor] + namedProducts) as CFArray
+        )
     }
 
     func handleReport(device: IOHIDDevice, report: UnsafeMutablePointer<UInt8>?, length: CFIndex) {

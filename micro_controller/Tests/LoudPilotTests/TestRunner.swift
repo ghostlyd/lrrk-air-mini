@@ -32,6 +32,7 @@ struct LoudPilotTests {
             try GuidedCaptureTests.testDialCaptureKeepsPhysicalDirectionsOnOneSignature()
             try GuidedCaptureTests.testAxesAreIgnoredDuringButtonCapture()
             try ControllerScopeTests.testOnlyCodexMicroIsInControllerScope()
+            try ControllerScopeTests.testExclusiveHIDMatchingIncludesNamedMicroFallbacks()
             try ControllerScopeTests.testBluetoothDiscoveryRetainsMicroCandidatesAndMarksKeyboardOutOfScope()
             try ControllerScopeTests.testOutOfScopeHIDCannotAcquirePilotProfile()
             try ControllerScopeTests.testCommanderSetpointUsesLiteWingCRTPSetpointPort()
