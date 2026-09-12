@@ -53,6 +53,9 @@ static struct litewing_output_state output_state;
 static volatile bool output_ready;
 static int64_t last_update_us;
 static struct litewing_pwm_observation observation;
+#if CONFIG_LRRK_BENCH_SINGLE_MOTOR && !CONFIG_LRRK_BENCH_OUTPUT_LIMIT
+#error "Single-motor diagnostic requires the bench output limit"
+#endif
 #if CONFIG_LRRK_BENCH_OUTPUT_LIMIT
 #ifndef CONFIG_LRRK_BENCH_OUTPUT_DURATION_MS
 #define CONFIG_LRRK_BENCH_OUTPUT_DURATION_MS 1000
@@ -349,6 +352,15 @@ void PIOS_Servo_Update(void)
         observation.requested[index] = pending_frame.duty[index];
     litewing_sanitize_frame(&pending_frame, &output_state, &sanitized);
 #if CONFIG_LRRK_BENCH_OUTPUT_LIMIT
+#if CONFIG_LRRK_BENCH_SINGLE_MOTOR
+    /* Opt-in props-off diagnostic: remove mixer variation from the applied
+     * output, not from sensor data. Sanitized zero/fault demand stays zero. */
+    bool demand_present = false;
+    for (uint8_t index = 0; index < LITEWING_OUTPUT_CHANNELS; ++index)
+        demand_present |= sanitized.duty[index] != 0;
+    litewing_safe_frame(&sanitized);
+    if (demand_present) sanitized.duty[0] = 200u;
+#endif
     for (uint8_t index = 0; index < LITEWING_OUTPUT_CHANNELS; ++index) {
         if (sanitized.duty[index] > 200u) sanitized.duty[index] = 200u;
         if (sanitized.duty[index] && !bench_started) {
