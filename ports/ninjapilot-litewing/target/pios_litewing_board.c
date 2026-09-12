@@ -19,7 +19,7 @@ static const struct pios_esp32_i2c_cfg litewing_imu_i2c_cfg = {
     .port = I2C_NUM_0,
     .sda_pin = LITEWING_IMU_SDA_GPIO,
     .scl_pin = LITEWING_IMU_SCL_GPIO,
-    .speed_hz = 400000u,
+    .speed_hz = CONFIG_LRRK_IMU_I2C_SPEED_HZ,
 };
 
 int32_t PIOS_LiteWing_Board_Init(void)

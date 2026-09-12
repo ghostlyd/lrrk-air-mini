@@ -1,4 +1,15 @@
 menu "LiteWing diagnostic build"
+config LRRK_IMU_I2C_SPEED_HZ
+    int "MPU6050 I2C clock (Hz)"
+    range 100000 400000
+    default 400000
+    help
+        Select the I2C clock used for the LiteWing MPU6050. The production
+        default remains 400 kHz. A 100 kHz build is available for controlled
+        bus-integrity comparison on a secured, props-off bench; it is not a
+        substitute for validating the fitted board's pullups, wiring or power
+        integrity.
+
 config LRRK_BENCH_OUTPUT_LIMIT
     bool "Bench-only output ceiling and one-shot deadline (NOT FOR FLIGHT)"
     default n

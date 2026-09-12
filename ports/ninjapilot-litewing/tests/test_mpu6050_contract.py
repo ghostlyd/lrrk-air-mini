@@ -8,6 +8,14 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class LiteWingMpu6050Tests(unittest.TestCase):
+    def test_i2c_clock_is_explicitly_configurable(self):
+        board = (ROOT / "target" / "pios_litewing_board.c").read_text()
+        kconfig = (ROOT / "esp-idf" / "main" / "Kconfig.projbuild").read_text()
+        self.assertIn(".speed_hz = CONFIG_LRRK_IMU_I2C_SPEED_HZ", board)
+        self.assertRegex(kconfig, r"config LRRK_IMU_I2C_SPEED_HZ\b")
+        self.assertRegex(kconfig, r"range 100000 400000")
+        self.assertRegex(kconfig, r"config LRRK_IMU_I2C_SPEED_HZ[\s\S]*?default 400000")
+
     def test_protocol_decoder_and_freshness(self):
         with tempfile.TemporaryDirectory() as directory:
             binary = Path(directory) / "mpu6050-protocol-test"
