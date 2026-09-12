@@ -10,6 +10,104 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(ROOT))
 
 class AttitudeTraceTests(unittest.TestCase):
+    def test_generated_sensor_early_returns_invalidate_capture(self):
+        upstream=os.environ.get('LRRK_TEST_FLIGHT_ROOT')
+        if not upstream:self.skipTest('set LRRK_TEST_FLIGHT_ROOT')
+        import prepare_control
+        with tempfile.TemporaryDirectory() as directory:
+            out=Path(directory)
+            prepare_control.prepare(Path(upstream)/'flight/modules',out/'control')
+            code=(out/'control/attitude.c').read_text()
+            signature='static int32_t updateSensorsCC3D(AccelStateData *accelStateData, GyroStateData *gyrosData)\n{'
+            start=code.index(signature)
+            end=code.index('    float invcount = 1.0f / count;',start)
+            # Execute the actual acquisition/early-return prefix. The remaining
+            # arithmetic is covered by the capture/application test below.
+            source='''#include <assert.h>
+#include <stdint.h>
+#include <stdbool.h>
+typedef struct {float x,y,z;} AccelStateData;
+typedef AccelStateData GyroStateData;
+typedef int BaseType_t;
+typedef int xQueueHandle;
+static bool trace_sample_valid,gyro_ro,accel_ro;
+static int pending;
+static const int sensor_period_ms=2;
+static struct {AccelStateData sample[2]; int temperature;} sample;
+static void *get_queue(int unused) {(void)unused;return 0;}
+static struct {void *(*get_queue)(int);} ATTITUDE_IMU_DRIVER={get_queue};
+#define xQueueHandle void *
+#define mpu6000_data (&sample)
+#define pdTRUE 1
+#define PERF_TRACK_VALUE(a,b) ((void)0)
+static int GyroStateReadOnly(void){return gyro_ro;}
+static int AccelStateReadOnly(void){return accel_ro;}
+static int xQueueReceive(void *q,void *data,int wait) {
+    (void)q;(void)data;(void)wait;
+    if(pending){pending=0;return 1;}return 0;
+}
+'''+code[start:end]+'''
+#endif
+    (void)accels;(void)gyros;(void)temp;(void)accelStateData;(void)gyrosData;
+    return 7;
+}
+int main(void){
+    AccelStateData a={0};GyroStateData g={0};
+    trace_sample_valid=true;pending=0;
+    assert(updateSensorsCC3D(&a,&g)==-1 && !trace_sample_valid);
+    trace_sample_valid=true;pending=1;gyro_ro=true;
+    assert(updateSensorsCC3D(&a,&g)==0 && !trace_sample_valid);
+    trace_sample_valid=true;pending=1;gyro_ro=false;accel_ro=true;
+    assert(updateSensorsCC3D(&a,&g)==0 && !trace_sample_valid);
+    return 0;
+}
+'''
+            (out/'early.c').write_text(source)
+            binary=str(out/'early')
+            subprocess.run(['cc','-std=c11','-Wall','-Wextra','-Werror',
+                '-DCONFIG_LRRK_ATTITUDE_TRACE=1','-DPIOS_INCLUDE_ICM20602',
+                str(out/'early.c'),'-o',binary],check=True)
+            subprocess.run([binary],check=True)
+
+    def test_generated_sensor_bias_capture_executes_actual_application(self):
+        upstream=os.environ.get('LRRK_TEST_FLIGHT_ROOT')
+        if not upstream:self.skipTest('set LRRK_TEST_FLIGHT_ROOT')
+        import prepare_control
+        with tempfile.TemporaryDirectory() as directory:
+            out=Path(directory)
+            prepare_control.prepare(Path(upstream)/'flight/modules',out/'control')
+            code=(out/'control/attitude.c').read_text()
+            marker=code.index('/* Same task and sample, before applying')
+            start=code.rfind('#if CONFIG_LRRK_ATTITUDE_TRACE',0,marker)
+            end=code.index('    // Force the roll & pitch gyro rates',marker)
+            body=code[start:end]
+            source='''#include <assert.h>
+#include <stdbool.h>
+static float trace_pre_bias[3],trace_applied_bias[3];
+static bool trace_sample_valid;
+typedef struct {float x,y,z;} Gyro;
+static void capture(float gyros[3], float gyro_correct_int[3], bool bias_correct_gyro, Gyro *gyrosData) {
+'''+body+'''
+}
+int main(void) {
+    float input[3]={10,-20,30},bias[3]={1,2,-3}; Gyro output;
+    capture(input,bias,true,&output);
+    assert(trace_sample_valid && output.x==11 && output.y==-18 && output.z==27);
+    assert(trace_pre_bias[0]==10 && trace_pre_bias[1]==-20 && trace_pre_bias[2]==30);
+    assert(trace_applied_bias[0]==1 && trace_applied_bias[1]==2 && trace_applied_bias[2]==-3);
+    input[0]=99; bias[0]=500; trace_sample_valid=false;
+    capture(input,bias,false,&output);
+    assert(trace_sample_valid && output.x==99 && trace_pre_bias[0]==99);
+    assert(trace_applied_bias[0]==0 && trace_applied_bias[1]==0 && trace_applied_bias[2]==0);
+    return 0;
+}
+'''
+            (out/'capture.c').write_text(source)
+            binary=str(out/'capture')
+            subprocess.run(['cc','-std=c11','-Wall','-Wextra','-Werror',
+                '-DCONFIG_LRRK_ATTITUDE_TRACE=1',str(out/'capture.c'),'-o',binary],check=True)
+            subprocess.run([binary],check=True)
+
     def test_adapted_estimator_captures_input_and_corrected_rates(self):
         upstream=os.environ.get('LRRK_TEST_FLIGHT_ROOT')
         if not upstream:self.skipTest('set LRRK_TEST_FLIGHT_ROOT')

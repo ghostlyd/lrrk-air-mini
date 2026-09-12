@@ -116,23 +116,45 @@ static float lastThrottleDesired;""")
         '''static float gyro_correct_int[3] = { 0, 0, 0 };
 #if CONFIG_LRRK_ATTITUDE_TRACE
 static float trace_pre_bias[3], trace_applied_bias[3];
+static bool trace_sample_valid;
+#endif''')
+    attitude = replace_exact(attitude,
+        'static int32_t updateSensorsCC3D(AccelStateData *accelStateData, GyroStateData *gyrosData)\n{',
+        '''static int32_t updateSensorsCC3D(AccelStateData *accelStateData, GyroStateData *gyrosData)
+{
+#if CONFIG_LRRK_ATTITUDE_TRACE
+    trace_sample_valid = false;
 #endif''')
     attitude = replace_exact(attitude, '    gyrosData->x = gyros[0];',
         '''#if CONFIG_LRRK_ATTITUDE_TRACE
     /* Same task and sample, before applying or updating the adaptive bias. */
     for (unsigned axis = 0; axis < 3; ++axis) {
         trace_pre_bias[axis] = gyros[axis];
-        trace_applied_bias[axis] = bias_correct_gyro ? gyro_correct_int[axis] : 0.0f;
     }
 #endif
     gyrosData->x = gyros[0];''')
+    attitude = replace_exact(attitude,
+        '    // Force the roll & pitch gyro rates to average to zero during initialisation\n    gyro_correct_int[0] += -gyrosData->x * rollPitchBiasRate;',
+        '''#if CONFIG_LRRK_ATTITUDE_TRACE
+    /* Effective floating-point correction actually applied, not a later
+     * reread of asynchronously mutable settings or adaptive bias state. */
+    trace_applied_bias[0] = gyrosData->x - trace_pre_bias[0];
+    trace_applied_bias[1] = gyrosData->y - trace_pre_bias[1];
+    trace_applied_bias[2] = gyrosData->z - trace_pre_bias[2];
+    trace_sample_valid = true;
+#endif
+    // Force the roll & pitch gyro rates to average to zero during initialisation
+    gyro_correct_int[0] += -gyrosData->x * rollPitchBiasRate;''')
     attitude = replace_exact(attitude, '    AttitudeStateSet(&attitudeState);',
         '''    AttitudeStateSet(&attitudeState);
 #if CONFIG_LRRK_ATTITUDE_TRACE
     /* Same estimator update; PWM in the callee is a separate qualified snapshot. */
     const float trace_gyro[3] = {gyrosData->x, gyrosData->y, gyrosData->z};
-    LiteWingAttitudeTraceRecord(dT, accels, trace_gyro, gyros, rpy_temp,
-                               trace_pre_bias, trace_applied_bias);
+    if (trace_sample_valid) {
+        LiteWingAttitudeTraceRecord(dT, accels, trace_gyro, gyros, rpy_temp,
+                                   trace_pre_bias, trace_applied_bias);
+        trace_sample_valid = false;
+    }
 #endif''')
     # All inputs/anchors validated before writes. Preserve original GPL notices.
     output.mkdir(parents=True, exist_ok=True)

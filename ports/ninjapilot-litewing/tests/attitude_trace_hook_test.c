@@ -13,6 +13,7 @@ static bool bad_norm, accel_filter_enabled;
 static float q[4]={1,0,0,0}, accels_filtered[3],grot_filtered[3],gyro_correct_int[3];
 static float accelKi,accelKp=.2f;
 static float trace_pre_bias[3]={3,3,3},trace_applied_bias[3]={1,2,3};
+static bool trace_sample_valid=true;
 static float PIOS_DELTATIME_GetAverageSeconds(int *p) { (void)p; return .002f; }
 static void apply_accel_filter(const float *a,float *b) { memcpy(b,a,12); }
 static void CrossProduct(const float *a,const float *b,float *out)
@@ -41,12 +42,17 @@ static void LiteWingAttitudeTraceRecord(float dt,const float *a,const float *g,
 #include "attitude_step.inc"
 int main(void)
 {
-    (void)trace_pre_bias; (void)trace_applied_bias;
+    (void)trace_pre_bias; (void)trace_applied_bias; (void)trace_sample_valid;
     AccelStateData a={1,2,3};GyroStateData g={4,5,6};
     updateAttitude(&a,&g);
     assert(writes==1 && calls==CONFIG_LRRK_ATTITUDE_TRACE);
     assert(g.x==4 && g.y==5 && g.z==6);
+#if CONFIG_LRRK_ATTITUDE_TRACE
+    assert(!trace_sample_valid);
+#endif
+    updateAttitude(&a,&g);
+    assert(writes==2 && calls==CONFIG_LRRK_ATTITUDE_TRACE);
     bad_norm=true;updateAttitude(&a,&g);
-    assert(writes==1 && calls==CONFIG_LRRK_ATTITUDE_TRACE);
+    assert(writes==2 && calls==CONFIG_LRRK_ATTITUDE_TRACE);
     return 0;
 }
