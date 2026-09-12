@@ -100,3 +100,18 @@ control packets, no completed phases. It did not exercise motors or powered
 cleanup. Preserve strict framing validation; investigate startup stream
 synchronization before another retry. The prior disarmed verification is not
 a fresh status sample from this failed connection.
+
+Offline examination of the 65-byte failure capture rejects a simple false
+initial-sync explanation: offsets 4 and 17 each contain a complete 12-byte
+`ReceiverActivity` frame plus valid CRC. At offset 30 the next header begins
+with sync/type 0x3c/0x20 but declares length 1, below the ten-byte minimum.
+Strict rejection after synchronization is correct. This does not localize
+corruption to the MCU, bridge, driver, or host tty configuration.
+
+The inspected PIOS COM path serializes sends with `sendbuffer_sem`; the USART
+adapter drains its callback into a local buffer and calls `uart_write_bytes`.
+The adapter does not check that function's return value. That is a candidate
+for a separate transmit-error diagnostic, not proof it caused these bytes.
+No parser tolerance, firmware, PID, or output ceiling was changed during this
+investigation. A request-only follow-up can establish current telemetry health
+but cannot retroactively repair the rejected capture.
