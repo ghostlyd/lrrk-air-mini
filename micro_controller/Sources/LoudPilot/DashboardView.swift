@@ -243,12 +243,15 @@ struct DashboardView: View {
                 .font(.caption)
                 .foregroundStyle(.orange)
 
-                if !bluetooth.controllerCandidates.isEmpty
-                    && hidMonitor.devices.filter(\.isControllerCandidate).isEmpty {
+                if hidMonitor.devices.filter(\.isControllerCandidate).isEmpty {
                     VStack(alignment: .leading, spacing: 5) {
-                        Text("Make the nearby Micro selectable")
+                        Text("Make the Micro selectable")
                             .font(.caption.bold())
-                        Text("On the Bluetooth-capable Micro, hold the bottom-left touch sensor for 3 seconds until the underglow turns blue. Tap the sensor to choose BLE channel 1, 2, or 3, then wait for the pairing light to become solid.")
+                        Text(bluetooth.controllerCandidates.isEmpty
+                             ? "If macOS shows Codex Micro in Nearby Devices, leave that row alone: it is only an advertisement. On the Bluetooth-capable Micro, hold the bottom-left touch sensor for 3 seconds until the underglow turns blue."
+                             : "On the Bluetooth-capable Micro, hold the bottom-left touch sensor for 3 seconds until the underglow turns blue.")
+                            .font(.caption)
+                        Text("Tap the sensor to choose BLE channel 1, 2, or 3, then wait for the pairing light to become solid. Use Work Louder Input for the communication-mode pairing step.")
                             .font(.caption)
                         Label("Click Recheck HID immediately; communication mode exits after a short idle period.", systemImage: "arrow.clockwise")
                             .font(.caption)
