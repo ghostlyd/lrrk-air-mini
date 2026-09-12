@@ -27,5 +27,9 @@ managed_components/
 sdkconfig.old
 ports/ninjapilot-litewing/esp-idf/sdkconfig
 
+# Local SwiftPM build products and staged macOS app.
+micro_controller/.build/
+micro_controller/dist/
+
 # Local ESP-IDF source and toolchain cache.
 .toolchains/
