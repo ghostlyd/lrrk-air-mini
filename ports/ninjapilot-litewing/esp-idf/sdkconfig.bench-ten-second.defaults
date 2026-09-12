@@ -1,0 +1,4 @@
+# Opt-in bench-only profile. Never use for flight.
+# Layer after sdkconfig.defaults in a new build with a fresh SDKCONFIG.
+CONFIG_LRRK_BENCH_OUTPUT_LIMIT=y
+CONFIG_LRRK_BENCH_OUTPUT_DURATION_MS=10000

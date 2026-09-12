@@ -120,3 +120,16 @@ class BenchPwmDriverTests(unittest.TestCase):
             for channel in range(4):
                 with self.subTest(failure=failure, channel=channel):
                     self.run_scenario(f"bench-expiry-{failure}-failure", channel)
+
+
+class TenSecondBenchTests(unittest.TestCase):
+    compile_flags = ["-DCONFIG_LRRK_BENCH_OUTPUT_LIMIT=1",
+                     "-DCONFIG_LRRK_BENCH_OUTPUT_DURATION_MS=10000"]
+    setUpClass = classmethod(BrushedPwmDriverTests.setUpClass.__func__)
+    run_scenario = BrushedPwmDriverTests.run_scenario
+
+    def test_ten_second_interval_expires_without_renewal(self):
+        self.run_scenario("bench-ten-second")
+
+    def test_watchdog_also_enforces_ten_second_boundary(self):
+        self.run_scenario("bench-ten-second-watchdog")
