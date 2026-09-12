@@ -23,6 +23,7 @@ final class HIDMonitor: NSObject, ObservableObject {
     @Published private(set) var lastReportHex = "—"
     @Published private(set) var events: [ObservedHIDEvent] = []
     @Published private(set) var safetyState = InputSafetyState(bindings: [:])
+    @Published private(set) var physicalActivity = HIDPhysicalActivityState()
     @Published private(set) var captureState = GuidedCaptureState(plan: .codexMicro)
     @Published private(set) var learnedMapping: CodexMicroMapping?
     @Published private(set) var emergencyStopTested = false
@@ -94,6 +95,7 @@ final class HIDMonitor: NSObject, ObservableObject {
         self.manager = nil
         safetyState.setConnected(false)
         selectedDeviceConnected = false
+        physicalActivity = HIDPhysicalActivityState()
         captureState.reset()
     }
 
@@ -209,6 +211,9 @@ final class HIDMonitor: NSObject, ObservableObject {
 
     func setFocused(_ focused: Bool) {
         safetyState.setFocused(focused)
+        if !focused {
+            physicalActivity = HIDPhysicalActivityState()
+        }
     }
 
     func acceptCaptureStep() {
@@ -230,6 +235,7 @@ final class HIDMonitor: NSObject, ObservableObject {
     func triggerEmergencyStop() {
         emergencyStopTested = true
         safetyState.stop()
+        physicalActivity = HIDPhysicalActivityState()
     }
 
     func clearEmergencyStop() {
@@ -325,11 +331,13 @@ final class HIDMonitor: NSObject, ObservableObject {
             selectedDeviceError = nil
             activeProfileName = inputOwnershipMode.label
             safetyState.setConnected(false)
+            physicalActivity = HIDPhysicalActivityState()
         }
     }
 
     private func clearActiveInputState() {
         safetyState.setConnected(false)
+        physicalActivity = HIDPhysicalActivityState()
         reportCount = 0
         lastReportHex = "—"
         events.removeAll()
@@ -375,6 +383,16 @@ final class HIDMonitor: NSObject, ObservableObject {
             timestamp: Date().timeIntervalSince1970
         )
         interpreterByID[id] = interpreter
+        var activity = physicalActivity
+        activity.ingest(
+            signature: HIDCaptureSignature(
+                usagePage: descriptor.usagePage,
+                usage: descriptor.usage,
+                isRelative: descriptor.isRelative
+            ),
+            event: rawEvent
+        )
+        physicalActivity = activity
         let profile = profileByID[id] ?? ControllerInputPolicy.profile(for: summarize(device))
         captureState.ingest(
             descriptor: descriptor,

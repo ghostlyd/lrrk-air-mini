@@ -460,6 +460,7 @@ struct DashboardView: View {
                     telemetryAge: telemetryAge(now: now),
                     battery: batteryValue,
                     intended: hidMonitor.safetyState.intended,
+                    physicalActivity: hidMonitor.physicalActivity,
                     mappingSummary: hidMonitor.learnedMapping?.summary,
                     reportCount: hidMonitor.reportCount,
                     lastReportHex: hidMonitor.lastReportHex,

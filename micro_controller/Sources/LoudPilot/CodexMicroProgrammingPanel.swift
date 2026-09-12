@@ -7,8 +7,8 @@ import SwiftUI
 /// This is intentionally an observation/configuration surface. Selecting a
 /// tile changes only the UI focus; it never creates or transmits a flight
 /// command. The amber tile is the next physical control LoudPilot is asking
-/// the operator to exercise, while green means a recent matching report was
-/// observed.
+/// the operator to exercise, while green means live or recently observed
+/// physical activity.
 struct CodexMicroProgrammingPanel: View {
     let captureState: GuidedCaptureState
     let events: [ObservedHIDEvent]
@@ -22,6 +22,7 @@ struct CodexMicroProgrammingPanel: View {
     let telemetryAge: String
     let battery: String
     let intended: IntendedControlValues
+    let physicalActivity: HIDPhysicalActivityState
     let mappingSummary: String?
     let reportCount: Int
     let lastReportHex: String
@@ -195,7 +196,7 @@ struct CodexMicroProgrammingPanel: View {
 
             HStack(spacing: 12) {
                 legendItem(color: .orange, text: "Calibrate next")
-                legendItem(color: .green, text: "Recent report")
+                legendItem(color: .green, text: "Live activity")
                 legendItem(color: .blue, text: "Captured")
                 Spacer()
                 Text("15 physical positions · HID signatures remain evidence-bound")
@@ -334,7 +335,7 @@ struct CodexMicroProgrammingPanel: View {
     private func physicalControlTile(_ control: CodexMicroPhysicalControl) -> some View {
         let target = promptedControl == control
         let captured = calibratedStepByControl[control] != nil
-        let observed = recentEvent(for: control) != nil
+        let observed = physicalActivity(for: control)
         let focused = selectedControl == control
         let hovering = hoveredControl == control
         let assignment = stagedAssignments[control] ?? .unassigned
@@ -389,11 +390,15 @@ struct CodexMicroProgrammingPanel: View {
                 }
             }
             .overlay {
-                if hovering {
+                if observed {
+                    physicalHighlight(control)
+                        .shadow(color: .green.opacity(0.85), radius: 8)
+                } else if hovering {
                     RoundedRectangle(cornerRadius: 10)
                         .strokeBorder(.white.opacity(0.95), lineWidth: 2)
                 }
             }
+            .animation(.easeInOut(duration: 0.12), value: observed)
         }
         .buttonStyle(.plain)
         .onHover { isHovering in
@@ -429,6 +434,20 @@ struct CodexMicroProgrammingPanel: View {
             RoundedRectangle(cornerRadius: 10)
                 .fill(fill)
                 .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(Color.white.opacity(0.9), lineWidth: 1.5))
+        }
+    }
+
+    @ViewBuilder
+    private func physicalHighlight(_ control: CodexMicroPhysicalControl) -> some View {
+        switch control.shape {
+        case .knob, .directional, .small:
+            Circle().strokeBorder(Color.green.opacity(0.98), lineWidth: 3)
+        case .wide:
+            RoundedRectangle(cornerRadius: 12)
+                .strokeBorder(Color.green.opacity(0.98), lineWidth: 3)
+        case .key:
+            RoundedRectangle(cornerRadius: 10)
+                .strokeBorder(Color.green.opacity(0.98), lineWidth: 3)
         }
     }
 
@@ -513,7 +532,7 @@ struct CodexMicroProgrammingPanel: View {
     }
 
     private func tileFill(target: Bool, accepted: Bool, observed: Bool, focused: Bool) -> Color {
-        if observed { return .green.opacity(0.34) }
+        if observed { return .green.opacity(0.62) }
         if target { return .orange.opacity(0.32) }
         if accepted { return .blue.opacity(0.30) }
         if focused { return .blue.opacity(0.16) }
@@ -603,20 +622,47 @@ struct CodexMicroProgrammingPanel: View {
         }
     }
 
-    private func recentEvent(for control: CodexMicroPhysicalControl) -> ObservedHIDEvent? {
-        guard let stepID = calibratedStepByControl[control]
-                ?? (promptedControl == control ? captureState.currentStep?.id : nil) else {
-            return nil
+    private func physicalActivity(for control: CodexMicroPhysicalControl) -> Bool {
+        let mappedSignatures = physicalSignatures(for: control)
+        if mappedSignatures.contains(where: { physicalActivity.isActive($0, now: now) }) {
+            return true
         }
-        let signature = captureState.acceptedSignatureByStep[stepID]
-            ?? (captureState.currentStep?.id == stepID ? captureState.currentEvidence.signature : nil)
-        guard let signature else { return nil }
-        return events.first {
-            $0.usagePage == signature.usagePage &&
-                $0.usage == signature.usage &&
-                $0.event.timestamp <= now &&
-                now - $0.event.timestamp < 1.2
+
+        // These physical surfaces are identifiable before guided capture has
+        // accepted their individual signatures. This lights the surface only;
+        // it does not infer an axis direction or a flight meaning.
+        switch control {
+        case .knob:
+            return physicalActivity.hasRecentActivity(of: .dial, now: now)
+        case .topRightPlanarJoystick:
+            return physicalActivity.hasRecentActivity(of: .axis, now: now)
+        default:
+            return false
         }
+    }
+
+    private func physicalSignatures(for control: CodexMicroPhysicalControl) -> Set<HIDCaptureSignature> {
+        var signatures = Set<HIDCaptureSignature>()
+
+        if let stepID = calibratedStepByControl[control],
+           let signature = captureState.acceptedSignatureByStep[stepID] {
+            signatures.insert(signature)
+        }
+
+        if promptedControl == control,
+           let signature = captureState.currentEvidence.signature {
+            signatures.insert(signature)
+        }
+
+        if control.isKnob {
+            for stepID in ["dial-clockwise", "dial-counterclockwise"] {
+                if let signature = captureState.acceptedSignatureByStep[stepID] {
+                    signatures.insert(signature)
+                }
+            }
+        }
+
+        return signatures
     }
 
     private func eventLabel(_ event: ObservedHIDEvent) -> String {

@@ -178,6 +178,82 @@ public struct HIDInputInterpreter: Sendable {
     }
 }
 
+/// Tracks the physical activity that the layout can safely visualize.
+///
+/// Buttons and keys remain active until their release report. Joystick axes
+/// remain active until a neutral report. Relative dials are intentionally
+/// transient: a detent lights the corresponding physical surface briefly but
+/// never becomes a held control.
+public struct HIDPhysicalActivityState: Equatable, Sendable {
+    public private(set) var activeSignatures: Set<HIDCaptureSignature> = []
+
+    private var latestEventBySignature: [HIDCaptureSignature: MicroInputEvent] = [:]
+
+    public init() {}
+
+    public mutating func ingest(
+        signature: HIDCaptureSignature,
+        event: MicroInputEvent
+    ) {
+        latestEventBySignature[signature] = event
+
+        switch event.kind {
+        case .button, .key:
+            if event.phase == .released || abs(event.value) <= 0.000001 {
+                activeSignatures.remove(signature)
+            } else {
+                activeSignatures.insert(signature)
+            }
+        case .axis:
+            if abs(event.value) <= 0.000001 {
+                activeSignatures.remove(signature)
+            } else {
+                activeSignatures.insert(signature)
+            }
+        case .dial, .unknown:
+            break
+        }
+    }
+
+    public mutating func reset() {
+        activeSignatures.removeAll(keepingCapacity: true)
+        latestEventBySignature.removeAll(keepingCapacity: true)
+    }
+
+    public func isActive(
+        _ signature: HIDCaptureSignature,
+        now: TimeInterval,
+        within window: TimeInterval = 1.2
+    ) -> Bool {
+        if activeSignatures.contains(signature) {
+            return true
+        }
+
+        guard let latest = latestEventBySignature[signature],
+              latest.timestamp <= now,
+              now - latest.timestamp <= window else {
+            return false
+        }
+
+        switch latest.kind {
+        case .dial, .axis:
+            return abs(latest.value) > 0.000001
+        case .button, .key, .unknown:
+            return false
+        }
+    }
+
+    public func hasRecentActivity(
+        of kind: MicroInputKind,
+        now: TimeInterval,
+        within window: TimeInterval = 1.2
+    ) -> Bool {
+        latestEventBySignature.contains { signature, event in
+            event.kind == kind && isActive(signature, now: now, within: window)
+        }
+    }
+}
+
 /// Pure state boundary for a physical Micro input device.
 ///
 /// This type deliberately produces intended values only. It has no network
