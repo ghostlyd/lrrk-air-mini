@@ -716,13 +716,13 @@ struct DashboardView: View {
     }
 
     private func stagedValidationEvidence(now: TimeInterval) -> StagedValidationEvidence {
-        let telemetryAge = telemetry.state.telemetryAge(now: now)
+        let telemetryAge = telemetry.state.completeTelemetryAge(now: now)
         let telemetryFresh = telemetry.telemetryFreshness == .fresh && telemetryAge.map { $0 <= 2.0 } == true
         return StagedValidationEvidence(
             inputCaptureComplete: hidMonitor.captureState.isComplete,
             mappingStaged: hidMonitor.learnedMapping != nil,
             telemetryFresh: telemetryFresh,
-            batteryVerified: telemetry.state.batteryVoltage != nil,
+            batteryVerified: telemetryFresh && telemetry.state.hasCompleteReadOnlyTelemetry,
             imuOrientationVerified: imuOrientationVerified,
             motorOrderVerified: motorOrderVerified,
             emergencyStopVerified: hidMonitor.emergencyStopTested,
@@ -798,7 +798,7 @@ struct DashboardView: View {
     }
 
     private func telemetryAge(now: TimeInterval) -> String {
-        guard let age = telemetry.state.telemetryAge(now: now) else { return "Unavailable" }
+        guard let age = telemetry.state.completeTelemetryAge(now: now) else { return "Unavailable" }
         return String(format: "%.1f s", age)
     }
 

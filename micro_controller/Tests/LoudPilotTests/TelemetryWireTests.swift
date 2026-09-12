@@ -93,6 +93,35 @@ enum TelemetryWireTests {
         try expect(state.hasCompleteReadOnlyTelemetry, "battery, complete gyro, and complete accelerometer data should make telemetry complete")
     }
 
+    static func testCompleteTelemetryAgeUsesOldestRequiredSensorGroup() throws {
+        let primarySchema = LogBlockSchema(
+            blockID: 1,
+            variables: [
+                LogVariable(id: 1, type: .uint8, group: "pm", name: "vbat"),
+                LogVariable(id: 2, type: .uint8, group: "gyro", name: "x"),
+                LogVariable(id: 3, type: .uint8, group: "gyro", name: "y"),
+                LogVariable(id: 4, type: .uint8, group: "gyro", name: "z"),
+            ]
+        )
+        let accelerometerSchema = LogBlockSchema(
+            blockID: 2,
+            variables: [
+                LogVariable(id: 5, type: .uint8, group: "acc", name: "x"),
+                LogVariable(id: 6, type: .uint8, group: "acc", name: "y"),
+                LogVariable(id: 7, type: .uint8, group: "acc", name: "z"),
+            ]
+        )
+        var state = DroneTelemetryState()
+        try state.applyLogData([1, 0, 0, 0, 4, 1, 2, 3], schema: primarySchema, receivedAt: 100)
+        try expect(state.completeTelemetryAge(now: 101) == nil, "complete telemetry age must stay unavailable until every required sensor group reports")
+
+        try state.applyLogData([2, 0, 0, 0, 5, 6, 7], schema: accelerometerSchema, receivedAt: 101)
+        try expect(state.completeTelemetryAge(now: 104) == 4, "complete telemetry age must use the oldest required sensor group")
+
+        try state.applyLogData([1, 0, 0, 0, 4, 8, 9, 10], schema: primarySchema, receivedAt: 105)
+        try expect(state.completeTelemetryAge(now: 106) == 5, "a continuing partial stream must not hide an older accelerometer sample")
+    }
+
     static func testDiscoveryPlanUsesOnlyAdvertisedNonPositioningVariables() throws {
         let variables = [
             LogVariable(id: 1, type: .float32, group: "pm", name: "vbat"),
