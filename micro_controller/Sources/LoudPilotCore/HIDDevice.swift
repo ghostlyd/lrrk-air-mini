@@ -112,6 +112,19 @@ public enum ControllerDeviceScope {
     }
 }
 
+/// Computes the HID identities that disappeared between two metadata-only
+/// registry snapshots. The application uses this before removing a device so
+/// disconnects clear selected input state even when the HID manager is not
+/// open for exclusive input.
+public enum HIDRegistryReconciliation {
+    public static func staleDeviceIDs(
+        existing: Set<String>,
+        observed: Set<String>
+    ) -> Set<String> {
+        existing.subtracting(observed)
+    }
+}
+
 public struct BluetoothPeripheralSummary: Identifiable, Equatable, Sendable {
     public let id: String
     public let name: String

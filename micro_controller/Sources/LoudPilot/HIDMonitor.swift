@@ -36,6 +36,7 @@ final class HIDMonitor: NSObject, ObservableObject {
     private var interpreterByID: [String: HIDInputInterpreter] = [:]
     private var reportByID: [String: String] = [:]
     private var profileByID: [String: HIDControlProfile] = [:]
+    private var registryPollTask: Task<Void, Never>?
 
     func start() {
         guard manager == nil else { return }
@@ -47,6 +48,7 @@ final class HIDMonitor: NSObject, ObservableObject {
         IOHIDManagerRegisterDeviceMatchingCallback(created, hidDeviceMatched, context)
         IOHIDManagerRegisterDeviceRemovalCallback(created, hidDeviceRemoved, context)
         IOHIDManagerScheduleWithRunLoop(created, CFRunLoopGetMain(), CFRunLoopMode.defaultMode.rawValue)
+        startRegistryPolling()
 
         // Released mode must remain invisible to the active Codex app: a
         // manager that is opened merely for discovery can still become a
@@ -59,6 +61,8 @@ final class HIDMonitor: NSObject, ObservableObject {
 
         let result = IOHIDManagerOpen(created, IOOptionBits(kIOHIDOptionsTypeNone))
         guard result == kIOReturnSuccess else {
+            registryPollTask?.cancel()
+            registryPollTask = nil
             selectedDeviceError = String(format: "IOHIDManagerOpen failed (0x%08x)", UInt32(bitPattern: result))
             manager = nil
             return
@@ -81,7 +85,23 @@ final class HIDMonitor: NSObject, ObservableObject {
         }
     }
 
+    /// Keep metadata discovery alive without opening the manager. This makes
+    /// a Micro that changes from a Bluetooth advertisement or wired boot mode
+    /// into HID visible without requiring a manual button press, while
+    /// preserving the released-to-Codex ownership boundary.
+    private func startRegistryPolling() {
+        registryPollTask?.cancel()
+        registryPollTask = Task { @MainActor [weak self] in
+            while let self, !Task.isCancelled {
+                self.rescan()
+                try? await Task.sleep(for: .seconds(1))
+            }
+        }
+    }
+
     func stop() {
+        registryPollTask?.cancel()
+        registryPollTask = nil
         inputOwnershipMode = .released
         safetyState.stop()
         for id in Array(deviceByID.keys) {
@@ -159,6 +179,8 @@ final class HIDMonitor: NSObject, ObservableObject {
     /// the Codex app from reconnecting reliably. The manager, callbacks,
     /// buffers, and device references therefore all go away together.
     private func releaseManagerForCodex() {
+        registryPollTask?.cancel()
+        registryPollTask = nil
         for id in Array(deviceByID.keys) {
             clearDeviceState(id: id)
         }
@@ -227,8 +249,20 @@ final class HIDMonitor: NSObject, ObservableObject {
             return
         }
 
+        var observedIDs = Set<String>()
         for case let device as IOHIDDevice in devices as NSSet {
+            observedIDs.insert(summarize(device).id)
             handleMatched(device)
+        }
+
+        let staleIDs = HIDRegistryReconciliation.staleDeviceIDs(
+            existing: Set(deviceByID.keys),
+            observed: observedIDs
+        )
+        for id in staleIDs {
+            if let device = deviceByID[id] {
+                handleRemoved(device)
+            }
         }
     }
 

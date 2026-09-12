@@ -35,6 +35,7 @@ struct LoudPilotTests {
             try ControllerScopeTests.testExclusiveHIDMatchingIncludesNamedMicroFallbacks()
             try ControllerScopeTests.testBluetoothDiscoveryRetainsMicroCandidatesAndMarksKeyboardOutOfScope()
             try ControllerScopeTests.testOutOfScopeHIDCannotAcquirePilotProfile()
+            try HIDRegistryTests.testMetadataRescanFindsNewAndRemovesMissingDevices()
             try ControllerScopeTests.testCommanderSetpointUsesLiteWingCRTPSetpointPort()
             try ControllerScopeTests.testNormalizedIntentMapsToLiteWingCommanderRange()
             try TelemetryWireTests.testLogTocInfoPacketUsesOnlyTheTelemetryLogPort()
