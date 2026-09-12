@@ -66,6 +66,7 @@ public struct MicroInputEvent: Equatable, Codable, Sendable {
     public let phase: MicroInputPhase
     public let timestamp: TimeInterval
     public let controlMapping: IntendedControl?
+    public let controlScale: Double
 
     public init(
         identifier: String,
@@ -73,7 +74,8 @@ public struct MicroInputEvent: Equatable, Codable, Sendable {
         value: Double,
         phase: MicroInputPhase,
         timestamp: TimeInterval,
-        controlMapping: IntendedControl? = nil
+        controlMapping: IntendedControl? = nil,
+        controlScale: Double = 1
     ) {
         self.identifier = identifier
         self.kind = kind
@@ -81,6 +83,7 @@ public struct MicroInputEvent: Equatable, Codable, Sendable {
         self.phase = phase
         self.timestamp = timestamp
         self.controlMapping = controlMapping
+        self.controlScale = controlScale
     }
 }
 
@@ -180,6 +183,7 @@ public struct InputSafetyState: Equatable, Sendable {
 
     private let bindings: [String: InputBinding]
     private var activeValues: [String: Double] = [:]
+    private var activeBindings: [String: InputBinding] = [:]
 
     public init(bindings: [String: InputBinding]) {
         self.bindings = bindings
@@ -203,6 +207,10 @@ public struct InputSafetyState: Equatable, Sendable {
         }
     }
 
+    public mutating func stop() {
+        clearInputs()
+    }
+
     public mutating func ingest(_ event: MicroInputEvent) {
         guard controlInputEnabled else { return }
 
@@ -216,13 +224,22 @@ public struct InputSafetyState: Equatable, Sendable {
             if abs(event.value) < 0.000001 {
                 activeValues.removeValue(forKey: event.identifier)
                 activeInputs.remove(event.identifier)
+                activeBindings.removeValue(forKey: event.identifier)
             } else {
                 activeValues[event.identifier] = event.value
+                if let mapping = event.controlMapping {
+                    activeBindings[event.identifier] = InputBinding(control: mapping, scale: event.controlScale)
+                } else if let binding = bindings[event.identifier] {
+                    activeBindings[event.identifier] = binding
+                } else {
+                    activeBindings.removeValue(forKey: event.identifier)
+                }
                 activeInputs.insert(event.identifier)
             }
         case .released:
             activeValues.removeValue(forKey: event.identifier)
             activeInputs.remove(event.identifier)
+            activeBindings.removeValue(forKey: event.identifier)
         case .dial:
             break
         }
@@ -231,6 +248,7 @@ public struct InputSafetyState: Equatable, Sendable {
 
     private mutating func clearInputs() {
         activeValues.removeAll(keepingCapacity: true)
+        activeBindings.removeAll(keepingCapacity: true)
         activeInputs.removeAll(keepingCapacity: true)
         intended = IntendedControlValues()
         lastDialDelta = 0
@@ -239,7 +257,7 @@ public struct InputSafetyState: Equatable, Sendable {
     private mutating func recomputeIntended() {
         var values = IntendedControlValues()
         for (identifier, inputValue) in activeValues {
-            guard let binding = bindings[identifier] else { continue }
+            guard let binding = activeBindings[identifier] ?? bindings[identifier] else { continue }
             let contribution = inputValue * binding.scale
             switch binding.control {
             case .roll:

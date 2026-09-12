@@ -42,9 +42,9 @@ struct DashboardView: View {
 
     private var header: some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text("LiteWing Micro Controller")
+            Text("LoudPilot")
                 .font(.largeTitle.bold())
-            Text("Bluetooth Micro monitor → local macOS app → read-only LiteWing telemetry")
+            Text("Codex Micro or Apple Magic Keyboard → LoudPilot → read-only LiteWing telemetry")
                 .foregroundStyle(.secondary)
         }
     }
@@ -71,18 +71,18 @@ struct DashboardView: View {
         GroupBox {
             VStack(alignment: .leading, spacing: 12) {
                 HStack {
-                    Label("Micro input monitor", systemImage: "dot.radiowaves.left.and.right")
+                    Label("Physical input monitor", systemImage: "dot.radiowaves.left.and.right")
                         .font(.title3.bold())
                     Spacer()
                     statusPill(
-                        label: "Bluetooth",
+                        label: "Input device",
                         value: hidMonitor.selectedDeviceConnected ? "CONNECTED" : "NOT CONNECTED",
                         color: hidMonitor.selectedDeviceConnected ? .green : .secondary
                     )
                 }
 
                 if hidMonitor.devices.isEmpty {
-                    Text("No HID device is currently identified as a Codex Micro. Connect it over Bluetooth; this window will enumerate its metadata and capture its actual reports.")
+                    Text("No HID device is currently identified as a Codex Micro or Magic Keyboard. Connect either device over USB-C or Bluetooth; this window will enumerate its metadata and capture its actual reports.")
                         .foregroundStyle(.secondary)
                 } else {
                     ForEach(hidMonitor.devices) { device in
@@ -109,6 +109,17 @@ struct DashboardView: View {
                 }
 
                 Divider()
+                HStack {
+                    valueColumn("Active profile", hidMonitor.activeProfileName)
+                    if let error = hidMonitor.selectedDeviceError {
+                        Text(error)
+                            .font(.caption)
+                            .foregroundStyle(.red)
+                        Button("Retry") {
+                            hidMonitor.retrySelectedDevice()
+                        }
+                    }
+                }
                 HStack(alignment: .top, spacing: 28) {
                     valueColumn("Focus", hidMonitor.safetyState.focused ? "ACTIVE" : "LOST")
                     valueColumn("Control input", hidMonitor.safetyState.controlInputEnabled ? "OBSERVING" : "INHIBITED")
@@ -118,7 +129,7 @@ struct DashboardView: View {
 
                 Text("Intended control values (not transmitted)")
                     .font(.headline)
-                Text("No Micro bindings are assumed until the real input reports are inspected. Axes remain raw observations, not joystick commands.")
+                Text("Magic Keyboard uses the documented keyboard profile. Codex Micro remains report-review-only until its live button/dial reports are captured; generic HID axes are not assumed to be proportional controls.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 let intended = hidMonitor.safetyState.intended

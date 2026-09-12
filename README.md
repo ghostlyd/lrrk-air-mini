@@ -44,10 +44,10 @@ The existing examples are under [`Python-Scripts/`](Python-Scripts/). The
 maintained AI-assistance host service will live separately from the flight
 controller and will default to dry-run/advisory mode.
 
-The first local macOS Micro controller stage is under
+The first local macOS LoudPilot controller stage is under
 [`micro_controller/`](micro_controller/). It monitors the Codex Micro over
-Bluetooth and reads battery/IMU telemetry over the manufacturer's Wi-Fi log
-protocol. It is deliberately read-only: it has no arm, thrust, setpoint,
+USB/Bluetooth and reads battery/IMU telemetry over the manufacturer's Wi-Fi
+log protocol. It is deliberately read-only: it has no arm, thrust, setpoint,
 takeoff, or manual-flight packet path. Build and launch it with
 `./script/build_and_run.sh`; see its README for the required physical checks.
 

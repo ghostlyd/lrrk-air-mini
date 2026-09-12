@@ -8,8 +8,8 @@ let package = Package(
     ],
     products: [
         .executable(
-            name: "LiteWingMicroController",
-            targets: ["LiteWingMicroController"]
+            name: "LoudPilot",
+            targets: ["LoudPilot"]
         ),
     ],
     targets: [
@@ -18,7 +18,7 @@ let package = Package(
             path: "Sources/LiteWingMicroControllerCore"
         ),
         .executableTarget(
-            name: "LiteWingMicroController",
+            name: "LoudPilot",
             dependencies: ["LiteWingMicroControllerCore"],
             path: "Sources/LiteWingMicroController"
         ),

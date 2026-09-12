@@ -16,6 +16,8 @@ final class HIDMonitor: NSObject, ObservableObject {
     @Published private(set) var devices: [HIDDeviceSummary] = []
     @Published private(set) var selectedDeviceID: String?
     @Published private(set) var selectedDeviceConnected = false
+    @Published private(set) var selectedDeviceError: String?
+    @Published private(set) var activeProfileName = "None"
     @Published private(set) var reportCount = 0
     @Published private(set) var lastReportHex = "—"
     @Published private(set) var events: [ObservedHIDEvent] = []
@@ -26,6 +28,7 @@ final class HIDMonitor: NSObject, ObservableObject {
     private var bufferByID: [String: UnsafeMutablePointer<UInt8>] = [:]
     private var interpreterByID: [String: HIDInputInterpreter] = [:]
     private var reportByID: [String: String] = [:]
+    private var profileByID: [String: HIDControlProfile] = [:]
 
     func start() {
         guard manager == nil else { return }
@@ -65,6 +68,12 @@ final class HIDMonitor: NSObject, ObservableObject {
         }
     }
 
+    func retrySelectedDevice() {
+        guard let id = selectedDeviceID else { return }
+        detach(id: id)
+        attach(id: id)
+    }
+
     func setFocused(_ focused: Bool) {
         safetyState.setFocused(focused)
     }
@@ -90,23 +99,30 @@ final class HIDMonitor: NSObject, ObservableObject {
         if selectedDeviceID == summary.id {
             selectedDeviceID = nil
             selectedDeviceConnected = false
+            selectedDeviceError = nil
+            activeProfileName = "None"
             safetyState.setConnected(false)
         }
     }
 
     private func attach(id: String) {
         guard let device = deviceByID[id], bufferByID[id] == nil else { return }
-        guard IOHIDDeviceOpen(device, IOOptionBits(kIOHIDOptionsTypeNone)) == kIOReturnSuccess else {
+        activeProfileName = profile(for: device).name
+        let openResult = IOHIDDeviceOpen(device, IOOptionBits(kIOHIDOptionsTypeNone))
+        guard openResult == kIOReturnSuccess else {
             selectedDeviceConnected = false
+            selectedDeviceError = String(format: "IOHIDDeviceOpen failed (0x%08x)", UInt32(bitPattern: openResult))
             safetyState.setConnected(false)
             return
         }
+        selectedDeviceError = nil
         let reportSize = max(64, Int(numberProperty(device, kIOHIDMaxInputReportSizeKey)))
         let buffer = UnsafeMutablePointer<UInt8>.allocate(capacity: reportSize)
         buffer.initialize(repeating: 0, count: reportSize)
         bufferByID[id] = buffer
         reportByID[id] = "—"
         interpreterByID[id] = HIDInputInterpreter()
+        profileByID[id] = profile(for: device)
         let context = Unmanaged.passUnretained(self).toOpaque()
         IOHIDDeviceRegisterInputReportCallback(
             device,
@@ -131,8 +147,11 @@ final class HIDMonitor: NSObject, ObservableObject {
         }
         interpreterByID.removeValue(forKey: id)
         reportByID.removeValue(forKey: id)
+        profileByID.removeValue(forKey: id)
         if selectedDeviceID == id {
             selectedDeviceConnected = false
+            selectedDeviceError = nil
+            activeProfileName = "None"
             safetyState.setConnected(false)
         }
     }
@@ -156,13 +175,33 @@ final class HIDMonitor: NSObject, ObservableObject {
             isRelative: IOHIDElementIsRelative(element)
         )
         guard var interpreter = interpreterByID[id] else { return }
-        let event = interpreter.ingest(
+        let rawEvent = interpreter.ingest(
             descriptor: descriptor,
             value: Double(IOHIDValueGetIntegerValue(value)),
             timestamp: Date().timeIntervalSince1970
         )
         interpreterByID[id] = interpreter
-        safetyState.ingest(event)
+        let profile = profileByID[id] ?? profile(for: device)
+        let event: MicroInputEvent
+        switch profile.action(for: descriptor) {
+        case .control(let control, let scale):
+            event = MicroInputEvent(
+                identifier: rawEvent.identifier,
+                kind: rawEvent.kind,
+                value: rawEvent.value,
+                phase: rawEvent.phase,
+                timestamp: rawEvent.timestamp,
+                controlMapping: control,
+                controlScale: scale
+            )
+            safetyState.ingest(event)
+        case .stop:
+            safetyState.stop()
+            event = rawEvent
+        case nil:
+            event = rawEvent
+            safetyState.ingest(event)
+        }
         let observed = ObservedHIDEvent(
             event: event,
             usagePage: descriptor.usagePage,
@@ -186,6 +225,18 @@ final class HIDMonitor: NSObject, ObservableObject {
             vendorID: vendor,
             productID: productID
         )
+    }
+
+    private func profile(for device: IOHIDDevice) -> HIDControlProfile {
+        let summary = summarize(device)
+        let product = summary.product.lowercased()
+        if product.contains("magic keyboard") {
+            return BuiltInControlProfiles.magicKeyboard
+        }
+        if product.contains("codex micro") || product.contains("work louder") {
+            return BuiltInControlProfiles.codexMicro
+        }
+        return BuiltInControlProfiles.unmapped
     }
 
     private func deviceID(_ device: IOHIDDevice) -> String? {

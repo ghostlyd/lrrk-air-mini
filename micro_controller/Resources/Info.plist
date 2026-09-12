@@ -3,15 +3,15 @@
 <plist version="1.0">
 <dict>
 	<key>CFBundleDisplayName</key>
-	<string>LiteWing Micro Controller</string>
+	<string>LoudPilot</string>
 	<key>CFBundleExecutable</key>
-	<string>LiteWingMicroController</string>
+	<string>LoudPilot</string>
 	<key>CFBundleIdentifier</key>
 	<string>ai.lrrk.litewing.micro-controller</string>
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>
-	<string>LiteWing Micro Controller</string>
+	<string>LoudPilot</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
@@ -21,9 +21,9 @@
 	<key>LSMinimumSystemVersion</key>
 	<string>13.0</string>
 	<key>NSBluetoothAlwaysUsageDescription</key>
-	<string>LiteWing Micro Controller reads the connected Micro HID reports locally.</string>
+	<string>LoudPilot reads connected HID reports locally for the read-only pilot stage.</string>
 	<key>NSBluetoothPeripheralUsageDescription</key>
-	<string>LiteWing Micro Controller reads the connected Micro HID reports locally.</string>
+	<string>LoudPilot reads connected HID reports locally for the read-only pilot stage.</string>
 	<key>NSHighResolutionCapable</key>
 	<true/>
 	<key>LSApplicationCategoryType</key>

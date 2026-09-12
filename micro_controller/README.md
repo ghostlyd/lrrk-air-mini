@@ -1,12 +1,12 @@
-# LiteWing Micro Controller
+# LoudPilot
 
 This is the first local macOS controller stage for the LiteWing V1.2:
 
 ```text
-Codex Micro over Bluetooth → macOS app → LiteWing Wi-Fi telemetry
+Codex Micro or Apple Magic Keyboard → LoudPilot macOS app → LiteWing Wi-Fi telemetry
 ```
 
-The current stage is intentionally read-only. It monitors Bluetooth HID
+The current stage is intentionally read-only. It monitors USB/Bluetooth HID
 reports and subscribes to the manufacturer firmware's CRTP log port for
 battery and IMU telemetry. It has no arm, thrust, setpoint, takeoff, or manual
 flight transport. OpenAI integration is not called from the pilot or stop
@@ -36,7 +36,8 @@ swift run --package-path micro_controller LiteWingMicroControllerTests
 
 ## First-use checks
 
-1. Pair and connect the Micro over Bluetooth.
+1. Connect the Codex Micro over USB-C or the Magic Keyboard over its available
+   HID transport.
 2. Launch the app and confirm its product/manufacturer metadata is shown.
 3. Exercise one key/button with press, hold, and release; then exercise two
    inputs together and the dial. The raw report and classified events remain
@@ -51,6 +52,8 @@ swift run --package-path micro_controller LiteWingMicroControllerTests
    when advertised by the live log table, and positioning remains
    **Unavailable** unless it is positively verified later.
 
-The UI shows the intended control values, but no Micro bindings are assumed
-before the real reports are inspected. Generic HID axes are displayed as raw
-observations and are not treated as proportional joystick axes.
+The Apple Magic Keyboard profile uses W/S, A/D, Q/E, R/F, and arrow keys for
+intended pitch, roll, yaw, and thrust values; Escape clears the intended state.
+Codex Micro remains report-review-only until its live button/dial report
+layout is captured. Generic HID axes are displayed as raw observations and
+are not treated as proportional joystick axes.

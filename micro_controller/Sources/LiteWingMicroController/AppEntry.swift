@@ -1,9 +1,9 @@
 import SwiftUI
 
 @main
-struct LiteWingMicroControllerApp: App {
+struct LoudPilotApp: App {
     var body: some Scene {
-        WindowGroup("LiteWing Micro Controller") {
+        WindowGroup("LoudPilot") {
             DashboardView()
                 .frame(minWidth: 860, minHeight: 720)
         }
