@@ -254,8 +254,13 @@ final class TelemetryClient: ObservableObject {
               let schema = activeSchemas.first(where: { $0.blockID == blockID }) else { return }
         do {
             try state.applyLogData(payload, schema: schema, receivedAt: receivedAt)
-            status = .streaming
-            telemetryFreshness = .fresh
+            if state.hasCompleteReadOnlyTelemetry {
+                status = .streaming
+                telemetryFreshness = .fresh
+            } else {
+                status = .subscribing
+                telemetryFreshness = .unavailable
+            }
         } catch {
             status = .failed(error.localizedDescription)
             telemetryFreshness = .unavailable
