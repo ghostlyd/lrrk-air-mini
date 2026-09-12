@@ -121,3 +121,29 @@ sensor bytes preceding a large gyro excursion and differential output. It
 does not establish whether subsequent excursions are physical or erroneous,
 or identify the electrical cause. A channel-isolation retry is deferred in
 favor of investigating this repeated sensor-integrity evidence.
+
+## Controlled I2C-rate comparison
+
+Commit `c128a38` made the IMU I2C clock an explicit Kconfig value, bounded to
+100000--400000 Hz, with the existing 400000 Hz default. Focused contract tests
+and both ESP-IDF builds passed. Matched ten-second bench configurations used
+the same output ceiling, duration and attitude trace:
+
+| image | I2C clock | application SHA-256 | deployment result |
+| --- | ---: | --- | --- |
+| control | 400 kHz | `e36002babf89deaa89f83ba95fcdd8e5c128a138f8edda71abb1db14bdba5e` | application-only restore, exact readback |
+| comparison | 100 kHz | `4745b054bcd3bdd6c58738869b1e33f9d52ed8ad15cb5628b5b30e65cb574869` | exact readback, rejected before motor test |
+
+The 100 kHz image booted but produced a repeatable UART CRC mismatch in the
+request-only startup stream after four valid frames, so it was not used for
+actuation. The 400 kHz image was restored and passed request-only startup with
+Disarmed, twelve zero actuator commands, four zero PWM values and no startup
+alarm. Its matched motor transaction then stopped at the existing Attitude and
+Stabilization `Error` alarms as baseline input began; cleanup confirmed zero
+PWM. This does not identify whether the sensor corruption is electrical,
+timing-related, or an estimator/firmware interaction.
+
+The board is currently running the restored 400 kHz image, reset-verified
+Disarmed with zero actuator/PWM output. Do not treat either the 100 kHz UART
+failure or the 400 kHz alarm stop as flight evidence. Further work requires
+isolating the raw MPU6050/I2C fault before a live-flight image can be claimed.
