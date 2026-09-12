@@ -76,6 +76,8 @@ static bool inputStartAttempted;""")
     }
     inputResourcesReady = true;""")
     else:
+        code = replace_exact(code, '#include <openpilot.h>',
+            '#include <openpilot.h>\n#include "litewing_sensor_queue.h"')
         code = replace_exact(code, "    AttitudeStateGet(&attitude);", "    if (AttitudeStateGet(&attitude) != 0) return -1;")
         code = replace_exact(code, "    AttitudeStateSet(&attitude);", "    if (AttitudeStateSet(&attitude) != 0) return -1;")
         allocation = "        mpu6000_data = pios_malloc(sizeof(PIOS_SENSORS_3Axis_SensorsWithTemp) + sizeof(Vector3i16) * 2);"
@@ -86,7 +88,7 @@ static bool inputStartAttempted;""")
     /* Allocate before task creation. The static module owns this buffer
      * until reboot, including after a later failed startup. */
     if (BOARDISCC3D) {
-        mpu6000_data = pios_malloc(sizeof(PIOS_SENSORS_3Axis_SensorsWithTemp) + sizeof(Vector3i16) * 2);
+        mpu6000_data = pios_malloc(LW_SENSOR_QUEUE_SIZE);
         if (!mpu6000_data) return -1;
     }
 #endif

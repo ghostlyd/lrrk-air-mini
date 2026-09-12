@@ -5,6 +5,11 @@
         <field name="TimeHigh" units="us" type="uint32" elements="1" defaultvalue="0"/>
         <field name="Sequence" units="" type="uint32" elements="1" defaultvalue="0"/>
         <field name="PwmCommits" units="" type="uint32" elements="1" defaultvalue="0"/>
+        <field name="RawSequence" units="" type="uint32" elements="3" defaultvalue="0"/>
+        <field name="RawStart" units="us" type="uint32" elements="3" defaultvalue="0"/>
+        <field name="RawEnd" units="us" type="uint32" elements="3" defaultvalue="0"/>
+        <field name="RawFirst" units="" type="uint32" elements="1" defaultvalue="0"/>
+        <field name="RawLast" units="" type="uint32" elements="1" defaultvalue="0"/>
         <field name="Dt" units="s" type="float" elements="1" defaultvalue="0"/>
         <field name="Accel" units="m/s^2" type="float" elements="3" defaultvalue="0"/>
         <field name="Gyro" units="deg/s" type="float" elements="3" defaultvalue="0"/>
@@ -17,12 +22,16 @@
         <field name="Count" units="" type="uint16" elements="1" defaultvalue="0"/>
         <field name="TriggerIndex" units="" type="uint16" elements="1" defaultvalue="65535"/>
         <field name="RecordIndex" units="" type="uint16" elements="1" defaultvalue="0"/>
-        <field name="Version" units="" type="uint8" elements="1" defaultvalue="2"/>
+        <field name="RawConsumed" units="" type="uint16" elements="1" defaultvalue="0"/>
+        <field name="Version" units="" type="uint8" elements="1" defaultvalue="3"/>
         <field name="State" units="" type="uint8" elements="1" defaultvalue="0"/>
         <field name="PwmAvailable" units="" type="uint8" elements="1" defaultvalue="0"/>
         <field name="KnownMask" units="" type="uint8" elements="1" defaultvalue="0"/>
         <field name="Suppression" units="" type="uint8" elements="1" defaultvalue="0"/>
         <field name="Reserved" units="" type="uint8" elements="1" defaultvalue="0"/>
+        <field name="RawBytes" units="" type="uint8" elements="42" defaultvalue="0"/>
+        <field name="RawRetained" units="" type="uint8" elements="1" defaultvalue="0"/>
+        <field name="RawFlags" units="" type="uint8" elements="1" defaultvalue="0"/>
         <access gcs="readonly" flight="readwrite"/>
         <telemetrygcs acked="false" updatemode="manual" period="0"/>
         <telemetryflight acked="false" updatemode="manual" period="0"/>

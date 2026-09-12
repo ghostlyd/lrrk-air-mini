@@ -1,4 +1,9 @@
 #include "imu_publication_sdk.h"
+#if CONFIG_LRRK_ATTITUDE_TRACE
+int32_t LiteWingAttitudeTracePack(UAVObjHandle o,uint16_t i,uint8_t *d) {
+ (void)o;(void)i;(void)d;return -1;
+}
+#endif
 int32_t LiteWingPwmObservationPack(UAVObjHandle obj, uint16_t instance, uint8_t *data) {
     (void)obj; (void)instance; (void)data; return -1;
 }
@@ -17,6 +22,8 @@ static int config_fault_reg=-1;
 static bool config_read_failure;
 static unsigned config_fault_bit;
 static int64_t queue_delay_us;
+static unsigned queue_item_size;
+static uint8_t queue_copy[128];
 static bool complete_reset_in_read;
 static uint64_t pending_reset_generation;
 static unsigned identity_reads, shutdown_on_identity_read;
@@ -58,7 +65,12 @@ int PIOS_I2C_Transfer(uint32_t id,const struct pios_i2c_txn *t,unsigned n) {
       * before this acquisition started, without changing its generation. */
      assert(record_identity(identity,pending_reset_generation));
    }
-   memset(t[1].buf,0,t[1].len); return fail_read?-1:0;
+   memset(t[1].buf,0,t[1].len);
+   if(is("raw-provenance")) {
+     for(unsigned i=0;i<t[1].len;i++)t[1].buf[i]=(uint8_t)(i+1);
+     now+=37;
+   }
+   return fail_read?-1:0;
  }
  assert(n==1 && t[0].len==2 && t[0].buf[0]<128);
  registers[t[0].buf[0]]=t[0].buf[1];return 0;
@@ -67,10 +79,11 @@ bool PIOS_ESP32_I2C_Probe(uint32_t i,uint8_t a) { (void)i;(void)a;return true; }
 int PIOS_SENSORS_Register(const PIOS_SENSORS_Driver *d,int t,uintptr_t c) {(void)d;(void)t;(void)c;return 1;}
 void *pios_malloc(size_t n) { return calloc(1,n); }
 int xQueueSend(void *q,const void *v,unsigned t) {
- (void)q;(void)v;(void)t;now+=queue_delay_us;return 1;
+ (void)q;(void)t;assert(queue_item_size<=sizeof queue_copy);
+ memcpy(queue_copy,v,queue_item_size);now+=queue_delay_us;return 1;
 }
 int xQueueReceive(void *q,void *v,unsigned t) {(void)q;(void)v;(void)t;return 1;}
-void *xQueueCreate(unsigned n,unsigned s) {(void)n;(void)s;return (void *)1;}
+void *xQueueCreate(unsigned n,unsigned s) {(void)n;queue_item_size=s;return (void *)1;}
 void vQueueDelete(void *q) {(void)q;}
 void vTaskNotifyGiveFromISR(void *t,int *w) {(void)t;(void)w;}
 uint32_t ulTaskNotifyTake(int c,unsigned t) {(void)c;(void)t; if(steps++) longjmp(stopped,1);return 1;}
@@ -134,6 +147,29 @@ int main(int argc,char **argv) {
    puts("PASS");return 0;
  }
  assert(PIOS_LiteWing_MPU6050_Init(0,0x68)==0); run_sensor=false;
+ if(is("raw-provenance")) {
+#if CONFIG_LRRK_ATTITUDE_TRACE
+   assert(queue_item_size>LITEWING_MPU6050_DATA_SIZE);
+#else
+   assert(queue_item_size==LITEWING_MPU6050_DATA_SIZE);
+#endif
+   int64_t read_start=now;
+   sample();
+#if CONFIG_LRRK_ATTITUDE_TRACE
+   struct lw_raw_sample provenance;
+   lw_raw_queue_load(queue_copy,LITEWING_MPU6050_DATA_SIZE,&provenance);
+   assert(provenance.sequence==0);
+   assert(provenance.start_us==(uint32_t)read_start);
+   assert(provenance.end_us==(uint32_t)(read_start+37));
+   for(unsigned i=0;i<14;i++)assert(provenance.bytes[i]==i+1);
+   sample();
+   lw_raw_queue_load(queue_copy,LITEWING_MPU6050_DATA_SIZE,&provenance);
+   assert(provenance.sequence==1);
+#else
+   (void)read_start;
+#endif
+   free(queue_data);puts("PASS");return 0;
+ }
  struct lw_imu_observation o;
  PIOS_LiteWing_MPU6050_GetObservation(&o);assert(o.identity_verified && o.who_am_i==0x68 && !o.sample_seen);
  assert(LiteWingImuHealthStart()!=0);

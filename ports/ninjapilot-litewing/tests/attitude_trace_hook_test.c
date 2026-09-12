@@ -4,6 +4,7 @@
 #include <math.h>
 #include <stdbool.h>
 #include <string.h>
+#include "../target/include/litewing_raw_provenance.h"
 #define M_PI_F 3.14159265f
 typedef struct { float x,y,z; } AccelStateData;
 typedef AccelStateData GyroStateData;
@@ -14,6 +15,8 @@ static float q[4]={1,0,0,0}, accels_filtered[3],grot_filtered[3],gyro_correct_in
 static float accelKi,accelKp=.2f;
 static float trace_pre_bias[3]={3,3,3},trace_applied_bias[3]={1,2,3};
 static bool trace_sample_valid=true;
+static struct lw_raw_batch trace_raw={.consumed=1,.retained=1,
+    .samples={{.sequence=42,.bytes={0x81}}}};
 static float PIOS_DELTATIME_GetAverageSeconds(int *p) { (void)p; return .002f; }
 static void apply_accel_filter(const float *a,float *b) { memcpy(b,a,12); }
 static void CrossProduct(const float *a,const float *b,float *out)
@@ -28,8 +31,11 @@ static void AttitudeStateSet(AttitudeStateData *s)
 #if CONFIG_LRRK_ATTITUDE_TRACE
 static void LiteWingAttitudeTraceRecord(float dt,const float *a,const float *g,
                                         const float *c,const float *r,
-                                        const float *pre,const float *bias)
+                                        const float *pre,const float *bias,
+                                        const struct lw_raw_batch *raw)
 {
+    assert(raw->consumed==1 && raw->retained==1);
+    assert(raw->samples[0].sequence==42 && raw->samples[0].bytes[0]==0x81);
     assert(writes==calls+1 && dt==.002f);
     assert(a[0]==1 && a[1]==2 && a[2]==3);
     assert(g[0]==4 && g[1]==5 && g[2]==6);
@@ -43,6 +49,7 @@ static void LiteWingAttitudeTraceRecord(float dt,const float *a,const float *g,
 int main(void)
 {
     (void)trace_pre_bias; (void)trace_applied_bias; (void)trace_sample_valid;
+    (void)trace_raw;
     AccelStateData a={1,2,3};GyroStateData g={4,5,6};
     updateAttitude(&a,&g);
     assert(writes==1 && calls==CONFIG_LRRK_ATTITUDE_TRACE);

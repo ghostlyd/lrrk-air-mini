@@ -25,6 +25,7 @@
 #include "pios_litewing_brushed_pwm.h"
 #include "pios_litewing_mpu6050.h"
 #include "pios_icm20602.h"
+#include "litewing_sensor_queue.h"
 
 #define LITEWING_MPU6050_REG_SMPLRT_DIV 0x19u
 #define LITEWING_MPU6050_REG_CONFIG 0x1Au
@@ -231,7 +232,7 @@ static void orient_sample(const struct litewing_mpu6050_sample *raw,
     out->count = LITEWING_MPU6050_SENSOR_COUNT;
 }
 
-static void publish_sample(const uint8_t *frame)
+static void publish_sample(const uint8_t *frame, int64_t started_us, int64_t completed_us)
 {
     struct litewing_mpu6050_sample raw;
     if (!litewing_mpu6050_decode_frame(frame, 14u, &raw)) {
@@ -239,8 +240,20 @@ static void publish_sample(const uint8_t *frame)
     }
 
     orient_sample(&raw, queue_data);
+#if CONFIG_LRRK_ATTITUDE_TRACE
+    static uint32_t read_sequence;
+    struct lw_raw_sample provenance = {
+        .sequence = read_sequence++,
+        .start_us = (uint32_t)started_us,
+        .end_us = (uint32_t)completed_us
+    };
+    memcpy(provenance.bytes, frame, sizeof provenance.bytes);
+    lw_raw_queue_store(queue_data, LITEWING_MPU6050_DATA_SIZE, &provenance);
+#else
+    (void)started_us; (void)completed_us;
+#endif
     if (xQueueSend(device.queue, queue_data, 0) != pdTRUE) {
-        uint8_t discarded[LITEWING_MPU6050_DATA_SIZE];
+        uint8_t discarded[LW_SENSOR_QUEUE_SIZE];
         (void)xQueueReceive(device.queue, discarded, 0);
         (void)xQueueSend(device.queue, queue_data, 0);
     }
@@ -319,7 +332,7 @@ static void sensor_task(__attribute__((unused)) void *argument)
             continue;
         }
 
-        publish_sample(frame);
+        publish_sample(frame, captured_us, esp_timer_get_time());
         device.sample_seen = true;
         device.last_sample_ms = now_ms;
         portENTER_CRITICAL(&observation_lock);
@@ -400,12 +413,12 @@ int32_t PIOS_LiteWing_MPU6050_Init(uint32_t i2c_id, uint8_t address)
     }
 
     device.queue = xQueueCreate(LITEWING_MPU6050_QUEUE_LENGTH,
-                                LITEWING_MPU6050_DATA_SIZE);
+                                LW_SENSOR_QUEUE_SIZE);
     if (device.queue == 0) {
         set_health(false);
         return -3;
     }
-    queue_data = pios_malloc(LITEWING_MPU6050_DATA_SIZE);
+    queue_data = pios_malloc(LW_SENSOR_QUEUE_SIZE);
     if (queue_data == 0) {
         vQueueDelete(device.queue);
         device.queue = 0;

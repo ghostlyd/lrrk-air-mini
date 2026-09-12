@@ -48,3 +48,8 @@ class ImuPublicationTests(unittest.TestCase):
                     result = subprocess.run([str(binary), case], capture_output=True, text=True, timeout=15)
                     print('RUN:', binary, case, result.stdout, result.stderr, flush=True)
                     self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            result = subprocess.run(command[:1] + ['-DCONFIG_LRRK_ATTITUDE_TRACE=1'] + command[1:],
+                                    capture_output=True, text=True, timeout=30)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            result = subprocess.run([str(binary), 'raw-provenance'], capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)

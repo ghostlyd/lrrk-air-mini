@@ -2,6 +2,7 @@
 #define LRRK_ATTITUDE_TRACE_H
 #include <stdbool.h>
 #include <stdint.h>
+#include "litewing_raw_provenance.h"
 #define LW_TRACE_CAPACITY 512u
 #define LW_TRACE_PRETRIGGER 64u
 struct lw_trace_record {
@@ -9,6 +10,7 @@ struct lw_trace_record {
     uint32_t sequence;
     float dt, accel[3], gyro[3], corrected[3], rpy[3];
     float pre_bias[3], applied_bias[3];
+    struct lw_raw_batch raw;
     uint32_t commits;
     uint16_t requested[4], submitted[4];
     uint8_t pwm_available, known_mask, suppression;

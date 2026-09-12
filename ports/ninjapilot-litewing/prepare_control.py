@@ -117,6 +117,7 @@ static float lastThrottleDesired;""")
 #if CONFIG_LRRK_ATTITUDE_TRACE
 static float trace_pre_bias[3], trace_applied_bias[3];
 static bool trace_sample_valid;
+static struct lw_raw_batch trace_raw;
 #endif''')
     attitude = replace_exact(attitude,
         'static int32_t updateSensorsCC3D(AccelStateData *accelStateData, GyroStateData *gyrosData)\n{',
@@ -124,6 +125,14 @@ static bool trace_sample_valid;
 {
 #if CONFIG_LRRK_ATTITUDE_TRACE
     trace_sample_valid = false;
+    memset(&trace_raw, 0, sizeof trace_raw);
+#endif''')
+    attitude = replace_exact(attitude, '    while (ret == pdTRUE) {',
+        '''    while (ret == pdTRUE) {
+#if CONFIG_LRRK_ATTITUDE_TRACE
+        struct lw_raw_sample raw_sample;
+        lw_raw_queue_load(mpu6000_data, LW_SENSOR_PAYLOAD_SIZE, &raw_sample);
+        lw_raw_append(&trace_raw, &raw_sample);
 #endif''')
     attitude = replace_exact(attitude, '    gyrosData->x = gyros[0];',
         '''#if CONFIG_LRRK_ATTITUDE_TRACE
@@ -152,7 +161,7 @@ static bool trace_sample_valid;
     const float trace_gyro[3] = {gyrosData->x, gyrosData->y, gyrosData->z};
     if (trace_sample_valid) {
         LiteWingAttitudeTraceRecord(dT, accels, trace_gyro, gyros, rpy_temp,
-                                   trace_pre_bias, trace_applied_bias);
+                                   trace_pre_bias, trace_applied_bias, &trace_raw);
         trace_sample_valid = false;
     }
 #endif''')

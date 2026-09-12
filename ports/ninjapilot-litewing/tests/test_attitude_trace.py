@@ -26,6 +26,7 @@ class AttitudeTraceTests(unittest.TestCase):
             source='''#include <assert.h>
 #include <stdint.h>
 #include <stdbool.h>
+#include "litewing_raw_provenance.h"
 typedef struct {float x,y,z;} AccelStateData;
 typedef AccelStateData GyroStateData;
 typedef int BaseType_t;
@@ -33,7 +34,10 @@ typedef int xQueueHandle;
 static bool trace_sample_valid,gyro_ro,accel_ro;
 static int pending;
 static const int sensor_period_ms=2;
-static struct {AccelStateData sample[2]; int temperature;} sample;
+static struct FakeSample {AccelStateData sample[2]; int temperature;
+    struct lw_raw_sample raw;} sample;
+static struct lw_raw_batch trace_raw;
+#define LW_SENSOR_PAYLOAD_SIZE offsetof(struct FakeSample, raw)
 static void *get_queue(int unused) {(void)unused;return 0;}
 static struct {void *(*get_queue)(int);} ATTITUDE_IMU_DRIVER={get_queue};
 #define xQueueHandle void *
@@ -44,7 +48,7 @@ static int GyroStateReadOnly(void){return gyro_ro;}
 static int AccelStateReadOnly(void){return accel_ro;}
 static int xQueueReceive(void *q,void *data,int wait) {
     (void)q;(void)data;(void)wait;
-    if(pending){pending=0;return 1;}return 0;
+    if(pending){sample.raw.sequence=(uint32_t)pending;pending--;return 1;}return 0;
 }
 '''+code[start:end]+'''
 #endif
@@ -57,6 +61,14 @@ int main(void){
     assert(updateSensorsCC3D(&a,&g)==-1 && !trace_sample_valid);
     trace_sample_valid=true;pending=1;gyro_ro=true;
     assert(updateSensorsCC3D(&a,&g)==0 && !trace_sample_valid);
+    assert(trace_raw.consumed==1 && trace_raw.samples[0].sequence==1);
+    gyro_ro=false;accel_ro=false;pending=4;
+    assert(updateSensorsCC3D(&a,&g)==7);
+    assert(trace_raw.consumed==4 && trace_raw.retained==3);
+    assert(trace_raw.samples[0].sequence==4 && trace_raw.samples[2].sequence==2);
+    assert(trace_raw.flags & LW_RAW_TRUNCATED);
+    pending=0;
+    assert(updateSensorsCC3D(&a,&g)==-1 && trace_raw.consumed==0);
     trace_sample_valid=true;pending=1;gyro_ro=false;accel_ro=true;
     assert(updateSensorsCC3D(&a,&g)==0 && !trace_sample_valid);
     return 0;
@@ -66,6 +78,7 @@ int main(void){
             binary=str(out/'early')
             subprocess.run(['cc','-std=c11','-Wall','-Wextra','-Werror',
                 '-DCONFIG_LRRK_ATTITUDE_TRACE=1','-DPIOS_INCLUDE_ICM20602',
+                '-I',str(ROOT/'target/include'),
                 str(out/'early.c'),'-o',binary],check=True)
             subprocess.run([binary],check=True)
 
@@ -141,13 +154,13 @@ int main(void) {
             import prepare_attitude_trace
             prepare_attitude_trace.validate(out/'flight',[])
             collision=out/'collision';collision.mkdir()
-            for value in (0xC6CEDB44,0xC6CEDB43,0xC6CEDB45):
+            for value in (0xE7AF695A,0xE7AF6959,0xE7AF695B):
                 (collision/'fake.h').write_text(f'#define FAKE_OBJID {value}\n')
                 with self.assertRaises(ValueError):
                     prepare_attitude_trace.validate(out/'flight',[collision])
             declaration=re.search(r'typedef struct \{.*?LiteWingAttitudeTraceData;',header,re.S).group()
             (out/'litewingattitudetrace.h').write_text('#include "pwm_sdk.h"\n'+declaration+
-                '\n#define LITEWINGATTITUDETRACE_OBJID 0xC6CEDB44u\n'
+                '\n#define LITEWINGATTITUDETRACE_OBJID 0xE7AF695Au\n'
                 'int32_t LiteWingAttitudeTraceInitialize(void);\n'
                 'UAVObjHandle LiteWingAttitudeTraceHandle(void);\n'
                 'int LiteWingAttitudeTraceGetMetadata(UAVObjMetadata *);\n')
