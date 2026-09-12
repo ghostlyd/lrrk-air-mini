@@ -242,6 +242,24 @@ struct DashboardView: View {
                 .font(.caption)
                 .foregroundStyle(.orange)
 
+                if !bluetooth.controllerCandidates.isEmpty
+                    && hidMonitor.devices.filter(\.isControllerCandidate).isEmpty {
+                    VStack(alignment: .leading, spacing: 5) {
+                        Text("Make the nearby Micro selectable")
+                            .font(.caption.bold())
+                        Text("On the Bluetooth-capable Micro, hold the bottom-left touch sensor for 3 seconds until the underglow turns blue. Tap the sensor to choose BLE channel 1, 2, or 3, then wait for the pairing light to become solid.")
+                            .font(.caption)
+                        Label("Click Recheck HID immediately; communication mode exits after a short idle period.", systemImage: "arrow.clockwise")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Text("For a wired test, use the fourth tap to select wired mode (white underglow), connect a data-capable USB-C cable, then recheck HID.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    .padding(9)
+                    .background(Color.orange.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
+                }
+
                 if bluetooth.peripherals.isEmpty {
                     Text("No Bluetooth peripherals discovered in the last scan.")
                         .foregroundStyle(.secondary)
