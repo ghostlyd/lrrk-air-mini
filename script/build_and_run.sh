@@ -8,6 +8,8 @@ dist_dir="$package_dir/dist"
 app_dir="$dist_dir/LoudPilot.app"
 install_dir="/Applications/LoudPilot.app"
 binary="$build_dir/LoudPilot"
+bundle_identifier="ai.lrrk.loudpilot"
+stable_adhoc_requirement="designated => identifier \"$bundle_identifier\""
 
 mode="${1:-run}"
 case "$mode" in
@@ -28,7 +30,26 @@ cp "$binary" "$app_dir/Contents/MacOS/LoudPilot"
 cp "$package_dir/Resources/Info.plist" "$app_dir/Contents/Info.plist"
 chmod 755 "$app_dir/Contents/MacOS/LoudPilot"
 
-/usr/bin/codesign --force --deep --sign - "$app_dir" >/dev/null
+signing_identity="${LOUDPILOT_SIGNING_IDENTITY:-}"
+if [[ -z "$signing_identity" ]]; then
+    signing_identity="$(/usr/bin/security find-identity -v -p codesigning 2>/dev/null \
+        | /usr/bin/awk -F'\"' '/Apple Development:|Developer ID Application:/ {print $2; exit}')"
+fi
+
+if [[ -n "$signing_identity" ]]; then
+    print "signing: $signing_identity"
+    /usr/bin/codesign --force --deep --sign "$signing_identity" "$app_dir" >/dev/null
+else
+    # Keep the designated requirement stable on developer machines without an
+    # Apple signing identity. The previous bare `--sign -` fallback used a
+    # cdhash, so every rebuilt binary looked like a new Bluetooth client to
+    # macOS privacy services and triggered the permission prompt again.
+    print "signing: stable local ad-hoc requirement ($bundle_identifier)"
+    /usr/bin/codesign --force --deep --sign - \
+        --identifier "$bundle_identifier" \
+        -r="$stable_adhoc_requirement" \
+        "$app_dir" >/dev/null
+fi
 
 launch_app="$app_dir"
 if [[ "$mode" == "--install" ]]; then
