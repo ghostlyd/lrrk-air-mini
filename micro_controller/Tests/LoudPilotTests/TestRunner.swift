@@ -41,6 +41,7 @@ struct LoudPilotTests {
             try TelemetryWireTests.testTelemetryCodecRejectsFlightControlPorts()
             try TelemetryWireTests.testLogTocItemIsDecodedWithoutInventingMissingValues()
             try TelemetryWireTests.testLogSampleUpdatesBatteryAndIMUAndLeavesPositioningUnavailable()
+            try TelemetryWireTests.testReadOnlyTelemetryRequiresBatteryGyroAndAccelerometer()
             try TelemetryWireTests.testDiscoveryPlanUsesOnlyAdvertisedNonPositioningVariables()
             print("PASS: LoudPilotTests")
         } catch {

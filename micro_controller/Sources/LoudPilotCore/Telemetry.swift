@@ -175,6 +175,10 @@ public struct Vector3: Equatable, Sendable {
         self.y = y
         self.z = z
     }
+
+    public var isFinite: Bool {
+        x.isFinite && y.isFinite && z.isFinite
+    }
 }
 
 public struct DroneTelemetryState: Equatable, Sendable {
@@ -189,6 +193,18 @@ public struct DroneTelemetryState: Equatable, Sendable {
     private var accelerometerParts: [String: Double] = [:]
 
     public init() {}
+
+    /// Readiness requires an actual battery reading and all three axes of
+    /// both inertial vectors. A partially advertised or non-finite sample
+    /// must not clear the telemetry failsafe.
+    public var hasCompleteReadOnlyTelemetry: Bool {
+        guard let batteryVoltage, batteryVoltage.isFinite,
+              let gyro, gyro.isFinite,
+              let accelerometer, accelerometer.isFinite else {
+            return false
+        }
+        return true
+    }
 
     public mutating func applyLogData(
         _ data: [UInt8],
