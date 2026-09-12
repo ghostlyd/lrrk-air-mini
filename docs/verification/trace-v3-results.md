@@ -83,3 +83,20 @@ explicitly; the original trial failure remains separate. Six hardware-free
 regressions cover delayed request-only replies, stale replies, absent zero,
 PWM faults, short writes and parser errors. They do not establish live STOP
 latency or validate the whole runner. Live cleanup verification remains pending.
+
+### Live neutral-only cleanup check
+
+A subsequent request-only preflight again confirmed the installed marker,
+Disarmed status and zero outputs. A separate disarmed-only serial check then
+called the production cleanup helper with the literal neutral receiver packet
+and actuator/PWM requests. It obtained fresh zero evidence in 0.041046 seconds
+with four checked writes and no cleanup error. No arm or positive-throttle
+packet exists in that check. This validates live request/response integration,
+not stopping latency from powered operation.
+
+The following normal-mixer attempt failed during initial framing after 65
+received bytes (`invalid packet length`), before any receiver input: zero
+control packets, no completed phases. It did not exercise motors or powered
+cleanup. Preserve strict framing validation; investigate startup stream
+synchronization before another retry. The prior disarmed verification is not
+a fresh status sample from this failed connection.
