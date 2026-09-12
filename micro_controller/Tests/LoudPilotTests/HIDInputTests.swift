@@ -70,6 +70,38 @@ enum HIDInputTests {
         try expect(decoder.activeElementIDs == ["element:9:2"], "releasing one button must not clear another")
     }
 
+    static func testInteractionEvidenceRecordsSimultaneousSessionWithoutTreatingDialAsHeld() throws {
+        var evidence = HIDInteractionEvidence()
+        let first = MicroInputEvent(
+            identifier: "button:1",
+            kind: .button,
+            value: 1,
+            phase: .pressed,
+            timestamp: 1
+        )
+        let second = MicroInputEvent(
+            identifier: "button:2",
+            kind: .button,
+            value: 1,
+            phase: .pressed,
+            timestamp: 2
+        )
+
+        evidence.observe(first)
+        evidence.observe(second)
+        evidence.observe(MicroInputEvent(
+            identifier: "dial:1",
+            kind: .dial,
+            value: 1,
+            phase: .dial,
+            timestamp: 3
+        ))
+
+        try expect(evidence.maximumConcurrentInputs == 2, "simultaneous evidence should retain the observed maximum")
+        try expect(evidence.simultaneousInputSessions == 1, "two held buttons should produce one simultaneous session")
+        try expect(evidence.activeElementIDs == ["button:1", "button:2"], "dial detents must not become held inputs")
+    }
+
     static func testRelativeWheelIsReportedAsDialAndNotAxis() throws {
         var decoder = HIDInputInterpreter()
         let dial = HIDElementDescriptor(identifier: "element:1:56", usagePage: 0x01, usage: 0x38, isRelative: true)

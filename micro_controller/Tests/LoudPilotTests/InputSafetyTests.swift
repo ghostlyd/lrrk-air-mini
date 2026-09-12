@@ -95,6 +95,40 @@ enum InputSafetyTests {
         try expect(state.activeInputs.isEmpty, "focus regain should not resume active inputs")
     }
 
+    static func testFocusRegainRequiresReleaseBeforeHeldInputCanReturn() throws {
+        var state = InputSafetyState(bindings: [
+            "button:roll": InputBinding(control: .roll, scale: 1.0),
+        ])
+        state.setConnected(true)
+        state.ingest(event("button:roll", value: 1, phase: .pressed))
+        state.setFocused(false)
+        state.setFocused(true)
+
+        state.ingest(event("button:roll", value: 1, phase: .held))
+        try expect(state.intended.isZero, "focus regain must not revive a held pre-focus-loss command")
+
+        state.ingest(event("button:roll", value: 0, phase: .released))
+        state.ingest(event("button:roll", value: 1, phase: .pressed))
+        try expect(state.intended.roll == 1, "a fresh press after release should be accepted")
+    }
+
+    static func testReconnectRequiresReleaseBeforeHeldInputCanReturn() throws {
+        var state = InputSafetyState(bindings: [
+            "button:roll": InputBinding(control: .roll, scale: 1.0),
+        ])
+        state.setConnected(true)
+        state.ingest(event("button:roll", value: 1, phase: .pressed))
+        state.setConnected(false)
+        state.setConnected(true)
+
+        state.ingest(event("button:roll", value: 1, phase: .held))
+        try expect(state.intended.isZero, "reconnect must not revive a held pre-disconnect command")
+
+        state.ingest(event("button:roll", value: 0, phase: .released))
+        state.ingest(event("button:roll", value: 1, phase: .pressed))
+        try expect(state.intended.roll == 1, "a fresh press after reconnect release should be accepted")
+    }
+
     static func testEmergencyStopLatchesUntilExplicitClear() throws {
         var state = InputSafetyState(bindings: [
             "button:roll": InputBinding(control: .roll, scale: 1.0),
@@ -113,7 +147,8 @@ enum InputSafetyTests {
         state.clearStop()
         try expect(!state.stopLatched, "explicit clear should release the stop latch")
         try expect(state.intended.isZero, "clearing stop must not restore old input")
+        state.ingest(event("button:roll", value: 0, phase: .released))
         state.ingest(event("button:roll", value: 1, phase: .pressed))
-        try expect(state.intended.roll == 1, "new input may be accepted after explicit clear")
+        try expect(state.intended.roll == 1, "new input may be accepted after an explicit release")
     }
 }

@@ -49,8 +49,9 @@ dial tile:
 
 The panel always displays the current connection, Input Monitoring state,
 capture step, output boundary, latest physical event, raw-report count, raw
-HID bytes, and intended roll/pitch/yaw/thrust values. The intended values are
-not flight telemetry and are explicitly marked `not transmitted`.
+HID bytes, raw-report age, maximum simultaneous inputs, and intended
+roll/pitch/yaw/thrust values. The intended values are not flight telemetry and
+are explicitly marked `not transmitted`.
 
 ## Capture order
 
@@ -73,9 +74,11 @@ controls.
 
 LoudPilot requires repeated press, hold, release, and raw-report evidence for
 buttons. It requires repeated signed detents for each dial direction. A
-release clears the corresponding intended value. Application focus loss,
-device disconnect, and `Escape` stop clear active input state and inhibit
-control; reconnect does not resume old input.
+release clears the corresponding intended value, and the panel records
+whether two or more physical inputs were observed together. Application focus
+loss, device disconnect, and `Escape` stop clear active input state and inhibit
+control; a held control must emit a fresh release before it can become active
+again after any of those gates clear.
 
 After all seven signatures are accepted, the Micro mapping remains staged for
 review. The staged layout is Button 1 roll left, Button 2 roll right, Button 3

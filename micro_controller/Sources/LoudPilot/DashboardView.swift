@@ -27,7 +27,7 @@ struct DashboardView: View {
                     bluetoothSection
                     workLouderSection
                     captureSection(now: context.date.timeIntervalSince1970)
-                    microSection
+                    microSection(now: context.date.timeIntervalSince1970)
                     telemetrySection(now: context.date.timeIntervalSince1970)
                     validationSection(now: context.date.timeIntervalSince1970)
                 }
@@ -335,7 +335,7 @@ struct DashboardView: View {
         }
     }
 
-    private var microSection: some View {
+    private func microSection(now: TimeInterval) -> some View {
         GroupBox {
             VStack(alignment: .leading, spacing: 12) {
                 HStack {
@@ -432,6 +432,8 @@ struct DashboardView: View {
                     valueColumn("Active reports", "\(hidMonitor.safetyState.activeInputs.count)")
                     valueColumn("Dial delta", String(format: "%+.2f", hidMonitor.safetyState.lastDialDelta))
                     valueColumn("Raw reports", "\(hidMonitor.reportCount)")
+                    valueColumn("Max simultaneous", "\(hidMonitor.interactionEvidence.maximumConcurrentInputs)")
+                    valueColumn("Report age", hidReportAge(now: now))
                 }
 
                 Text("Intended control values")
@@ -504,6 +506,9 @@ struct DashboardView: View {
                     mappingSummary: hidMonitor.learnedMapping?.summary,
                     reportCount: hidMonitor.reportCount,
                     lastReportHex: hidMonitor.lastReportHex,
+                    lastReportAt: hidMonitor.lastReportAt,
+                    maximumConcurrentInputs: hidMonitor.interactionEvidence.maximumConcurrentInputs,
+                    simultaneousInputSessions: hidMonitor.interactionEvidence.simultaneousInputSessions,
                     now: now,
                     onResetObservation: { hidMonitor.resetCaptureObservation() },
                     onAcceptStep: { hidMonitor.acceptCaptureStep() },
@@ -792,6 +797,11 @@ struct DashboardView: View {
     private func telemetryAge(now: TimeInterval) -> String {
         guard let age = telemetry.state.telemetryAge(now: now) else { return "Unavailable" }
         return String(format: "%.1f s", age)
+    }
+
+    private func hidReportAge(now: TimeInterval) -> String {
+        guard let lastReportAt = hidMonitor.lastReportAt else { return "Unavailable" }
+        return String(format: "%.2f s", max(0, now - lastReportAt))
     }
 
     private func telemetryVector(_ label: String, _ vector: Vector3?) -> some View {

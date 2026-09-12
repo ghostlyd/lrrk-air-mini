@@ -25,6 +25,9 @@ struct CodexMicroProgrammingPanel: View {
     let mappingSummary: String?
     let reportCount: Int
     let lastReportHex: String
+    let lastReportAt: TimeInterval?
+    let maximumConcurrentInputs: Int
+    let simultaneousInputSessions: Int
     let now: TimeInterval
     let onResetObservation: () -> Void
     let onAcceptStep: () -> Void
@@ -249,6 +252,13 @@ struct CodexMicroProgrammingPanel: View {
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                 }
+            }
+
+            HStack(spacing: 14) {
+                evidenceValue("Report age", reportAge)
+                evidenceValue("Max simultaneous", "\(maximumConcurrentInputs)")
+                evidenceValue("Simultaneous sessions", "\(simultaneousInputSessions)")
+                Spacer()
             }
 
             Text("Last raw HID report: \(lastReportHex)")
@@ -595,6 +605,11 @@ struct CodexMicroProgrammingPanel: View {
         if inputMonitoringValue == "Granted" { return "Raw HID reports can be observed locally" }
         if inputMonitoringValue == "Blocked" { return "macOS denied the HID manager; another Micro consumer may still own the device" }
         return "Waiting for the selected Micro to open"
+    }
+
+    private var reportAge: String {
+        guard let lastReportAt else { return "—" }
+        return String(format: "%.2f s", max(0, now - lastReportAt))
     }
 
     private var latestEvent: ObservedHIDEvent? {
