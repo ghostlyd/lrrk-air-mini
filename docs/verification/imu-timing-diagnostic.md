@@ -32,8 +32,8 @@ trace alongside these diagnostics.
 
 Native tests simulate a 50 ms read failure, later success, and a 20 ms missing
 notification; they check distinct counters, retained maximum, and literal wire
-bytes. These are software tests, not live reproduction. Firmware build,
-application-only flash/readback, and live timing retrieval remain pending.
+bytes. These are software tests, not live reproduction. The subsequent build,
+application-only flash/readback, and live timing retrieval are recorded below.
 
 ## Installed diagnostic and first complete trial
 
@@ -77,3 +77,24 @@ raising throttle to make all channels turn. Existing I2C adapter configuration
 uses a glitch filter and internal pullups; that source setting is not proof of
 actual signal integrity or adequate external pullups. Do not claim live-flight
 readiness from a transaction that completed despite corrupted sensor data.
+
+## Repeat attempt and bus-design inspection
+
+The requested repeat reused the installed image and unchanged runner. Following
+one reset, request-only startup verification reported Disarmed, twelve zero
+actuator commands, four zero PWM values, no read failures or notification
+timeouts, and MaxReadUs 3087. The runner then stopped during inspection:
+reported roll -14.353 degrees and pitch -4.817 degrees exceeded its absolute
+10-degree roll/pitch bound. It transmitted zero receiver-input packets and
+ended Disarmed with zero outputs. This was not a motor test or evidence about
+which physical corner failed to rotate. Fixture leveling remains pending;
+the reported attitude is not an independent measurement of physical pose.
+
+Repository design inspection confirms that the V2.6.C production netlist
+connects R16 between /SCL and +3V3 and R14 between /SDA and +3V3; its BOM lists
+both as 10k. The target currently configures the IMU bus at 400000 Hz. This
+establishes the repository design, not the fitted values on the photographed
+v1.2 board, nor actual rise time, capacitance or supply stability under load.
+Do not infer a proven pullup defect or change hardware from this comparison
+alone. Preserve the corrupt-frame trace as the baseline for a controlled
+bus-integrity comparison; no PID, bus-speed or output-limit change was made.
