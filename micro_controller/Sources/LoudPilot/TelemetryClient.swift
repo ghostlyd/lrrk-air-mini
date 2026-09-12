@@ -1,6 +1,6 @@
 import Combine
 import Foundation
-import LiteWingMicroControllerCore
+import LoudPilotCore
 import Network
 
 enum TelemetryConnectionStatus: Equatable {
@@ -17,7 +17,7 @@ enum TelemetryConnectionStatus: Equatable {
         case .disconnected: return "Disconnected"
         case .connecting: return "Connecting"
         case .discoveringTOC: return "Discovering log variables"
-        case .subscribing: return "Subscribing to read-only telemetry"
+        case .subscribing: return "Subscribing to telemetry"
         case .streaming: return "Streaming telemetry"
         case .stale: return "Telemetry stale"
         case .failed(let message): return "Failed: \(message)"
@@ -38,12 +38,13 @@ struct TelemetryEndpoint: Equatable {
 @MainActor
 final class TelemetryClient: ObservableObject {
     @Published private(set) var status: TelemetryConnectionStatus = .disconnected
+    @Published private(set) var telemetryFreshness: TelemetryFreshness = .unavailable
     @Published private(set) var state = DroneTelemetryState()
     @Published private(set) var discoveredVariables: [LogVariable] = []
     @Published private(set) var activeSchemas: [LogBlockSchema] = []
     @Published private(set) var lastPacketAt: TimeInterval?
     @Published private(set) var inboundPacketCount = 0
-    @Published private(set) var outboundReadOnlyPacketCount = 0
+    @Published private(set) var outboundTelemetryPacketCount = 0
     @Published private(set) var lastInboundHex = "—"
     @Published private(set) var lastOutboundHex = "—"
 
@@ -65,6 +66,7 @@ final class TelemetryClient: ObservableObject {
         }
 
         status = .connecting
+        telemetryFreshness = .unavailable
         let connection = NWConnection(
             host: NWEndpoint.Host(endpoint.host),
             port: port,
@@ -101,6 +103,7 @@ final class TelemetryClient: ObservableObject {
         connection?.cancel()
         connection = nil
         status = .disconnected
+        telemetryFreshness = .unavailable
         tocCount = nil
         nextTOCID = 0
         variablesByID.removeAll()
@@ -109,7 +112,7 @@ final class TelemetryClient: ObservableObject {
         state = DroneTelemetryState()
         lastPacketAt = nil
         inboundPacketCount = 0
-        outboundReadOnlyPacketCount = 0
+        outboundTelemetryPacketCount = 0
         lastInboundHex = "—"
         lastOutboundHex = "—"
     }
@@ -118,15 +121,18 @@ final class TelemetryClient: ObservableObject {
         switch newState {
         case .ready:
             status = .discoveringTOC
-            sendReadOnly(try? ReadOnlyTelemetryWire.logTOCInfoRequest())
+            sendTelemetry(try? LiteWingTelemetryWire.logTOCInfoRequest())
         case .failed(let error):
             status = .failed(error.localizedDescription)
+            telemetryFreshness = .unavailable
         case .cancelled:
             if status != .disconnected {
                 status = .disconnected
             }
+            telemetryFreshness = .unavailable
         case .waiting(let error):
             status = .failed(error.localizedDescription)
+            telemetryFreshness = .unavailable
         case .preparing, .setup:
             break
         @unknown default:
@@ -141,6 +147,7 @@ final class TelemetryClient: ObservableObject {
                 guard let self else { return }
                 if let error {
                     self.status = .failed(error.localizedDescription)
+                    self.telemetryFreshness = .unavailable
                 }
                 if let data, !data.isEmpty {
                     self.handleInbound(data)
@@ -152,14 +159,15 @@ final class TelemetryClient: ObservableObject {
         }
     }
 
-    private func sendReadOnly(_ packet: [UInt8]?) {
+    private func sendTelemetry(_ packet: [UInt8]?) {
         guard let packet, let connection else { return }
         lastOutboundHex = packet.hex
-        outboundReadOnlyPacketCount += 1
+        outboundTelemetryPacketCount += 1
         connection.send(content: Data(packet), completion: .contentProcessed { [weak self] error in
             guard let error else { return }
             Task { @MainActor [weak self] in
                 self?.status = .failed(error.localizedDescription)
+                self?.telemetryFreshness = .unavailable
             }
         })
     }
@@ -170,7 +178,7 @@ final class TelemetryClient: ObservableObject {
         inboundPacketCount += 1
         let now = Date().timeIntervalSince1970
         do {
-            let decoded = try ReadOnlyTelemetryWire.decode(packet)
+            let decoded = try LiteWingTelemetryWire.decode(packet)
             lastPacketAt = now
             switch decoded.header & 0x0F {
             case 0:
@@ -184,6 +192,7 @@ final class TelemetryClient: ObservableObject {
             }
         } catch {
             status = .failed(error.localizedDescription)
+            telemetryFreshness = .unavailable
         }
     }
 
@@ -196,7 +205,7 @@ final class TelemetryClient: ObservableObject {
             variablesByID.removeAll()
             requestNextTOCItem()
         case 2:
-            guard let item = try? ReadOnlyTelemetryWire.decodeTOCItem(payload) else { return }
+            guard let item = try? LiteWingTelemetryWire.decodeTOCItem(payload) else { return }
             variablesByID[item.id] = item
             nextTOCID &+= 1
             requestNextTOCItem()
@@ -214,17 +223,17 @@ final class TelemetryClient: ObservableObject {
             subscribeToSchemas()
             return
         }
-        sendReadOnly(try? ReadOnlyTelemetryWire.logTOCItemRequest(id: nextTOCID))
+        sendTelemetry(try? LiteWingTelemetryWire.logTOCItemRequest(id: nextTOCID))
     }
 
     private func subscribeToSchemas() {
         guard !activeSchemas.isEmpty else { return }
         for schema in activeSchemas {
-            sendReadOnly(try? ReadOnlyTelemetryWire.logCreateBlockRequest(
+            sendTelemetry(try? LiteWingTelemetryWire.logCreateBlockRequest(
                 blockID: schema.blockID,
                 variables: schema.variables
             ))
-            sendReadOnly(try? ReadOnlyTelemetryWire.logStartBlockRequest(
+            sendTelemetry(try? LiteWingTelemetryWire.logStartBlockRequest(
                 blockID: schema.blockID,
                 periodMilliseconds: 100
             ))
@@ -233,8 +242,8 @@ final class TelemetryClient: ObservableObject {
 
     private func handleControlResponse(_ payload: [UInt8]) {
         guard payload.count >= 2 else { return }
-        // The manufacturer log-control ACK is intentionally only used as
-        // subscription evidence. It cannot enable flight-control output.
+        // The manufacturer log-control ACK is subscription evidence only; it
+        // is never treated as an arm or flight-control acknowledgement.
         if payload[0] == 6 || payload[0] == 3 {
             status = .streaming
         }
@@ -246,8 +255,10 @@ final class TelemetryClient: ObservableObject {
         do {
             try state.applyLogData(payload, schema: schema, receivedAt: receivedAt)
             status = .streaming
+            telemetryFreshness = .fresh
         } catch {
             status = .failed(error.localizedDescription)
+            telemetryFreshness = .unavailable
         }
     }
 
@@ -255,6 +266,7 @@ final class TelemetryClient: ObservableObject {
         guard case .streaming = status, let lastPacketAt else { return }
         if Date().timeIntervalSince1970 - lastPacketAt > 2.0 {
             status = .stale
+            telemetryFreshness = .stale
         }
     }
 }

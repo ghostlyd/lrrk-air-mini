@@ -1,28 +1,28 @@
-import LiteWingMicroControllerCore
+import LoudPilotCore
 
 enum TelemetryWireTests {
-    static func testLogTocInfoPacketUsesOnlyTheReadOnlyLogPort() throws {
-        let packet = try ReadOnlyTelemetryWire.logTOCInfoRequest()
+    static func testLogTocInfoPacketUsesOnlyTheTelemetryLogPort() throws {
+        let packet = try LiteWingTelemetryWire.logTOCInfoRequest()
         try expect(packet == [0x50, 0x03, 0x53], "TOC request should be a checksummed log packet")
-        let decoded = try ReadOnlyTelemetryWire.decode(packet)
+        let decoded = try LiteWingTelemetryWire.decode(packet)
         try expect(decoded.header & 0xF0 == 0x50, "TOC request should use the log port")
     }
 
-    static func testFlightControlPortsCannotBeEncoded() throws {
+    static func testTelemetryCodecRejectsFlightControlPorts() throws {
         try expectThrows {
-            _ = try ReadOnlyTelemetryWire.encode(
+            _ = try LiteWingTelemetryWire.encode(
             header: 0x30,
             payload: [0, 0, 0, 0]
             )
         }
         try expectThrows {
-            _ = try ReadOnlyTelemetryWire.encode(
+            _ = try LiteWingTelemetryWire.encode(
             header: 0x70,
             payload: [0]
             )
         }
         try expectThrows {
-            _ = try ReadOnlyTelemetryWire.encode(
+            _ = try LiteWingTelemetryWire.encode(
             header: 0x80,
             payload: [0]
             )
@@ -35,7 +35,7 @@ enum TelemetryWireTests {
             0x70, 0x6D, 0x00,
             0x76, 0x62, 0x61, 0x74, 0x00,
         ]
-        let item = try ReadOnlyTelemetryWire.decodeTOCItem(payload)
+        let item = try LiteWingTelemetryWire.decodeTOCItem(payload)
         try expect(item.id == 5, "TOC item ID should be decoded")
         try expect(item.type == .float32, "TOC item type should be decoded")
         try expect(item.path == "pm.vbat", "TOC group and name should be decoded")
@@ -67,10 +67,6 @@ enum TelemetryWireTests {
         try expect(state.telemetryAge(now: 123) == 0, "telemetry age should be computed from receive time")
     }
 
-    static func testFlightCommandTransmissionSurfaceIsAbsent() throws {
-        try expect(!ReadOnlyTelemetryWire.flightCommandTransmissionEnabled, "flight command transmission must be absent")
-    }
-
     static func testDiscoveryPlanUsesOnlyAdvertisedNonPositioningVariables() throws {
         let variables = [
             LogVariable(id: 1, type: .float32, group: "pm", name: "vbat"),
@@ -83,7 +79,7 @@ enum TelemetryWireTests {
         ]
 
         let schemas = TelemetryDiscoveryPlan.schemas(from: variables)
-        try expect(schemas.map(\.blockID) == [1, 2], "telemetry plan should use stable read-only block IDs")
+        try expect(schemas.map(\.blockID) == [1, 2], "telemetry plan should use stable telemetry block IDs")
         try expect(schemas[0].variables.map(\.path) == ["pm.vbat", "gyro.x", "gyro.y", "gyro.z"], "primary schema should preserve advertised battery and gyro variables")
         try expect(schemas[1].variables.map(\.path) == ["acc.x", "acc.z"], "accelerometer schema should include only advertised axes")
         try expect(!schemas.flatMap(\.variables).contains { $0.group == "position" }, "positioning variables must not be inferred or subscribed to")

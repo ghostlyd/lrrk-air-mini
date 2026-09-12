@@ -1,4 +1,4 @@
-import LiteWingMicroControllerCore
+import LoudPilotCore
 
 enum GuidedCaptureTests {
     static func testButtonCaptureRequiresRepeatedPressHoldReleaseEvidence() throws {

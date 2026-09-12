@@ -2,6 +2,7 @@ import Foundation
 
 public enum TelemetryWireError: Error, Equatable, CustomStringConvertible {
     case flightPortDisabled
+    case malformedFlightCommand
     case malformedPacket
     case checksumMismatch
     case malformedTOCItem
@@ -10,7 +11,8 @@ public enum TelemetryWireError: Error, Equatable, CustomStringConvertible {
 
     public var description: String {
         switch self {
-        case .flightPortDisabled: return "flight-control CRTP ports are disabled"
+        case .flightPortDisabled: return "non-telemetry CRTP port passed to the telemetry codec"
+        case .malformedFlightCommand: return "malformed LiteWing flight command"
         case .malformedPacket: return "malformed CRTP/UDP packet"
         case .checksumMismatch: return "CRTP/UDP checksum mismatch"
         case .malformedTOCItem: return "malformed log TOC item"
@@ -31,13 +33,11 @@ public struct DecodedTelemetryPacket: Equatable, Sendable {
 }
 
 /// The manufacturer firmware wraps each CRTP packet in a one-byte additive
-/// checksum. This codec exposes only the log port (0x5); setpoint and other
-/// flight-control ports are rejected before a datagram can be produced.
-public enum ReadOnlyTelemetryWire {
+/// checksum. This telemetry codec intentionally remains limited to log-port
+/// traffic; `FlightCommandWire` is the separate control-plane encoder.
+public enum LiteWingTelemetryWire {
     private static let logPort: UInt8 = 0x50
     private static let maxCRTPData = 30
-
-    public static let flightCommandTransmissionEnabled = false
 
     public static func encode(header: UInt8, payload: [UInt8]) throws -> [UInt8] {
         guard header & 0xF0 == logPort else {
@@ -113,6 +113,12 @@ public enum ReadOnlyTelemetryWire {
         return LogVariable(id: id, type: type, group: group, name: name)
     }
 }
+
+/// Compatibility name for callers that used the original telemetry-only API.
+/// The application itself uses `LiteWingTelemetryWire`; flight commands are
+/// encoded independently by `FlightCommandWire`.
+@available(*, deprecated, renamed: "LiteWingTelemetryWire")
+public typealias ReadOnlyTelemetryWire = LiteWingTelemetryWire
 
 public enum LogValueType: UInt8, Equatable, Sendable {
     case uint8 = 1

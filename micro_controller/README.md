@@ -1,16 +1,27 @@
 # LoudPilot
 
-This is the first local macOS controller stage for the LiteWing V1.2:
+This is the local macOS controller for the LiteWing V1.2:
 
 ```text
-Codex Micro or Apple Magic Keyboard → LoudPilot macOS app → LiteWing Wi-Fi telemetry
+Codex Micro USB-C → LoudPilot macOS app → Mac Wi-Fi → LiteWing telemetry
 ```
 
-The current stage is intentionally read-only. It monitors USB/Bluetooth HID
-reports and subscribes to the manufacturer firmware's CRTP log port for
-battery and IMU telemetry. It has no arm, thrust, setpoint, takeoff, or manual
-flight transport. OpenAI integration is not called from the pilot or stop
-loop, and existing credentials are not read or changed by this target.
+LoudPilot discovers Bluetooth peripherals in-app and monitors HID reports, but
+only a positively identified Codex Micro or Work Louder Micro can enter the
+controller scope. Apple Magic Keyboard and unrelated HID devices may be
+visible as diagnostics but cannot be selected or mapped as pilot input.
+
+Telemetry uses the manufacturer firmware's CRTP log port for battery and IMU
+data. The separate `FlightCommandWire` encoder implements the LiteWing legacy
+RPYT setpoint packet and checksum, giving the host a control-plane seam without
+coupling telemetry discovery to flight commands. The app starts with output
+disconnected and disarmed; no output is sent merely by discovering a device.
+The link-loss failsafe starts active, clears only after decoded sensor data is
+fresh, and reactivates when packets age out or the connection fails. The
+flight-output transport remains disconnected in this stage, so the gate cannot
+transmit even when telemetry is fresh.
+OpenAI integration is not called from the pilot or stop loop, and existing
+credentials are not read or changed by this target.
 
 ## Build and run
 
@@ -31,24 +42,28 @@ The repository uses a small executable test runner because the current
 Command Line Tools environment does not provide the XCTest module:
 
 ```sh
-swift run --package-path micro_controller LiteWingMicroControllerTests
+swift run --package-path micro_controller LoudPilotTests
 ```
 
 ## First-use checks
 
-1. Connect the Codex Micro over USB-C or the Magic Keyboard over its available
-   HID transport.
-2. Launch the app and confirm its product/manufacturer metadata is shown.
-3. Exercise one key/button with press, hold, and release; then exercise two
+1. Connect the Codex Micro over USB-C or Bluetooth.
+2. Launch LoudPilot and choose **Discover** in the Bluetooth section when a
+   wireless Micro needs to be located.
+3. Confirm the Micro's product/manufacturer metadata is shown and that any
+   Magic Keyboard is labeled **Out of scope**.
+4. Exercise one Micro button with press, hold, and release; then exercise two
    inputs together and the dial. The raw report and classified events remain
    visible in the window.
-4. Disconnect the Micro and confirm the status becomes disconnected and the
+5. Disconnect the Micro and confirm the status becomes disconnected and the
    active-input count clears. Reconnect does not restore old input state.
-5. Move the app out of focus and confirm control input is inhibited and active
+6. Move the app out of focus and confirm control input is inhibited and active
    inputs clear.
-6. Join the LiteWing Wi-Fi network, enter its address (default
-   `192.168.43.42`) and UDP port `2390`, and choose **Connect read-only**.
-7. Confirm telemetry age advances, battery and IMU values are populated only
+7. Connect the Mac to the LiteWing Wi-Fi network. USB-C carries the Micro's
+   HID input to LoudPilot; the Mac's Wi-Fi carries read-only telemetry. Enter
+   the LiteWing address (default
+   `192.168.43.42`) and UDP port `2390`, and choose **Connect**.
+8. Confirm telemetry age advances, battery and IMU values are populated only
    when advertised by the live log table, and positioning remains
    **Unavailable** unless it is positively verified later.
 
@@ -62,13 +77,15 @@ evidence; each dial direction must produce repeated relative detents on the
 same HID signature. The app records the raw report samples and will not accept
 a generic desktop axis as a joystick mapping.
 
-The capture stage is deliberately separate from flight output. It records
-physical intent and proposed control assignments only; arm, thrust, setpoint,
-takeoff, and manual-flight packets remain absent until the later staged
-validation phase is explicitly implemented and passed.
+The capture stage records the Micro's physical intent and proposed control
+assignments. Generic HID axes are displayed as raw observations and are not
+treated as proportional joystick axes. The legacy keyboard profile is retained
+only for compatibility tests; it is not reachable from LoudPilot's controller
+scope. Once all seven signatures are accepted, LoudPilot stages roll/pitch
+button pairs, maps the dial to normalized yaw, and assigns Button 5 to the
+latched emergency stop. Thrust stays unbound until a separate validated stage.
 
-The Apple Magic Keyboard profile uses W/S, A/D, Q/E, R/F, and arrow keys for
-intended pitch, roll, yaw, and thrust values; Escape clears the intended state.
-Codex Micro remains report-review-only until its live button/dial report
-layout is captured. Generic HID axes are displayed as raw observations and
-are not treated as proportional joystick axes.
+The dashboard's staged-validation gate keeps outdoor prompting locked until
+fresh battery/IMU telemetry, human orientation and motor-order evidence,
+emergency-stop proof, and a secured-bench pass are recorded. Missing evidence
+is shown as unavailable rather than inferred.

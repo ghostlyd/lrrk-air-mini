@@ -2,7 +2,7 @@
 import PackageDescription
 
 let package = Package(
-    name: "LiteWingMicroController",
+    name: "LoudPilot",
     platforms: [
         .macOS(.v13),
     ],
@@ -14,18 +14,18 @@ let package = Package(
     ],
     targets: [
         .target(
-            name: "LiteWingMicroControllerCore",
-            path: "Sources/LiteWingMicroControllerCore"
+            name: "LoudPilotCore",
+            path: "Sources/LoudPilotCore"
         ),
         .executableTarget(
             name: "LoudPilot",
-            dependencies: ["LiteWingMicroControllerCore"],
-            path: "Sources/LiteWingMicroController"
+            dependencies: ["LoudPilotCore"],
+            path: "Sources/LoudPilot"
         ),
         .executableTarget(
-            name: "LiteWingMicroControllerTests",
-            dependencies: ["LiteWingMicroControllerCore"],
-            path: "Tests/LiteWingMicroControllerTests"
+            name: "LoudPilotTests",
+            dependencies: ["LoudPilotCore"],
+            path: "Tests/LoudPilotTests"
         ),
     ]
 )

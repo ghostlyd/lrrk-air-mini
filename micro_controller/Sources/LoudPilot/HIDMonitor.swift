@@ -1,7 +1,7 @@
 import Combine
 import Foundation
 import IOKit.hid
-import LiteWingMicroControllerCore
+import LoudPilotCore
 
 struct ObservedHIDEvent: Identifiable {
     let id = UUID()
@@ -18,13 +18,17 @@ final class HIDMonitor: NSObject, ObservableObject {
     @Published private(set) var selectedDeviceConnected = false
     @Published private(set) var selectedDeviceError: String?
     @Published private(set) var activeProfileName = "None"
+    @Published private(set) var inputOwnershipMode: HIDInputOwnershipMode = .released
     @Published private(set) var reportCount = 0
     @Published private(set) var lastReportHex = "—"
     @Published private(set) var events: [ObservedHIDEvent] = []
     @Published private(set) var safetyState = InputSafetyState(bindings: [:])
     @Published private(set) var captureState = GuidedCaptureState(plan: .codexMicro)
+    @Published private(set) var learnedMapping: CodexMicroMapping?
+    @Published private(set) var emergencyStopTested = false
 
     private var manager: IOHIDManager?
+    private var managerOpen = false
     private var deviceByID: [String: IOHIDDevice] = [:]
     private var bufferByID: [String: UnsafeMutablePointer<UInt8>] = [:]
     private var interpreterByID: [String: HIDInputInterpreter] = [:]
@@ -36,44 +40,171 @@ final class HIDMonitor: NSObject, ObservableObject {
         let created = IOHIDManagerCreate(kCFAllocatorDefault, IOOptionBits(kIOHIDOptionsTypeNone))
         manager = created
         IOHIDManagerSetDeviceMatching(created, nil)
+
         let context = Unmanaged.passUnretained(self).toOpaque()
         IOHIDManagerRegisterDeviceMatchingCallback(created, hidDeviceMatched, context)
         IOHIDManagerRegisterDeviceRemovalCallback(created, hidDeviceRemoved, context)
         IOHIDManagerScheduleWithRunLoop(created, CFRunLoopGetMain(), CFRunLoopMode.defaultMode.rawValue)
+
+        // Released mode must remain invisible to the active Codex app: a
+        // manager that is opened merely for discovery can still become a
+        // competing HID consumer. Keep the manager unopened and enumerate
+        // metadata only until the operator explicitly enables LoudPilot.
+        guard inputOwnershipMode.allowsLoudPilotInput else {
+            enumerateMetadataOnly(created)
+            return
+        }
+
         let result = IOHIDManagerOpen(created, IOOptionBits(kIOHIDOptionsTypeNone))
         guard result == kIOReturnSuccess else {
+            selectedDeviceError = String(format: "IOHIDManagerOpen failed (0x%08x)", UInt32(bitPattern: result))
             manager = nil
             return
+        }
+        managerOpen = true
+    }
+
+    private func enumerateMetadataOnly(_ manager: IOHIDManager) {
+        guard let devices = IOHIDManagerCopyDevices(manager) else { return }
+        for case let device as IOHIDDevice in devices as NSSet {
+            let summary = summarize(device)
+            if !self.devices.contains(where: { $0.id == summary.id }) {
+                self.devices.append(summary)
+            }
+        }
+        self.devices.sort { $0.product.localizedCaseInsensitiveCompare($1.product) == .orderedAscending }
+        if selectedDeviceID == nil,
+           let candidate = self.devices.first(where: \.isControllerCandidate) {
+            selectedDeviceID = candidate.id
         }
     }
 
     func stop() {
-        guard let manager else { return }
+        inputOwnershipMode = .released
+        safetyState.stop()
         for id in Array(deviceByID.keys) {
-            detach(id: id)
+            clearDeviceState(id: id)
         }
+        guard let manager else { return }
         IOHIDManagerUnscheduleFromRunLoop(manager, CFRunLoopGetMain(), CFRunLoopMode.defaultMode.rawValue)
-        IOHIDManagerClose(manager, IOOptionBits(kIOHIDOptionsTypeNone))
+        if managerOpen {
+            IOHIDManagerClose(manager, IOOptionBits(kIOHIDOptionsTypeNone))
+            managerOpen = false
+        }
         self.manager = nil
         safetyState.setConnected(false)
         selectedDeviceConnected = false
         captureState.reset()
     }
 
+    /// Claims the selected HID device exclusively for LoudPilot, or releases
+    /// it so the Codex app can reconnect. There is deliberately no shared-open
+    /// fallback: shared ownership would let both apps react to the same input.
+    func setInputOwnershipEnabled(_ enabled: Bool) {
+        let requestedMode: HIDInputOwnershipMode = enabled ? .exclusive : .released
+        guard requestedMode != inputOwnershipMode else {
+            if enabled, let id = selectedDeviceID, !selectedDeviceConnected {
+                if !attach(id: id) {
+                    inputOwnershipMode = .released
+                }
+            }
+            return
+        }
+
+        if !enabled {
+            inputOwnershipMode = .released
+            safetyState.stop()
+            releaseManagerForCodex()
+            activeProfileName = HIDInputOwnershipMode.released.label
+            return
+        }
+
+        // The released state intentionally has no live manager. Recreate it
+        // only when the operator explicitly asks LoudPilot to reclaim input.
+        if manager == nil {
+            start()
+        }
+        guard let manager else {
+            inputOwnershipMode = .released
+            selectedDeviceError = "HID manager is not running"
+            return
+        }
+        if managerOpen {
+            IOHIDManagerClose(manager, IOOptionBits(kIOHIDOptionsTypeNone))
+            managerOpen = false
+        }
+        setControllerOnlyMatching(on: manager)
+        let openResult = IOHIDManagerOpen(manager, IOOptionBits(kIOHIDOptionsTypeSeizeDevice))
+        guard openResult == kIOReturnSuccess else {
+            inputOwnershipMode = .released
+            selectedDeviceConnected = false
+            selectedDeviceError = String(format: "macOS denied exclusive HID ownership (0x%08x)", UInt32(bitPattern: openResult))
+            IOHIDManagerSetDeviceMatching(manager, nil)
+            let reopenResult = IOHIDManagerOpen(manager, IOOptionBits(kIOHIDOptionsTypeNone))
+            managerOpen = reopenResult == kIOReturnSuccess
+            return
+        }
+        managerOpen = true
+        inputOwnershipMode = .exclusive
+        if let id = selectedDeviceID {
+            _ = attach(id: id)
+        }
+    }
+
+    /// Completely relinquishes HID ownership. A closed-but-scheduled manager
+    /// can still be observed by macOS as an active consumer, which prevents
+    /// the Codex app from reconnecting reliably. The manager, callbacks,
+    /// buffers, and device references therefore all go away together.
+    private func releaseManagerForCodex() {
+        for id in Array(deviceByID.keys) {
+            clearDeviceState(id: id)
+        }
+        guard let manager else {
+            clearActiveInputState()
+            return
+        }
+        IOHIDManagerUnscheduleFromRunLoop(manager, CFRunLoopGetMain(), CFRunLoopMode.defaultMode.rawValue)
+        if managerOpen {
+            IOHIDManagerClose(manager, IOOptionBits(kIOHIDOptionsTypeNone))
+        }
+        managerOpen = false
+        self.manager = nil
+        deviceByID.removeAll()
+        devices.removeAll()
+        selectedDeviceID = nil
+        selectedDeviceConnected = false
+        clearActiveInputState()
+    }
+
     func selectDevice(id: String) {
+        guard let summary = devices.first(where: { $0.id == id }), summary.isControllerCandidate else {
+            selectedDeviceError = "Only a Codex Micro or Work Louder Micro can be used as the controller"
+            return
+        }
         if selectedDeviceID != id {
             if let old = selectedDeviceID {
                 detach(id: old)
             }
             selectedDeviceID = id
-            attach(id: id)
+            captureState = GuidedCaptureState(plan: .codexMicro)
+            learnedMapping = nil
+            if inputOwnershipMode.allowsLoudPilotInput, !attach(id: id) {
+                inputOwnershipMode = .released
+            }
+        } else if inputOwnershipMode.allowsLoudPilotInput, !selectedDeviceConnected {
+            if !attach(id: id) {
+                inputOwnershipMode = .released
+            }
         }
     }
 
     func retrySelectedDevice() {
         guard let id = selectedDeviceID else { return }
+        guard inputOwnershipMode.allowsLoudPilotInput else { return }
         detach(id: id)
-        attach(id: id)
+        if !attach(id: id) {
+            inputOwnershipMode = .released
+        }
     }
 
     func setFocused(_ focused: Bool) {
@@ -81,7 +212,9 @@ final class HIDMonitor: NSObject, ObservableObject {
     }
 
     func acceptCaptureStep() {
-        _ = captureState.acceptCurrentStep()
+        guard captureState.acceptCurrentStep() else { return }
+        learnedMapping = CodexMicroMappingPolicy.stagedMapping(from: captureState)
+        refreshSelectedProfile()
     }
 
     func resetCaptureObservation() {
@@ -90,6 +223,17 @@ final class HIDMonitor: NSObject, ObservableObject {
 
     func resetCaptureSession() {
         captureState.reset()
+        learnedMapping = nil
+        refreshSelectedProfile()
+    }
+
+    func triggerEmergencyStop() {
+        emergencyStopTested = true
+        safetyState.stop()
+    }
+
+    func clearEmergencyStop() {
+        safetyState.clearStop()
     }
 
     func handleMatched(_ device: IOHIDDevice) {
@@ -99,9 +243,17 @@ final class HIDMonitor: NSObject, ObservableObject {
             devices.append(summary)
             devices.sort { $0.product.localizedCaseInsensitiveCompare($1.product) == .orderedAscending }
         }
-        if selectedDeviceID == nil && summary.isMicroCandidate {
+        if selectedDeviceID == nil && summary.isControllerCandidate {
             selectedDeviceID = summary.id
-            attach(id: summary.id)
+            captureState = GuidedCaptureState(plan: .codexMicro)
+            learnedMapping = nil
+            if inputOwnershipMode.allowsLoudPilotInput, !attach(id: summary.id) {
+                inputOwnershipMode = .released
+            }
+        } else if selectedDeviceID == summary.id,
+                  inputOwnershipMode.allowsLoudPilotInput,
+                  !selectedDeviceConnected {
+            _ = attach(id: summary.id)
         }
     }
 
@@ -117,20 +269,19 @@ final class HIDMonitor: NSObject, ObservableObject {
             activeProfileName = "None"
             safetyState.setConnected(false)
             captureState.reset()
+            learnedMapping = nil
         }
     }
 
-    private func attach(id: String) {
-        guard let device = deviceByID[id], bufferByID[id] == nil else { return }
-        activeProfileName = profile(for: device).name
-        captureState = GuidedCaptureState(plan: capturePlan(for: device))
-        let openResult = IOHIDDeviceOpen(device, IOOptionBits(kIOHIDOptionsTypeNone))
-        guard openResult == kIOReturnSuccess else {
-            selectedDeviceConnected = false
-            selectedDeviceError = String(format: "IOHIDDeviceOpen failed (0x%08x)", UInt32(bitPattern: openResult))
-            safetyState.setConnected(false)
-            return
+    @discardableResult
+    private func attach(id: String) -> Bool {
+        guard inputOwnershipMode.allowsLoudPilotInput else { return false }
+        guard let device = deviceByID[id], managerOpen, bufferByID[id] == nil else {
+            return bufferByID[id] != nil
         }
+        let summary = summarize(device)
+        let profile = learnedMapping?.profile ?? ControllerInputPolicy.profile(for: summary)
+        activeProfileName = profile.name
         selectedDeviceError = nil
         let reportSize = max(64, Int(numberProperty(device, kIOHIDMaxInputReportSizeKey)))
         let buffer = UnsafeMutablePointer<UInt8>.allocate(capacity: reportSize)
@@ -138,7 +289,7 @@ final class HIDMonitor: NSObject, ObservableObject {
         bufferByID[id] = buffer
         reportByID[id] = "—"
         interpreterByID[id] = HIDInputInterpreter()
-        profileByID[id] = profile(for: device)
+        profileByID[id] = profile
         let context = Unmanaged.passUnretained(self).toOpaque()
         IOHIDDeviceRegisterInputReportCallback(
             device,
@@ -151,15 +302,20 @@ final class HIDMonitor: NSObject, ObservableObject {
         IOHIDDeviceScheduleWithRunLoop(device, CFRunLoopGetMain(), CFRunLoopMode.defaultMode.rawValue)
         selectedDeviceConnected = true
         safetyState.setConnected(true)
+        return true
     }
 
     private func detach(id: String) {
-        guard let device = deviceByID[id] else { return }
-        IOHIDDeviceUnscheduleFromRunLoop(device, CFRunLoopGetMain(), CFRunLoopMode.defaultMode.rawValue)
-        IOHIDDeviceClose(device, IOOptionBits(kIOHIDOptionsTypeNone))
-        if let buffer = bufferByID.removeValue(forKey: id) {
-            buffer.deinitialize(count: max(64, Int(numberProperty(device, kIOHIDMaxInputReportSizeKey))))
-            buffer.deallocate()
+        clearDeviceState(id: id)
+    }
+
+    private func clearDeviceState(id: String) {
+        if let device = deviceByID[id] {
+            IOHIDDeviceUnscheduleFromRunLoop(device, CFRunLoopGetMain(), CFRunLoopMode.defaultMode.rawValue)
+            if let buffer = bufferByID.removeValue(forKey: id) {
+                buffer.deinitialize(count: max(64, Int(numberProperty(device, kIOHIDMaxInputReportSizeKey))))
+                buffer.deallocate()
+            }
         }
         interpreterByID.removeValue(forKey: id)
         reportByID.removeValue(forKey: id)
@@ -167,14 +323,32 @@ final class HIDMonitor: NSObject, ObservableObject {
         if selectedDeviceID == id {
             selectedDeviceConnected = false
             selectedDeviceError = nil
-            activeProfileName = "None"
+            activeProfileName = inputOwnershipMode.label
             safetyState.setConnected(false)
-            captureState.reset()
         }
     }
 
+    private func clearActiveInputState() {
+        safetyState.setConnected(false)
+        reportCount = 0
+        lastReportHex = "—"
+        events.removeAll()
+    }
+
+    private func setControllerOnlyMatching(on manager: IOHIDManager) {
+        let matching: [String: Any] = [
+            kIOHIDVendorIDKey: NSNumber(value: ControllerDeviceScope.codexMicroVendorID),
+            kIOHIDProductIDKey: NSNumber(value: ControllerDeviceScope.codexMicroProductID)
+        ]
+        IOHIDManagerSetDeviceMatching(manager, matching as CFDictionary)
+    }
+
     func handleReport(device: IOHIDDevice, report: UnsafeMutablePointer<UInt8>?, length: CFIndex) {
-        guard let report, let id = deviceID(device), length > 0 else { return }
+        guard inputOwnershipMode.allowsLoudPilotInput,
+              selectedDeviceConnected,
+              let report,
+              let id = deviceID(device),
+              length > 0 else { return }
         let data = Data(bytes: report, count: Int(length))
         let hex = data.map { String(format: "%02x", $0) }.joined(separator: " ")
         reportByID[id] = hex
@@ -183,7 +357,10 @@ final class HIDMonitor: NSObject, ObservableObject {
     }
 
     func handleValue(device: IOHIDDevice, value: IOHIDValue) {
-        guard let id = deviceID(device), id == selectedDeviceID else { return }
+        guard inputOwnershipMode.allowsLoudPilotInput,
+              selectedDeviceConnected,
+              let id = deviceID(device),
+              id == selectedDeviceID else { return }
         let element = IOHIDValueGetElement(value)
         let descriptor = HIDElementDescriptor(
             identifier: "\(id):\(IOHIDElementGetCookie(element))",
@@ -198,12 +375,15 @@ final class HIDMonitor: NSObject, ObservableObject {
             timestamp: Date().timeIntervalSince1970
         )
         interpreterByID[id] = interpreter
-        let profile = profileByID[id] ?? profile(for: device)
+        let profile = profileByID[id] ?? ControllerInputPolicy.profile(for: summarize(device))
         captureState.ingest(
             descriptor: descriptor,
             event: rawEvent,
             rawReport: reportByID[id] ?? "—"
         )
+        guard HIDInputPolicy.shouldSurfaceAsPhysicalEvent(rawEvent) else {
+            return
+        }
         let event: MicroInputEvent
         switch profile.action(for: descriptor) {
         case .control(let control, let scale):
@@ -217,7 +397,19 @@ final class HIDMonitor: NSObject, ObservableObject {
                 controlScale: scale
             )
             safetyState.ingest(event)
+        case .relativeControl(let control, let scale):
+            event = MicroInputEvent(
+                identifier: rawEvent.identifier,
+                kind: rawEvent.kind,
+                value: rawEvent.value,
+                phase: rawEvent.phase,
+                timestamp: rawEvent.timestamp,
+                controlMapping: control,
+                controlScale: scale
+            )
+            safetyState.ingest(event)
         case .stop:
+            emergencyStopTested = true
             safetyState.stop()
             event = rawEvent
         case nil:
@@ -234,6 +426,14 @@ final class HIDMonitor: NSObject, ObservableObject {
         if events.count > 80 { events.removeLast(events.count - 80) }
     }
 
+    private func refreshSelectedProfile() {
+        guard let id = selectedDeviceID, let device = deviceByID[id] else { return }
+        let summary = summarize(device)
+        let profile = learnedMapping?.profile ?? ControllerInputPolicy.profile(for: summary)
+        profileByID[id] = profile
+        activeProfileName = selectedDeviceConnected ? profile.name : inputOwnershipMode.label
+    }
+
     private func summarize(_ device: IOHIDDevice) -> HIDDeviceSummary {
         let vendor = numberProperty(device, kIOHIDVendorIDKey)
         let productID = numberProperty(device, kIOHIDProductIDKey)
@@ -247,26 +447,6 @@ final class HIDMonitor: NSObject, ObservableObject {
             vendorID: vendor,
             productID: productID
         )
-    }
-
-    private func profile(for device: IOHIDDevice) -> HIDControlProfile {
-        let summary = summarize(device)
-        let product = summary.product.lowercased()
-        if product.contains("magic keyboard") {
-            return BuiltInControlProfiles.magicKeyboard
-        }
-        if product.contains("codex micro") || product.contains("work louder") {
-            return BuiltInControlProfiles.codexMicro
-        }
-        return BuiltInControlProfiles.unmapped
-    }
-
-    private func capturePlan(for device: IOHIDDevice) -> GuidedCapturePlan {
-        let product = summarize(device).product.lowercased()
-        if product.contains("magic keyboard") {
-            return .magicKeyboard
-        }
-        return .codexMicro
     }
 
     private func deviceID(_ device: IOHIDDevice) -> String? {

@@ -1,4 +1,4 @@
-import LiteWingMicroControllerCore
+import LoudPilotCore
 
 enum InputSafetyTests {
     private static func event(
@@ -93,5 +93,27 @@ enum InputSafetyTests {
         state.setFocused(true)
         try expect(state.intended.isZero, "focus regain should not resume intended controls")
         try expect(state.activeInputs.isEmpty, "focus regain should not resume active inputs")
+    }
+
+    static func testEmergencyStopLatchesUntilExplicitClear() throws {
+        var state = InputSafetyState(bindings: [
+            "button:roll": InputBinding(control: .roll, scale: 1.0),
+        ])
+        state.setConnected(true)
+        state.ingest(event("button:roll", value: 1, phase: .pressed))
+        state.stop()
+
+        try expect(state.stopLatched, "emergency stop should latch")
+        try expect(!state.controlInputEnabled, "latched stop should inhibit input")
+        try expect(state.intended.isZero, "emergency stop should clear intended controls")
+
+        state.ingest(event("button:roll", value: 1, phase: .pressed))
+        try expect(state.intended.isZero, "latched stop must reject subsequent input")
+
+        state.clearStop()
+        try expect(!state.stopLatched, "explicit clear should release the stop latch")
+        try expect(state.intended.isZero, "clearing stop must not restore old input")
+        state.ingest(event("button:roll", value: 1, phase: .pressed))
+        try expect(state.intended.roll == 1, "new input may be accepted after explicit clear")
     }
 }

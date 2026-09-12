@@ -1,6 +1,22 @@
-import LiteWingMicroControllerCore
+import LoudPilotCore
 
 enum HIDInputTests {
+    static func testInputOwnershipRequiresExplicitExclusiveMode() throws {
+        try expect(!HIDInputOwnershipMode.released.allowsLoudPilotInput, "released mode must not process Micro input")
+        try expect(HIDInputOwnershipMode.exclusive.allowsLoudPilotInput, "exclusive mode must allow LoudPilot input")
+        try expect(HIDInputOwnershipMode.released.label == "Released to Codex app", "released mode must describe the handoff")
+        try expect(HIDInputOwnershipMode.exclusive.label == "LoudPilot exclusive", "exclusive mode must describe ownership")
+    }
+
+    static func testVendorTelemetryIsNotSurfacedAsPhysicalControl() throws {
+        var decoder = HIDInputInterpreter()
+        let vendor = HIDElementDescriptor(identifier: "element:6:1", usagePage: 0xFF00, usage: 1, isRelative: false)
+        let event = decoder.ingest(descriptor: vendor, value: 1, timestamp: 1)
+
+        try expect(event.kind == .unknown, "vendor telemetry should remain an unknown diagnostic event")
+        try expect(!HIDInputPolicy.shouldSurfaceAsPhysicalEvent(event), "vendor telemetry must not appear as a physical control event")
+    }
+
     static func testDeviceCandidateMatchingUsesMetadataNotJoystickAssumptions() throws {
         let micro = HIDDeviceSummary(
             id: "device-1",
@@ -21,6 +37,7 @@ enum HIDInputTests {
 
         try expect(micro.isMicroCandidate, "Micro metadata should be surfaced as a candidate")
         try expect(!keyboard.isMicroCandidate, "unrelated Bluetooth HID should not be auto-selected")
+        try expect(!keyboard.isControllerCandidate, "Magic Keyboard must remain outside Codex Micro controller scope")
     }
 
     static func testButtonPressHoldReleaseLifecycle() throws {

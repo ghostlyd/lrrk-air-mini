@@ -16,6 +16,14 @@ public enum MicroInputPhase: String, Equatable, Codable, Sendable {
     case value
 }
 
+public enum HIDInputPolicy {
+    /// Vendor-specific streams can carry device telemetry or diagnostics.
+    /// They are never surfaced as physical controls without a decoded schema.
+    public static func shouldSurfaceAsPhysicalEvent(_ event: MicroInputEvent) -> Bool {
+        event.kind != .unknown
+    }
+}
+
 public enum IntendedControl: String, CaseIterable, Equatable, Codable, Sendable {
     case roll
     case pitch
@@ -177,6 +185,7 @@ public struct HIDInputInterpreter: Sendable {
 public struct InputSafetyState: Equatable, Sendable {
     public private(set) var connected = false
     public private(set) var focused = true
+    public private(set) var stopLatched = false
     public private(set) var activeInputs: Set<String> = []
     public private(set) var intended = IntendedControlValues()
     public private(set) var lastDialDelta: Double = 0
@@ -190,7 +199,7 @@ public struct InputSafetyState: Equatable, Sendable {
     }
 
     public var controlInputEnabled: Bool {
-        connected && focused
+        connected && focused && !stopLatched
     }
 
     public mutating func setConnected(_ value: Bool) {
@@ -208,6 +217,12 @@ public struct InputSafetyState: Equatable, Sendable {
     }
 
     public mutating func stop() {
+        stopLatched = true
+        clearInputs()
+    }
+
+    public mutating func clearStop() {
+        stopLatched = false
         clearInputs()
     }
 
@@ -215,7 +230,7 @@ public struct InputSafetyState: Equatable, Sendable {
         guard controlInputEnabled else { return }
 
         if event.kind == .dial || event.phase == .dial {
-            lastDialDelta = event.value
+            lastDialDelta = event.value * event.controlScale
             return
         }
 

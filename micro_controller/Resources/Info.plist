@@ -7,7 +7,7 @@
 	<key>CFBundleExecutable</key>
 	<string>LoudPilot</string>
 	<key>CFBundleIdentifier</key>
-	<string>ai.lrrk.litewing.micro-controller</string>
+	<string>ai.lrrk.loudpilot</string>
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>
@@ -21,9 +21,9 @@
 	<key>LSMinimumSystemVersion</key>
 	<string>13.0</string>
 	<key>NSBluetoothAlwaysUsageDescription</key>
-	<string>LoudPilot reads connected HID reports locally for the read-only pilot stage.</string>
+	<string>LoudPilot discovers nearby Bluetooth controllers and reads their local HID input.</string>
 	<key>NSBluetoothPeripheralUsageDescription</key>
-	<string>LoudPilot reads connected HID reports locally for the read-only pilot stage.</string>
+	<string>LoudPilot discovers nearby Bluetooth controllers and reads their local HID input.</string>
 	<key>NSHighResolutionCapable</key>
 	<true/>
 	<key>LSApplicationCategoryType</key>
