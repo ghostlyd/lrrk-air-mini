@@ -35,6 +35,12 @@ class BrushedPwmDriverTests(unittest.TestCase):
     def test_feasible_timer_and_staged_clamped_duty(self):
         self.run_scenario("duty")
 
+    def test_observation_distinguishes_request_commit_and_suppression(self):
+        self.run_scenario("observation")
+
+    def test_observation_marks_failed_hardware_output_unknown(self):
+        self.run_scenario("observation-failure")
+
     def test_disarm_zeroes_outputs(self):
         self.run_scenario("disarm")
 

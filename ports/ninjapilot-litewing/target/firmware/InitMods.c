@@ -16,6 +16,7 @@ extern int32_t ManualControlInitialize(void);
 extern int32_t TelemetryInitialize(void);
 extern int32_t LiteWingBatteryInitialize(void);
 extern int32_t LiteWingImuHealthInitialize(void);
+extern int32_t LiteWingPwmObservationInitialize(void);
 
 extern int32_t AttitudeStart(void);
 extern int32_t StabilizationStart(void);
@@ -38,6 +39,7 @@ int32_t PIOS_LiteWing_ModulesInitialize(void)
     CHECK_MODULE(ReceiverInitialize());
     CHECK_MODULE(ManualControlInitialize());
     CHECK_MODULE(LiteWingImuHealthInitialize());
+    CHECK_MODULE(LiteWingPwmObservationInitialize());
     CHECK_MODULE(TelemetryInitialize());
     CHECK_MODULE(LiteWingBatteryInitialize());
     initialized = true;

@@ -75,6 +75,19 @@ if(NOT LITEWING_IMU_RC EQUAL 0)
 endif()
 
 # --- PiOS: pinned ESP32 backend ---------------------------------------
+set(LITEWING_PWM_DIR "${CMAKE_CURRENT_BINARY_DIR}/litewing_pwm")
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+    "${PORT_ROOT}/prepare_pwm_observation.py"
+    "${PORT_ROOT}/uavobjects/litewingpwmobservation.xml"
+    "${PORT_ROOT}/verify_usb_ids.py")
+execute_process(COMMAND python3 "${PORT_ROOT}/prepare_pwm_observation.py"
+    --upstream "${NINJAPILOT_ROOT}" --output "${LITEWING_PWM_DIR}"
+    --custom "${LITEWING_IMU_DIR}/object"
+    RESULT_VARIABLE LITEWING_PWM_RC)
+if(NOT LITEWING_PWM_RC EQUAL 0)
+    message(FATAL_ERROR "Custom PWM observation generation or schema verification failed")
+endif()
+
 set(PIOS_ESP32_SRCS
     "${ESP32PORT}/pios/esp32/pios_sys.c"
     "${ESP32PORT}/pios/esp32/pios_delay.c"
@@ -304,6 +317,7 @@ foreach(UAVO_NAME IN LISTS UAVO_NAMES)
 endforeach()
 
 set(ALL_PORT_SRCS
+    "${LITEWING_PWM_DIR}/object/litewingpwmobservation.c"
     "${LITEWING_IMU_DIR}/object/litewingimuhealth.c"
     ${BOARD_SRCS}
     ${LITEWING_TARGET_SRCS}
@@ -357,6 +371,7 @@ endif()
 idf_component_register(
     SRCS ${ALL_PORT_SRCS}
     INCLUDE_DIRS
+        "${LITEWING_PWM_DIR}/object"
         # Only the custom object pair is exported here. The pinned UAVOSYNTH
         # remains authoritative for uavobjectsinit.h and transport-wide limits.
         "${LITEWING_IMU_DIR}/object"

@@ -31,7 +31,9 @@ def prepare(source, output):
         "int32_t UAVObjUnpack(UAVObjHandle obj_handle, uint16_t instId, const uint8_t *dataIn)\n{",
         "int32_t UAVObjUnpack(UAVObjHandle obj_handle, uint16_t instId, const uint8_t *dataIn)\n{\n"
         "    if (obj_handle && (UAVObjGetID(obj_handle) == 0xDA60A0C6u ||\n"
-        "                       UAVObjGetID(obj_handle) == 0xDA60A0C7u)) return -1;")
+        "                       UAVObjGetID(obj_handle) == 0xDA60A0C7u ||\n"
+        "                       UAVObjGetID(obj_handle) == 0xA6453F6Eu ||\n"
+        "                       UAVObjGetID(obj_handle) == 0xA6453F6Fu)) return -1;")
     code = replace_exact(code, '#include "inc/uavobjectprivate.h"',
                          '#include "inc/uavobjectprivate.h"\n#include <stddef.h>\n'
                          '#include "flightstatus.h"\n#include "litewing_arming_maintenance.h"\n'
