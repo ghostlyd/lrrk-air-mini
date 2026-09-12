@@ -1,4 +1,7 @@
 #include "litewing_battery_pack.h"
+int32_t LiteWingImuTimingPack(UAVObjHandle o,uint16_t i,uint8_t *d) {
+    (void)o;(void)i;(void)d;return -1;
+}
 int32_t LiteWingPwmObservationPack(UAVObjHandle obj, uint16_t instance, uint8_t *data) {
     (void)obj; (void)instance; (void)data; return -1;
 }

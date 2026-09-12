@@ -17,6 +17,8 @@ int32_t LiteWingPwmObservationPack(UAVObjHandle obj, uint16_t instance, uint8_t 
 static int64_t now=1000000;
 static unsigned motor_writes, publications, creates;
 static bool fail_read, reset_in_read;
+static bool missed_notification;
+static int64_t transfer_delay_us;
 static uint8_t registers[128];
 static int config_fault_reg=-1;
 static bool config_read_failure;
@@ -66,6 +68,7 @@ int PIOS_I2C_Transfer(uint32_t id,const struct pios_i2c_txn *t,unsigned n) {
      assert(record_identity(identity,pending_reset_generation));
    }
    memset(t[1].buf,0,t[1].len);
+   now+=transfer_delay_us;
    if(is("raw-provenance")) {
      for(unsigned i=0;i<t[1].len;i++)t[1].buf[i]=(uint8_t)(i+1);
      now+=37;
@@ -86,7 +89,7 @@ int xQueueReceive(void *q,void *v,unsigned t) {(void)q;(void)v;(void)t;return 1;
 void *xQueueCreate(unsigned n,unsigned s) {(void)n;queue_item_size=s;return (void *)1;}
 void vQueueDelete(void *q) {(void)q;}
 void vTaskNotifyGiveFromISR(void *t,int *w) {(void)t;(void)w;}
-uint32_t ulTaskNotifyTake(int c,unsigned t) {(void)c;(void)t; if(steps++) longjmp(stopped,1);return 1;}
+uint32_t ulTaskNotifyTake(int c,unsigned t) {(void)c; if(steps++) longjmp(stopped,1);if(missed_notification){now+=(int64_t)t*1000;return 0;}return 1;}
 uint32_t xTaskGetTickCount(void) { return (uint32_t)(now/1000); }
 int xTaskCreate(void (*f)(void *),const char *n,unsigned s,void *a,unsigned p,void **h) {
  (void)f;(void)n;(void)s;(void)a;(void)p;*h=(void *)1;return 1;
@@ -95,7 +98,10 @@ int gpio_config(const gpio_config_t *c) {(void)c;return 0;}
 int gpio_install_isr_service(int f) {(void)f;return 0;}
 int gpio_isr_handler_add(int g,void (*f)(void *),void *a) {(void)g;(void)f;(void)a;return 0;}
 uint32_t UAVObjGetID(UAVObjHandle o) {return (uint32_t)(uintptr_t)o;}
-uint16_t UAVObjGetNumBytes(UAVObjHandle o) {return UAVObjGetID(o)==LITEWINGIMUHEALTH_OBJID?9:30;}
+uint16_t UAVObjGetNumBytes(UAVObjHandle o) {return UAVObjGetID(o)==LITEWINGIMUTIMING_OBJID?21:UAVObjGetID(o)==LITEWINGIMUHEALTH_OBJID?9:30;}
+int32_t LiteWingIMUTimingInitialize(void) {return 0;}
+UAVObjHandle LiteWingIMUTimingHandle(void) {return (void *)(uintptr_t)LITEWINGIMUTIMING_OBJID;}
+int LiteWingIMUTimingGetMetadata(UAVObjMetadata *m) {m->flags=1;return 0;}
 int32_t UAVObjPack(UAVObjHandle o,uint16_t i,uint8_t *b) {(void)o;(void)i; b[0]=42;return 7;}
 int32_t LiteWingIMUHealthInitialize(void) {return is("register")?-1:0;}
 UAVObjHandle LiteWingIMUHealthHandle(void) {return (void *)(uintptr_t)LITEWINGIMUHEALTH_OBJID;}
@@ -147,6 +153,27 @@ int main(int argc,char **argv) {
    puts("PASS");return 0;
  }
  assert(PIOS_LiteWing_MPU6050_Init(0,0x68)==0); run_sensor=false;
+ if(is("failure-timing")) {
+   struct lw_imu_timing measured;
+   fail_read=true;transfer_delay_us=50000;sample();
+   PIOS_LiteWing_MPU6050_GetTiming(&measured);
+   assert(measured.read_failures==1 && measured.notification_timeouts==0);
+   assert(measured.last_read_us==50000 && measured.max_read_us==50000);
+   fail_read=false;transfer_delay_us=600;sample();
+   PIOS_LiteWing_MPU6050_GetTiming(&measured);
+   assert(measured.read_failures==1 && measured.last_read_us==600);
+   assert(measured.max_read_us==50000);
+   missed_notification=true;sample();
+   PIOS_LiteWing_MPU6050_GetTiming(&measured);
+   assert(measured.notification_timeouts==1 && measured.read_failures==1);
+   assert(measured.last_wait_us==20000 && measured.last_read_us==0);
+   uint8_t timing_wire[21];
+   assert(LiteWingImuTimingPack((void *)(uintptr_t)0x5AF673A8,0,timing_wire)==0);
+   const uint8_t expected[]={1,0,0,0,1,0,0,0,0x20,0x4e,0,0,0,0,0,0,0x50,0xc3,0,0,1};
+   assert(memcmp(timing_wire,expected,sizeof expected)==0);
+   assert(LiteWingImuTimingPack((void *)(uintptr_t)0x5AF673A8,1,timing_wire)==-1);
+   free(queue_data);puts("PASS");return 0;
+ }
  if(is("raw-provenance")) {
 #if CONFIG_LRRK_ATTITUDE_TRACE
    assert(queue_item_size>LITEWING_MPU6050_DATA_SIZE);

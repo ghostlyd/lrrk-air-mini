@@ -75,8 +75,8 @@ int main(void) {
     pthread_mutex_init(mutex,&attr); pthread_mutexattr_destroy(&attr);
 #ifdef IMU_ACCESS_TEST
     uint8_t forged[8]={1};
-    const uint32_t diagnostic_ids[]={0xDA60A0C6,0xA6453F6E,0xE7AF695A};
-    for (unsigned i=0;i<3;++i) {
+    const uint32_t diagnostic_ids[]={0xDA60A0C6,0xA6453F6E,0xE7AF695A,0x5AF673A8};
+    for (unsigned i=0;i<sizeof diagnostic_ids/sizeof diagnostic_ids[0];++i) {
         diagnostic_id=diagnostic_ids[i];
         assert(UAVObjUnpack(&imu,0,forged)==-1);
         assert(UAVObjUnpack(&imu_meta,0,forged)==-1);

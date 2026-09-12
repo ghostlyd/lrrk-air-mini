@@ -16,7 +16,7 @@ class ImuPublicationTests(unittest.TestCase):
             for name in ('pios.h', 'esp_err.h', 'esp_timer.h', 'driver/gpio.h',
                          'freertos/FreeRTOS.h', 'freertos/task.h', 'pios_constants.h',
                          'pios_sensors.h', 'pios_icm20602.h', 'openpilot.h',
-                         'litewingimuhealth.h', 'uavobjectmanager.h'):
+                         'litewingimuhealth.h', 'litewingimutiming.h', 'uavobjectmanager.h'):
                 header = out / name
                 header.parent.mkdir(parents=True, exist_ok=True)
                 header.write_text('#include "imu_publication_sdk.h"\n')
@@ -34,7 +34,7 @@ class ImuPublicationTests(unittest.TestCase):
             result = subprocess.run(command, capture_output=True, text=True, timeout=30)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
             cases = ('normal', 'reserved', 'initial-publish', 'runtime-publish', 'create', 'register',
-                     'queue-delay', 'reset-completion') + tuple(
+                     'queue-delay', 'reset-completion', 'failure-timing') + tuple(
                          f'{failure}-{register}' for failure in ('mismatch', 'readfail')
                          for register in ('19', '1a', '1b', '1c', '37', '38', '6b'))
             # Each documented bit matters, including self-test, sleep and reset.

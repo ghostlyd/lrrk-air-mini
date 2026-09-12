@@ -105,7 +105,8 @@ class ImuHeaderIsolationTests(unittest.TestCase):
                 '--upstream', str(self.upstream), '--output', str(self.custom)],
                 check=True, capture_output=True, text=True, timeout=30)
             self.assertEqual({p.name for p in self.custom_include.iterdir()},
-                             {'litewingimuhealth.h', 'litewingimuhealth.c'})
+                             {'litewingimuhealth.h', 'litewingimuhealth.c',
+                              'litewingimutiming.h', 'litewingimutiming.c'})
             self.assertEqual(original, {name: (self.existing / name).read_bytes()
                                         for name in original})
 

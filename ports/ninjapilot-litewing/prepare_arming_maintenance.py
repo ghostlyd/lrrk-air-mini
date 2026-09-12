@@ -32,6 +32,8 @@ def prepare(source, output):
         "int32_t UAVObjUnpack(UAVObjHandle obj_handle, uint16_t instId, const uint8_t *dataIn)\n{\n"
         "    if (obj_handle && (UAVObjGetID(obj_handle) == 0xDA60A0C6u ||\n"
         "                       UAVObjGetID(obj_handle) == 0xDA60A0C7u ||\n"
+        "                       UAVObjGetID(obj_handle) == 0x5AF673A8u ||\n"
+        "                       UAVObjGetID(obj_handle) == 0x5AF673A9u ||\n"
         "                       UAVObjGetID(obj_handle) == 0xA6453F6Eu ||\n"
         "                       UAVObjGetID(obj_handle) == 0xA6453F6Fu ||\n"
         "                       UAVObjGetID(obj_handle) == 0xE7AF695Au ||\n"

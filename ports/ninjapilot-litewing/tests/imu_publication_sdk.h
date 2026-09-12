@@ -55,6 +55,10 @@ typedef void *UAVObjHandle;
 typedef struct { unsigned flags; unsigned telemetryUpdatePeriod; } UAVObjMetadata;
 enum { UPDATEMODE_ONCHANGE=2, ACCESS_READONLY=1 };
 #define LITEWINGIMUHEALTH_OBJID 0xDA60A0C6u
+#define LITEWINGIMUTIMING_OBJID 0x5AF673A8u
+int32_t LiteWingIMUTimingInitialize(void);
+UAVObjHandle LiteWingIMUTimingHandle(void);
+int LiteWingIMUTimingGetMetadata(UAVObjMetadata *);
 typedef struct __attribute__((packed)) { uint32_t SampleAgeMs; uint8_t Version,IdentityVerified,WhoAmI,SampleSeen,Health; } LiteWingIMUHealthData;
 int32_t LiteWingIMUHealthInitialize(void);
 UAVObjHandle LiteWingIMUHealthHandle(void);

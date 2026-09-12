@@ -1,5 +1,8 @@
 /* Parser platform/object boundaries for the real worker/store fixture. */
 #include "openpilot.h"
+int32_t LiteWingImuTimingPack(UAVObjHandle o,uint16_t i,uint8_t *d) {
+    (void)o;(void)i;(void)d;return -1;
+}
 #include "pios_gcsrcvr_priv.h"
 #include "uavtalk_priv.h"
 #include <pthread.h>

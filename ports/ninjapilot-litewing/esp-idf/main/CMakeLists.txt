@@ -66,6 +66,7 @@ set(LITEWING_IMU_DIR "${CMAKE_CURRENT_BINARY_DIR}/litewing_imu")
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
     "${PORT_ROOT}/prepare_imu_health.py"
     "${PORT_ROOT}/uavobjects/litewingimuhealth.xml"
+    "${PORT_ROOT}/uavobjects/litewingimutiming.xml"
     "${NINJAPILOT_ROOT}/ground/uavobjgenerator/uavobjgenerator")
 execute_process(COMMAND python3 "${PORT_ROOT}/prepare_imu_health.py"
     --upstream "${NINJAPILOT_ROOT}" --output "${LITEWING_IMU_DIR}"
@@ -332,6 +333,7 @@ set(ALL_PORT_SRCS
     "${LITEWING_TRACE_DIR}/object/litewingattitudetrace.c"
     "${LITEWING_PWM_DIR}/object/litewingpwmobservation.c"
     "${LITEWING_IMU_DIR}/object/litewingimuhealth.c"
+    "${LITEWING_IMU_DIR}/object/litewingimutiming.c"
     ${BOARD_SRCS}
     ${LITEWING_TARGET_SRCS}
     ${PIOS_ESP32_SRCS}

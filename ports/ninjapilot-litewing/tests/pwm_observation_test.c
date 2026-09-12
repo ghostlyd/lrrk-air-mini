@@ -2,6 +2,9 @@
 #include "litewingpwmobservation.h"
 #include "litewing_pwm_observation.h"
 #include "litewing_battery_pack.h"
+int32_t LiteWingImuTimingPack(UAVObjHandle o,uint16_t i,uint8_t *d) {
+    (void)o;(void)i;(void)d;return -1;
+}
 #include "pios_litewing_brushed_pwm.h"
 #include <assert.h>
 #include <string.h>

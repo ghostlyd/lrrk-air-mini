@@ -29,6 +29,28 @@ def prepare(upstream, output):
         isolated.mkdir(parents=True, exist_ok=True)
         for name in ("litewingimuhealth.h", "litewingimuhealth.c"):
             shutil.copyfile(generated / name, isolated / name)
+        subprocess.run([str(generator), "-flight", str(root / "uavobjects"),
+                        str(upstream), "LiteWingIMUTiming"], cwd=staging, check=True)
+        header = (generated / "litewingimutiming.h").read_text()
+        source = (generated / "litewingimutiming.c").read_text()
+        ids = DEFINITION.findall(header)
+        if len(ids) != 1 or int(ids[0][1], 0) != 0x5AF673A8:
+            raise ValueError("IMU timing ID changed")
+        occupied = set(RESERVED)
+        for directory in (existing, isolated):
+            for path in directory.glob("*.h"):
+                if path.name == 'litewingimutiming.h':
+                    continue  # prior output of this same generator
+                for _, raw in DEFINITION.findall(path.read_text()):
+                    value = int(raw.strip(), 0)
+                    occupied.update((value, (value+1)&0xffffffff))
+        if not {0x5AF673A8, 0x5AF673A9}.isdisjoint(occupied):
+            raise ValueError("IMU timing ID collision")
+        if ("ACCESS_READONLY << UAVOBJ_GCS_ACCESS_SHIFT" not in source or
+                not re.search(r"LITEWINGIMUTIMING_ISSINGLEINST\s+1", header)):
+            raise ValueError("IMU timing access contract changed")
+        for name in ('litewingimutiming.h', 'litewingimutiming.c'):
+            shutil.copyfile(generated/name, isolated/name)
     print("IMU_SCHEMA=PASS id=0xDA60A0C6 metadata=0xDA60A0C7 gcs=readonly")
 
 

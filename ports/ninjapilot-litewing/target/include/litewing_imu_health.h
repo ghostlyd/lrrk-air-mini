@@ -13,6 +13,16 @@ struct lw_imu_observation {
     uint32_t sample_ms;
 };
 
+struct lw_imu_timing {
+    /* Local diagnostic snapshot; NOT part of the existing nine-byte v1 wire
+     * export. Counters saturate and reset with observation invalidation. */
+    uint32_t notification_timeouts;
+    uint32_t read_failures;
+    uint32_t last_wait_us;
+    uint32_t last_read_us;
+    uint32_t max_read_us;
+};
+
 /* Pure v1 serializer. Both pointers must be valid; output has at least 9 bytes.
  * Caller supplies a coherent observation and the driver's existing stale timeout.
  * Age is unsigned elapsed milliseconds (one uint32_t clock cycle), or UINT32_MAX

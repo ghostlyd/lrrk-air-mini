@@ -1,6 +1,7 @@
 /* Observation-only telemetry. Publication cannot write motor or arming state. */
 #include "openpilot.h"
 #include "litewingimuhealth.h"
+#include "litewingimutiming.h"
 #include "pios_litewing_mpu6050.h"
 #include "litewing_imu_health_pack.h"
 #include "esp_timer.h"
@@ -11,6 +12,20 @@
 static portMUX_TYPE publication_lock = portMUX_INITIALIZER_UNLOCKED;
 static bool publication_available;
 static bool init_attempted, initialized, start_attempted;
+
+int32_t LiteWingImuTimingPack(UAVObjHandle obj, uint16_t instance, uint8_t *data)
+{
+    if (!obj || !data || instance != 0 || UAVObjGetID(obj) != LITEWINGIMUTIMING_OBJID ||
+        UAVObjGetNumBytes(obj) != 21) return -1;
+    struct lw_imu_timing snapshot;
+    PIOS_LiteWing_MPU6050_GetTiming(&snapshot);
+    uint32_t values[5] = { snapshot.notification_timeouts, snapshot.read_failures,
+        snapshot.last_wait_us, snapshot.last_read_us, snapshot.max_read_us };
+    for (unsigned i=0;i<5;i++)
+        for (unsigned j=0;j<4;j++) data[4*i+j]=(uint8_t)(values[i]>>(8*j));
+    data[20]=1;
+    return 0;
+}
 
 static void publication_enable(bool available)
 {
@@ -69,7 +84,11 @@ int32_t LiteWingImuHealthInitialize(void)
     init_attempted = true;
     /* UAVObjectsInitializeAll covers upstream only. Register our generated
      * object before any publisher or Telemetry module enumerates objects. */
-    if (LiteWingIMUHealthInitialize() != 0 || !LiteWingIMUHealthHandle()) return -1;
+    if (LiteWingIMUHealthInitialize() != 0 || !LiteWingIMUHealthHandle() ||
+        LiteWingIMUTimingInitialize() != 0 || !LiteWingIMUTimingHandle()) return -1;
+    UAVObjMetadata timing_metadata;
+    if (LiteWingIMUTimingGetMetadata(&timing_metadata) != 0 ||
+        UAVObjGetGcsAccess(&timing_metadata) != ACCESS_READONLY) return -1;
     UAVObjMetadata metadata;
     if (LiteWingIMUHealthGetMetadata(&metadata) != 0 ||
         UAVObjGetGcsAccess(&metadata) != ACCESS_READONLY) return -1;

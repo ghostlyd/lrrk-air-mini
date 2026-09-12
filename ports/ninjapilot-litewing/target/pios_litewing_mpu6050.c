@@ -62,6 +62,7 @@ static PIOS_SENSORS_3Axis_SensorsWithTemp *queue_data;
 
 static portMUX_TYPE observation_lock = portMUX_INITIALIZER_UNLOCKED;
 static struct lw_imu_observation observation;
+static struct lw_imu_timing timing;
 static int64_t observation_sample_us;
 static uint64_t observation_generation;
 
@@ -69,6 +70,7 @@ static uint64_t invalidate_observation(void)
 {
     portENTER_CRITICAL(&observation_lock);
     observation = (struct lw_imu_observation){0};
+    timing = (struct lw_imu_timing){0};
     observation_sample_us = 0;
     uint64_t generation = ++observation_generation;
     portEXIT_CRITICAL(&observation_lock);
@@ -100,6 +102,13 @@ void PIOS_LiteWing_MPU6050_GetObservation(struct lw_imu_observation *out)
 {
     int64_t sample_us;
     PIOS_LiteWing_MPU6050_GetTimedObservation(out, &sample_us);
+}
+
+void PIOS_LiteWing_MPU6050_GetTiming(struct lw_imu_timing *out)
+{
+    portENTER_CRITICAL(&observation_lock);
+    *out = timing;
+    portEXIT_CRITICAL(&observation_lock);
 }
 
 static bool transfer_write(uint8_t reg, uint8_t value)
@@ -304,8 +313,10 @@ static void sensor_task(__attribute__((unused)) void *argument)
     uint8_t frame[14];
 
     for (;;) {
+        const int64_t wait_started_us = esp_timer_get_time();
         const uint32_t notified = ulTaskNotifyTake(
             pdTRUE, pdMS_TO_TICKS(LITEWING_MPU6050_STALE_TIMEOUT_MS));
+        const int64_t wait_ended_us = esp_timer_get_time();
         const uint32_t now_ms = (uint32_t)(xTaskGetTickCount() *
                                            portTICK_PERIOD_MS);
         uint64_t generation;
@@ -318,8 +329,30 @@ static void sensor_task(__attribute__((unused)) void *argument)
          * publication, either of which may yield before telemetry commits. */
         const int64_t captured_us = esp_timer_get_time();
 
-        if (notified == 0u || !transfer_read(LITEWING_MPU6050_REG_ACCEL_XOUT_H,
-                                              frame, sizeof(frame))) {
+        const bool read_ok = notified != 0u &&
+            transfer_read(LITEWING_MPU6050_REG_ACCEL_XOUT_H, frame, sizeof(frame));
+        const int64_t read_ended_us = esp_timer_get_time();
+        /* Diagnostic-only accounting: no retries, value replacement or changed
+         * health decisions. Do not let an in-flight read alter a reset epoch. */
+        const uint64_t wait_us = wait_ended_us >= wait_started_us ?
+            (uint64_t)wait_ended_us - (uint64_t)wait_started_us : UINT32_MAX;
+        const uint64_t read_us = read_ended_us >= captured_us ?
+            (uint64_t)read_ended_us - (uint64_t)captured_us : UINT32_MAX;
+        portENTER_CRITICAL(&observation_lock);
+        if (generation == observation_generation) {
+            timing.last_wait_us = wait_us > UINT32_MAX ? UINT32_MAX : (uint32_t)wait_us;
+            timing.last_read_us = notified == 0u ? 0u :
+                (read_us > UINT32_MAX ? UINT32_MAX : (uint32_t)read_us);
+            if (timing.last_read_us > timing.max_read_us)
+                timing.max_read_us = timing.last_read_us;
+            if (notified == 0u && timing.notification_timeouts != UINT32_MAX)
+                timing.notification_timeouts++;
+            if (notified != 0u && !read_ok && timing.read_failures != UINT32_MAX)
+                timing.read_failures++;
+        }
+        portEXIT_CRITICAL(&observation_lock);
+
+        if (!read_ok) {
             /* Telemetry records read/notification failure explicitly. The
              * existing motor freshness decision below is unchanged. */
             portENTER_CRITICAL(&observation_lock);
@@ -332,7 +365,7 @@ static void sensor_task(__attribute__((unused)) void *argument)
             continue;
         }
 
-        publish_sample(frame, captured_us, esp_timer_get_time());
+        publish_sample(frame, captured_us, read_ended_us);
         device.sample_seen = true;
         device.last_sample_ms = now_ms;
         portENTER_CRITICAL(&observation_lock);
