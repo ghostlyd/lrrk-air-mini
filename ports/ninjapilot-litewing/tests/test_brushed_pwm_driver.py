@@ -189,6 +189,9 @@ class FixedAllMotorTests(unittest.TestCase):
     def test_fixed_all_output_zero_stop_and_deadline(self):
         self.run_scenario('all-fixed')
 
+    def test_recovery_preserves_deadline_and_fresh_watchdog_expiry(self):
+        self.run_scenario('all-interruption')
+
     # Exercise the same production fault transitions with all outputs active.
     test_all_motor_faults_zero_output = SingleMotorBenchTests.test_single_motor_faults_zero_output
     test_all_motor_write_faults_latch = SingleMotorBenchTests.test_single_motor_write_faults_latch

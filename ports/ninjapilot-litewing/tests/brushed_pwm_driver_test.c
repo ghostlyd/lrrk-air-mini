@@ -151,6 +151,34 @@ int main(int argc, char **argv)
     const char *scenario = argv[1];
     int channel = argc > 2 ? atoi(argv[2]) : 0;
     CHECK(channel >= 0 && channel < 4);
+    if (strcmp(scenario, "all-interruption") == 0) {
+        CHECK(PIOS_LiteWing_BrushedPWM_Init() == 0);
+        PIOS_LiteWing_BrushedPWM_SetImuHealthy(true);
+        armed = FLIGHTSTATUS_ARMED_ARMED;
+        stage_all(10); PIOS_Servo_Update(); expect_all(409);
+        const int64_t start = now_us;
+        now_us += 1000000;
+        stage_all(0); PIOS_Servo_Update(); expect_all(0);
+        armed = FLIGHTSTATUS_ARMED_DISARMED;
+        stage_all(10); PIOS_Servo_Update(); expect_all(0);
+        armed = FLIGHTSTATUS_ARMED_ARMED;
+        stage_all(10); PIOS_Servo_Update(); expect_all(409);
+        PIOS_LiteWing_BrushedPWM_SetImuHealthy(false);
+        stage_all(10); PIOS_Servo_Update(); expect_all(0);
+        PIOS_LiteWing_BrushedPWM_SetImuHealthy(true);
+        stage_all(10); PIOS_Servo_Update(); expect_all(409);
+        PIOS_LiteWing_BrushedPWM_SetFailsafe(true);
+        stage_all(10); PIOS_Servo_Update(); expect_all(0);
+        PIOS_LiteWing_BrushedPWM_SetFailsafe(false);
+        stage_all(10); PIOS_Servo_Update(); expect_all(409);
+        now_us = start + 9999999;
+        stage_all(10); PIOS_Servo_Update(); expect_all(409);
+        now_us = start + 10000000;
+        watchdog_once(); expect_all(0); /* Last update only one microsecond old. */
+        stage_all(10); PIOS_Servo_Update(); expect_all(0);
+        CHECK(PIOS_LiteWing_BrushedPWM_Init() != 0);
+        return 0;
+    }
     if (strcmp(scenario, "all-fixed") == 0) {
         CHECK(PIOS_LiteWing_BrushedPWM_Init() == 0);
         stage_all(1000); PIOS_Servo_Update(); expect_all(0);
@@ -196,6 +224,7 @@ int main(int argc, char **argv)
             } else CHECK(false);
             /* Armed state is sampled at Update; fault setters stop immediately. */
             if (strcmp(scenario, "single-disarm") != 0) expect_all(0);
+            if (strcmp(scenario, "single-stale") != 0) stage_all(10);
             PIOS_Servo_Update(); expect_all(0);
             return 0;
         }
