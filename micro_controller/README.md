@@ -52,6 +52,21 @@ swift run --package-path micro_controller LiteWingMicroControllerTests
    when advertised by the live log table, and positioning remains
    **Unavailable** unless it is positively verified later.
 
+## Guided input capture
+
+LoudPilot shows every detected HID device and provides a labeled press-order
+diagram for the selected device. For the current Codex Micro descriptor, the
+guided order is Button 1 through Button 5, dial clockwise, then dial
+counter-clockwise. Each button must produce repeated press, hold, and release
+evidence; each dial direction must produce repeated relative detents on the
+same HID signature. The app records the raw report samples and will not accept
+a generic desktop axis as a joystick mapping.
+
+The capture stage is deliberately separate from flight output. It records
+physical intent and proposed control assignments only; arm, thrust, setpoint,
+takeoff, and manual-flight packets remain absent until the later staged
+validation phase is explicitly implemented and passed.
+
 The Apple Magic Keyboard profile uses W/S, A/D, Q/E, R/F, and arrow keys for
 intended pitch, roll, yaw, and thrust values; Escape clears the intended state.
 Codex Micro remains report-review-only until its live button/dial report

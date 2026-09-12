@@ -22,6 +22,7 @@ final class HIDMonitor: NSObject, ObservableObject {
     @Published private(set) var lastReportHex = "—"
     @Published private(set) var events: [ObservedHIDEvent] = []
     @Published private(set) var safetyState = InputSafetyState(bindings: [:])
+    @Published private(set) var captureState = GuidedCaptureState(plan: .codexMicro)
 
     private var manager: IOHIDManager?
     private var deviceByID: [String: IOHIDDevice] = [:]
@@ -56,6 +57,7 @@ final class HIDMonitor: NSObject, ObservableObject {
         self.manager = nil
         safetyState.setConnected(false)
         selectedDeviceConnected = false
+        captureState.reset()
     }
 
     func selectDevice(id: String) {
@@ -76,6 +78,18 @@ final class HIDMonitor: NSObject, ObservableObject {
 
     func setFocused(_ focused: Bool) {
         safetyState.setFocused(focused)
+    }
+
+    func acceptCaptureStep() {
+        _ = captureState.acceptCurrentStep()
+    }
+
+    func resetCaptureObservation() {
+        captureState.resetCurrentObservation()
+    }
+
+    func resetCaptureSession() {
+        captureState.reset()
     }
 
     func handleMatched(_ device: IOHIDDevice) {
@@ -102,12 +116,14 @@ final class HIDMonitor: NSObject, ObservableObject {
             selectedDeviceError = nil
             activeProfileName = "None"
             safetyState.setConnected(false)
+            captureState.reset()
         }
     }
 
     private func attach(id: String) {
         guard let device = deviceByID[id], bufferByID[id] == nil else { return }
         activeProfileName = profile(for: device).name
+        captureState = GuidedCaptureState(plan: capturePlan(for: device))
         let openResult = IOHIDDeviceOpen(device, IOOptionBits(kIOHIDOptionsTypeNone))
         guard openResult == kIOReturnSuccess else {
             selectedDeviceConnected = false
@@ -153,6 +169,7 @@ final class HIDMonitor: NSObject, ObservableObject {
             selectedDeviceError = nil
             activeProfileName = "None"
             safetyState.setConnected(false)
+            captureState.reset()
         }
     }
 
@@ -182,6 +199,11 @@ final class HIDMonitor: NSObject, ObservableObject {
         )
         interpreterByID[id] = interpreter
         let profile = profileByID[id] ?? profile(for: device)
+        captureState.ingest(
+            descriptor: descriptor,
+            event: rawEvent,
+            rawReport: reportByID[id] ?? "—"
+        )
         let event: MicroInputEvent
         switch profile.action(for: descriptor) {
         case .control(let control, let scale):
@@ -237,6 +259,14 @@ final class HIDMonitor: NSObject, ObservableObject {
             return BuiltInControlProfiles.codexMicro
         }
         return BuiltInControlProfiles.unmapped
+    }
+
+    private func capturePlan(for device: IOHIDDevice) -> GuidedCapturePlan {
+        let product = summarize(device).product.lowercased()
+        if product.contains("magic keyboard") {
+            return .magicKeyboard
+        }
+        return .codexMicro
     }
 
     private func deviceID(_ device: IOHIDDevice) -> String? {

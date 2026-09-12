@@ -15,6 +15,7 @@ struct DashboardView: View {
                 VStack(alignment: .leading, spacing: 16) {
                     header
                     safetyBoundary
+                    captureSection
                     microSection
                     telemetrySection(now: context.date.timeIntervalSince1970)
                 }
@@ -162,6 +163,94 @@ struct DashboardView: View {
                         }
                         .foregroundStyle(observed.event.phase == .released ? .secondary : .primary)
                     }
+                }
+            }
+        }
+    }
+
+    private var captureSection: some View {
+        GroupBox {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack {
+                    Label("Guided HID capture", systemImage: "list.number")
+                        .font(.title3.bold())
+                    Spacer()
+                    statusPill(
+                        label: "Evidence",
+                        value: hidMonitor.captureState.isComplete ? "COMPLETE" : "STEP \(min(hidMonitor.captureState.stepIndex + 1, hidMonitor.captureState.plan.steps.count))/\(hidMonitor.captureState.plan.steps.count)",
+                        color: hidMonitor.captureState.isComplete ? .green : .orange
+                    )
+                }
+
+                Text("Both connected devices are listed below. Select one, then follow the labeled order. LoudPilot binds only repeated live HID signatures; generic joystick axes are never inferred.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                Text(hidMonitor.captureState.plan.diagram)
+                    .font(.system(.caption, design: .monospaced))
+                    .textSelection(.enabled)
+                    .padding(10)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(.gray.opacity(0.10), in: RoundedRectangle(cornerRadius: 8))
+
+                if let step = hidMonitor.captureState.currentStep {
+                    HStack(alignment: .top, spacing: 14) {
+                        Text("Next")
+                            .font(.caption.bold())
+                            .foregroundStyle(.orange)
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(step.label)
+                                .font(.headline)
+                            Text(step.instruction)
+                        }
+                    }
+
+                    let evidence = hidMonitor.captureState.currentEvidence
+                    HStack(alignment: .top, spacing: 22) {
+                        valueColumn("Presses", "\(evidence.pressCount)")
+                        valueColumn("Holds", "\(evidence.holdCount)")
+                        valueColumn("Releases", "\(evidence.releaseCount)")
+                        valueColumn("Dial + / −", "\(evidence.positiveDialCount) / \(evidence.negativeDialCount)")
+                        valueColumn("Raw samples", "\(evidence.rawReports.count)")
+                    }
+
+                    if let signature = evidence.signature {
+                        Text("Candidate HID signature: usage \(signature.usagePage):\(signature.usage), relative \(signature.isRelative ? "yes" : "no")")
+                            .font(.system(.caption, design: .monospaced))
+                    }
+
+                    HStack {
+                        Button("Reset current observation") {
+                            hidMonitor.resetCaptureObservation()
+                        }
+                        Button("Accept signature and continue") {
+                            hidMonitor.acceptCaptureStep()
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .disabled(!hidMonitor.captureState.currentStepHighConfidence)
+                    }
+
+                    if hidMonitor.captureState.currentStepHighConfidence {
+                        Text("High-confidence evidence is ready for review. Accept it before moving to the next control.")
+                            .font(.caption)
+                            .foregroundStyle(.green)
+                    } else {
+                        Text("Required evidence: three repeated press/release cycles plus a hold for buttons, or three consistent detents for each dial direction.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                } else {
+                    Text("All guided signatures are captured. Mapping remains staged and disconnected from flight-command transmission until the evidence review and secured-chamber validation are complete.")
+                        .foregroundStyle(.green)
+                    Button("Restart guided capture") {
+                        hidMonitor.resetCaptureSession()
+                    }
+                }
+
+                if let error = hidMonitor.selectedDeviceError {
+                    Text("Capture unavailable for the selected device: \(error). Enable LoudPilot in macOS Input Monitoring, then use Retry.")
+                        .font(.caption)
+                        .foregroundStyle(.red)
                 }
             }
         }
