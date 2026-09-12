@@ -115,3 +115,34 @@ for a separate transmit-error diagnostic, not proof it caused these bytes.
 No parser tolerance, firmware, PID, or output ceiling was changed during this
 investigation. A request-only follow-up can establish current telemetry health
 but cannot retroactively repair the rejected capture.
+
+## Subsequent fixture trial: sensor-delivery interruption
+
+Three request/handshake-only executions of the actual runner reached an injected
+receiver-write block without framing errors, with Disarmed/zero status. A later
+powered attempt aborted on Attitude and Stabilization Error alarms. Its new
+cleanup confirmed zero actuator/PWM telemetry after 0.146200 seconds; this is
+host receipt timing, not measured motor stopping time. The board later disarmed
+normally and the existing frozen trace was downloaded without resetting.
+
+The 512-record trace spans 1039187 microseconds. Peak absolute gyro is only
+3.628622 deg/s. Record 124 consumed two raw frames: the first is byte 0x0d
+followed by thirteen 0xff bytes; the second is fourteen 0xff bytes. The next
+successful raw sample starts 50094 microseconds after the preceding raw read
+ended. Estimator records 124 and 125 are separated by 50662 microseconds.
+The raw sequence remains consecutive because it counts published successful
+reads, not failed attempts. This is not evidence of normal 500 Hz delivery.
+
+The driver publishes a frame whenever the I2C transfer reports success, without
+checking these suspicious contents. The I2C adapter checks ESP_OK and serializes
+transactions. Thus the all-ones records passed the software transport-success
+condition; this does not establish whether the peripheral, wiring/power, bus,
+or adapter generated the bad values. Sensor failure paths and task scheduling
+are not included in the successful-sample trace, so the 50 ms gap cannot yet be
+assigned to a specific timeout or scheduler stall.
+
+Next diagnostic: retain notification/read outcomes and acquisition timing
+alongside successful samples to distinguish missing data-ready notifications,
+I2C failure/timeout, and scheduling delay. Preserve the alarm and output-stop
+behavior; do not treat all-ones contents as valid motion or silently replace
+them to obtain a passing test. Live-flight readiness remains unverified.
